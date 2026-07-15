@@ -368,29 +368,60 @@ function openHelpPanel() {
   );
 }
 
-/* ========== 全局布局壳层注入 ========== */
-function injectSidebar(active) {
-  const links = [
-    { key: 'dashboard', href: '/dashboard', icon: 'database', label: '数据治理' },
-    { key: 'screen', href: '/screen', icon: 'monitoring', label: '数字大屏' },
-    { key: 'models', href: '/models', icon: 'model_training', label: '模型管理' },
-    { key: 'skills', href: '/skills', icon: 'extension', label: '技能管理' },
-    { key: 'agent-management', href: '/agent-management', icon: 'precision_manufacturing', label: '员工管理' },
-    { key: 'agents', href: '/agents', icon: 'smart_toy', label: '员工编排' },
-    { key: 'de', href: '/de', icon: 'forum', label: '数字员工' },
-    { key: 'workflows', href: '/workflows', icon: 'account_tree', label: '工作流' },
-    { key: 'rag', href: '/rag', icon: 'book_4', label: 'RAG管理' },
-    { key: 'permissions', href: '/permissions', icon: 'admin_panel_settings', label: '权限管理' },
-    { key: 'audit', href: '/audit', icon: 'security', label: '审计管理' },
-    { key: 'smart-audit', href: '/smart-audit', icon: 'gavel', label: '智能审计' },
-    { key: 'chat-management', href: '/chat-management', icon: 'chat_bubble', label: '聊天管理' },
-    { key: 'data-collection', href: '/data-collection', icon: 'cloud_download', label: '数据采集' },
-    { key: 'messages', href: '/messages', icon: 'chat', label: '消息中心' },
-    { key: 'im', href: '/im', icon: 'forum', label: 'IM控制台' },
-    { key: 'query', href: '/query', icon: 'terminal', label: '智能问数' },
-    { key: 'settings', href: '/settings', icon: 'settings', label: '个人设置' },
-  ];
-  const nav = links.map(l => {
+/* ========== 统一导航壳层注入 ========== */
+
+/* 默认菜单定义（API 不可用时的降级） */
+const DEFAULT_MENUS = [
+  { name: '数据治理', icon: 'database', path: '/dashboard', key: 'dashboard' },
+  { name: '数字大屏', icon: 'monitoring', path: '/screen', key: 'screen' },
+  { name: '智能对话', icon: 'forum', path: '/de', key: 'de' },
+  { name: '智能问数', icon: 'terminal', path: '/query', key: 'query' },
+  { name: '数字员工', icon: 'precision_manufacturing', path: '/agent-management', key: 'agent-management' },
+  { name: '模型管理', icon: 'model_training', path: '/models', key: 'models' },
+  { name: '技能管理', icon: 'extension', path: '/skills', key: 'skills' },
+  { name: '员工编排', icon: 'smart_toy', path: '/agents', key: 'agents' },
+  { name: '工作流', icon: 'account_tree', path: '/workflows', key: 'workflows' },
+  { name: 'RAG 管理', icon: 'book_4', path: '/rag', key: 'rag' },
+  { name: '权限管理', icon: 'admin_panel_settings', path: '/permissions', key: 'permissions' },
+  { name: '审计管理', icon: 'security', path: '/audit', key: 'audit' },
+  { name: '智能审计', icon: 'gavel', path: '/smart-audit', key: 'smart-audit' },
+  { name: '聊天管理', icon: 'chat_bubble', path: '/chat-management', key: 'chat-management' },
+  { name: '数据采集', icon: 'cloud_download', path: '/data-collection', key: 'data-collection' },
+  { name: '消息中心', icon: 'chat', path: '/messages', key: 'messages' },
+  { name: 'IM 控制台', icon: 'forum', path: '/im', key: 'im' },
+  { name: '系统设置', icon: 'settings', path: '/settings', key: 'settings' },
+];
+
+/* 路径 → key 映射（用于 active 高亮） */
+const PATH_TO_KEY = {};
+DEFAULT_MENUS.forEach(m => { PATH_TO_KEY[m.path] = m.key; });
+PATH_TO_KEY['/'] = '';
+PATH_TO_KEY['/im/chat'] = 'im';
+PATH_TO_KEY['/admin-login'] = '';
+PATH_TO_KEY['/login'] = '';
+
+/* 异步加载服务端菜单 */
+async function fetchMenus() {
+  if (!Token.exists()) return null;
+  try {
+    const data = await apiGet('/api/permissions/menus');
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map(m => ({
+        name: m.name,
+        icon: m.icon || 'circle',
+        path: m.path,
+        key: PATH_TO_KEY[m.path] || m.path.replace(/^\//, '') || 'dashboard',
+      }));
+    }
+  } catch (e) {
+    console.warn('[sidebar] API menus unavailable, using defaults');
+  }
+  return null;
+}
+
+function injectSidebar(active, menus) {
+  if (!menus) menus = DEFAULT_MENUS;
+  const nav = menus.map(l => {
     const base = [
       'group h-[46px] min-w-max',
       'inline-flex items-center gap-2.5 px-4',
@@ -400,9 +431,9 @@ function injectSidebar(active) {
     const cls = l.key === active
       ? `${base} text-primary bg-secondary-container/10 border-primary/25 shadow-sm`
       : `${base} text-on-surface-variant border-transparent hover:bg-surface-container-high hover:text-primary hover:border-primary/10`;
-    return `<a class="${cls}" href="${l.href}">
+    return `<a class="${cls}" href="${l.path}">
       <span class="material-symbols-outlined w-[21px] min-w-[21px] text-[21px] leading-[21px]">${l.icon}</span>
-      <span class="block truncate text-[14px] leading-5 font-semibold">${l.label}</span>
+      <span class="block truncate text-[14px] leading-5 font-semibold">${l.name}</span>
     </a>`;
   }).join('');
 
@@ -476,7 +507,7 @@ function injectSidebar(active) {
 }
 
 /* 统一替换所有页面的侧边栏，保证一致性 */
-function replaceSidebar() {
+async function replaceSidebar() {
   const path = window.location.pathname;
   if (path === '/' || path === '/login' || path === '/admin-login') {
     return false;
@@ -505,6 +536,9 @@ function replaceSidebar() {
   };
   const active = activeMap[path] || '';
 
+  // 异步加载服务端菜单（按角色过滤）
+  const menus = await fetchMenus();
+
   document.querySelectorAll('[data-app-top-nav], [data-app-utility-rail]').forEach(el => el.remove());
   document.querySelectorAll('body > header, nav.fixed.top-0').forEach(el => el.remove());
 
@@ -512,7 +546,7 @@ function replaceSidebar() {
 
   // 生成统一壳层：顶部功能导航 + 左侧工具栏
   const temp = document.createElement('div');
-  temp.innerHTML = injectSidebar(active);
+  temp.innerHTML = injectSidebar(active, menus);
   const newTopNav = temp.querySelector('[data-app-top-nav]');
   const newAside = temp.querySelector('[data-app-utility-rail]');
 
@@ -706,9 +740,9 @@ function showToast(msg, type = 'info') {
 }
 
 /* ========== 自动统一侧边栏 + 加载用户信息 ========== */
-function initSidebar() {
+async function initSidebar() {
   // 尝试用统一侧边栏替换页面原有侧边栏
-  const replaced = replaceSidebar();
+  const replaced = await replaceSidebar();
   if (replaced) {
     // 替换成功，加载用户信息到新侧边栏
     loadSidebarUser();
@@ -893,11 +927,11 @@ if (document.readyState === 'loading') {
 window.addEventListener('beforeunload', () => { IM.stop(); });
 
 /* ========== 自动侧边栏注入（统一所有页面） ========== */
-function autoInitSidebar() {
+async function autoInitSidebar() {
   if (!Token.exists() || window.location.pathname.startsWith('/login')) return;
   // 登录页不需要侧边栏
   if (window.location.pathname === '/login' || window.location.pathname === '/') return;
-  replaceSidebar();
+  await replaceSidebar();
   loadSidebarUser();
 }
 // DOM 就绪后自动注入
