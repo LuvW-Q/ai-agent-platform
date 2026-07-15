@@ -319,32 +319,35 @@ async def batch_deep_collect(body: CrawlIn, db: SessionLocal = Depends(get_db),
 
     completed = 0
     failed = 0
-    for item in items_to_collect:
-        try:
-            if not item.url:
-                raise ValueError("该数据无来源URL")
-            async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30) as client:
+        for item in items_to_collect:
+            try:
+                if not item.url:
+                    raise ValueError("该数据无来源URL")
                 resp = await client.get(item.url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
                 full_text = resp.text
-            soup = BeautifulSoup(full_text, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer", "header"]):
-                tag.decompose()
-            body_text = soup.get_text(separator="\n", strip=True)[:8000]
-            item.content = body_text
-            item.deep_collected = True
-            completed += 1
-            task.completed_count = completed
-            task.log += f"[OK] {item.title or (item.url[:50] if item.url else '未知条目')}... 深度采集完成\n"
-        except Exception as e:
-            failed += 1
-            task.log += f"[FAIL] {item.title or (item.url[:50] if item.url else '未知条目')}... 错误: {str(e)}\n"
-        db.commit()
+                soup = BeautifulSoup(full_text, "html.parser")
+                for tag in soup(["script", "style", "nav", "footer", "header"]):
+                    tag.decompose()
+                body_text = soup.get_text(separator="\n", strip=True)[:8000]
+                item.content = body_text
+                item.deep_collected = True
+                completed += 1
+                task.completed_count = completed
+                task.log += f"[OK] {item.title or (item.url[:50] if item.url else '未知条目')}... 深度采集完成\n"
+            except Exception as e:
+                failed += 1
+                task.log += f"[FAIL] {item.title or (item.url[:50] if item.url else '未知条目')}... 错误: {str(e)}\n"
+            db.commit()
 
-    task.status = "completed" if failed == 0 and task.total_count > 0 else ("completed" if task.total_count == 0 else "failed")
     if task.total_count == 0:
         task.status = "completed"
         task.log += "无可深度采集的数据，任务直接结束\n"
+    elif failed == 0:
+        task.status = "completed"
+        task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
     else:
+        task.status = "failed"
         task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
     db.commit()
     return {
