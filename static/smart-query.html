@@ -29,13 +29,14 @@
         <button id="btn-query" class="bg-primary text-on-primary px-6 py-3 rounded-xl text-sm font-bold hover:opacity-80 active:scale-95 transition-all flex items-center gap-2"><span class="material-symbols-outlined">send</span>查询</button>
       </div>
       <div class="flex flex-wrap gap-2 mt-3">
-        <span onclick="quickQuery('有多少数据源')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 数据源数量</span>
-        <span onclick="quickQuery('用户列表')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 用户列表</span>
-        <span onclick="quickQuery('消息类型分布')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 消息类型分布</span>
-        <span onclick="quickQuery('最近消息')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 最近消息</span>
-        <span onclick="quickQuery('审计日志')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 审计日志</span>
-        <span onclick="quickQuery('知识库')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 知识库</span>
-        <span onclick="quickQuery('情感分布')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 情感分布</span>
+        <button type="button" onclick="quickQuery('近 7 天采集多少条新闻')" class="px-3 py-1 bg-secondary-container/10 text-secondary rounded-full text-xs hover:border-secondary-container border border-secondary-container/30 transition-colors"># 近 7 天新闻（Mock）</button>
+        <button type="button" onclick="quickQuery('有多少数据源')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 数据源数量</button>
+        <button type="button" onclick="quickQuery('用户列表')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 用户列表</button>
+        <button type="button" onclick="quickQuery('消息类型分布')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 消息类型分布</button>
+        <button type="button" onclick="quickQuery('最近消息')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 最近消息</button>
+        <button type="button" onclick="quickQuery('审计日志')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 审计日志</button>
+        <button type="button" onclick="quickQuery('知识库')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 知识库</button>
+        <button type="button" onclick="quickQuery('情感分布')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs hover:border-primary border border-outline-variant/20 transition-colors"># 情感分布</button>
       </div>
     </div>
 
@@ -43,7 +44,12 @@
     <div id="result-area" class="glass rounded-2xl p-5 mb-4" style="display:none">
       <div class="flex items-center justify-between mb-3">
         <h3 class="font-bold text-on-surface">查询结果</h3>
-        <span id="result-tag" class="text-xs px-2 py-0.5 rounded bg-secondary-container/20 text-secondary">table</span>
+        <div class="flex items-center gap-2">
+          <button id="export-csv-btn" type="button" onclick="exportCsv()" class="hidden items-center gap-1 rounded-lg border border-outline-variant/30 px-3 py-1.5 text-xs text-on-surface-variant hover:border-primary hover:text-primary transition-colors">
+            <span class="material-symbols-outlined text-sm">download</span>导出 CSV
+          </button>
+          <span id="result-tag" class="text-xs px-2 py-0.5 rounded bg-secondary-container/20 text-secondary">table</span>
+        </div>
       </div>
       <div id="result-sql" class="mb-3 bg-surface-container-high/50 rounded-lg p-3 text-xs font-mono text-on-surface-variant overflow-x-auto" style="display:none"></div>
       <div id="result-table" class="overflow-x-auto mb-3" style="display:none"></div>
@@ -74,6 +80,7 @@ if (!requireAuth()) throw new Error('redirecting');
 
 var queryHistory = [];
 var chartInstance = null;
+var lastQueryRows = [];
 
 // Init
 (function(){
@@ -104,10 +111,17 @@ async function doQuery(){
   document.getElementById('result-sql').style.display = 'none';
   document.getElementById('result-table').style.display = 'none';
   document.getElementById('result-chart').style.display = 'none';
+  document.getElementById('export-csv-btn').classList.add('hidden');
+  document.getElementById('export-csv-btn').classList.remove('inline-flex');
+  lastQueryRows = [];
   document.getElementById('result-tag').textContent = '查询中...';
   ['stat-period','stat-total','stat-time','stat-rows'].forEach(function(id){ document.getElementById(id).textContent = '...'; });
 
   var t0 = performance.now();
+  if (q.replace(/\s+/g, '') === '近7天采集多少条新闻') {
+    renderMockNewsResult(q, t0);
+    return;
+  }
   try {
     var modelId = document.getElementById('model-select').value;
     var data = await apiPost('/api/query/nl2sql', { question: q, model_id: modelId ? parseInt(modelId) : null });
@@ -117,6 +131,11 @@ async function doQuery(){
 
     var rows = data.rows || [];
     var hasRows = rows.length > 0;
+    lastQueryRows = rows;
+    if (hasRows) {
+      document.getElementById('export-csv-btn').classList.remove('hidden');
+      document.getElementById('export-csv-btn').classList.add('inline-flex');
+    }
 
     // Update stats
     document.getElementById('stat-period').textContent = '实时';
@@ -144,7 +163,7 @@ async function doQuery(){
         '<table class="w-full text-xs"><thead><tr class="border-b border-outline-variant/20">' +
         cols.map(function(k){return '<th class="px-3 py-2 text-left text-on-surface-variant font-medium">'+escapeHtml(k)+'</th>';}).join('') +
         '</tr></thead><tbody>' +
-        rows.slice(0, 50).map(function(r){return '<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30">'+cols.map(function(k){return '<td class="px-3 py-2">'+escapeHtml(String(r[k]||''))+'</td>';}).join('')+'</tr>';}).join('') +
+        rows.slice(0, 50).map(function(r){return '<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30">'+cols.map(function(k){return '<td class="px-3 py-2">'+escapeHtml(String(r[k] ?? ''))+'</td>';}).join('')+'</tr>';}).join('') +
         '</tbody></table>' +
         (rows.length > 50 ? '<div class="text-xs text-on-surface-variant mt-2 text-center">显示前50条，共'+rows.length+'条</div>' : '');
     } else {
@@ -173,6 +192,57 @@ async function doQuery(){
     area.style.display = 'none';
     showToast('查询失败: ' + e.message, 'error');
   }
+}
+
+function renderMockNewsResult(question, startedAt) {
+  const mockCounts = [18, 24, 21, 30, 27, 35, 32];
+  const today = new Date();
+  const rows = mockCounts.map((count, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (mockCounts.length - 1 - index));
+    return {
+      '日期': `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+      '新闻条数': count
+    };
+  });
+  const total = rows.reduce((sum, row) => sum + row['新闻条数'], 0);
+  const elapsed = Math.round(performance.now() - startedAt);
+  lastQueryRows = rows;
+
+  document.getElementById('result-tag').textContent = 'Mock 演示数据';
+  const note = document.getElementById('result-sql');
+  note.style.display = 'block';
+  note.innerHTML = '<span class="text-tertiary">示例数据说明：</span>当前结果为本地生成的近 7 天示例，尚未连接实时采集查询接口。';
+
+  const table = document.getElementById('result-table');
+  table.style.display = 'block';
+  table.innerHTML = '<table class="w-full text-xs"><thead><tr class="border-b border-outline-variant/20">' +
+    '<th class="px-3 py-2 text-left text-on-surface-variant font-medium">日期</th>' +
+    '<th class="px-3 py-2 text-left text-on-surface-variant font-medium">新闻条数</th>' +
+    '</tr></thead><tbody>' + rows.map(row =>
+      '<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30">' +
+      '<td class="px-3 py-2">' + escapeHtml(row['日期']) + '</td>' +
+      '<td class="px-3 py-2">' + row['新闻条数'] + '</td></tr>'
+    ).join('') + '<tr class="font-bold text-secondary"><td class="px-3 py-2">合计</td><td class="px-3 py-2">' + total + '</td></tr></tbody></table>';
+
+  document.getElementById('result-chart').style.display = 'block';
+  setTimeout(function() {
+    renderEChart({
+      labels: rows.map(row => row['日期'].slice(5)),
+      series: [{ name: '新闻条数（Mock）', data: rows.map(row => row['新闻条数']) }]
+    }, 'bar', '近 7 天新闻采集量（Mock）');
+  }, 100);
+
+  document.getElementById('export-csv-btn').classList.remove('hidden');
+  document.getElementById('export-csv-btn').classList.add('inline-flex');
+  document.getElementById('stat-period').textContent = '近 7 天（Mock）';
+  document.getElementById('stat-total').textContent = total + ' 条';
+  document.getElementById('stat-time').textContent = elapsed + ' ms';
+  document.getElementById('stat-rows').textContent = '返回 7 行';
+
+  queryHistory.unshift({ q: question, label: question + ' [Mock]', rows: rows.length, time: elapsed, ts: new Date().toLocaleString() });
+  if (queryHistory.length > 20) queryHistory.pop();
+  renderHistory();
 }
 
 function renderEChart(chartData, chartType, title) {
@@ -233,7 +303,7 @@ function renderHistory() {
   if (!queryHistory.length) { el.innerHTML = '<div class="text-center py-4">暂无分析记录</div>'; return; }
   el.innerHTML = queryHistory.map(function(h,i){
     return '<div class="flex items-center justify-between py-1.5 px-3 rounded hover:bg-surface-container-high/30 cursor-pointer" onclick="replayQuery('+i+')">' +
-      '<span class="truncate flex-1">'+escapeHtml(h.q)+'</span>' +
+      '<span class="truncate flex-1">'+escapeHtml(h.label || h.q)+'</span>' +
       '<span class="text-on-surface-variant ml-3 flex-shrink-0">'+h.rows+'条 · '+h.time+'ms · '+h.ts+'</span>' +
     '</div>';
   }).join('');
@@ -242,6 +312,28 @@ function renderHistory() {
 function replayQuery(i) {
   var h = queryHistory[i];
   if (h) { document.getElementById('nl-input').value = h.q; doQuery(); }
+}
+
+function exportCsv() {
+  if (!lastQueryRows.length) {
+    showToast('当前没有可导出的查询结果', 'error');
+    return;
+  }
+  const columns = Object.keys(lastQueryRows[0]);
+  const quote = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const csv = [
+    columns.map(quote).join(','),
+    ...lastQueryRows.map(row => columns.map(column => quote(row[column])).join(','))
+  ].join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `智能问数-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 0);
+  link.remove();
+  showToast(`已导出 ${lastQueryRows.length} 条数据`, 'success');
 }
 </script>
 </body></html>

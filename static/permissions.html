@@ -3,6 +3,7 @@
 <html class="dark" lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>权限管理 - 数据瞭望系统</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
@@ -180,8 +181,8 @@
 <span class="material-symbols-outlined text-secondary-fixed">groups</span>
 </div>
 <div class="mt-md">
-<span class="text-3xl font-bold text-on-surface">12</span>
-<span class="text-xs text-secondary ml-2 font-label-mono">+2 新增</span>
+<span id="stat-active-roles" class="text-3xl font-bold text-on-surface">--</span>
+<span class="text-xs text-secondary ml-2 font-label-mono">来自角色接口</span>
 </div>
 </div>
 <div class="glass-panel p-lg rounded-xl flex flex-col justify-between relative overflow-hidden">
@@ -191,8 +192,8 @@
 <span class="material-symbols-outlined text-secondary-fixed">account_tree</span>
 </div>
 <div class="mt-md">
-<span class="text-3xl font-bold text-on-surface">1,402</span>
-<span class="text-xs text-on-surface-variant ml-2 font-label-mono">覆盖 98% API</span>
+<span id="stat-permission-nodes" class="text-3xl font-bold text-on-surface">--</span>
+<span id="stat-api-coverage" class="text-xs text-on-surface-variant ml-2 font-label-mono">读取中</span>
 </div>
 </div>
 <div class="glass-panel p-lg rounded-xl flex flex-col justify-between relative overflow-hidden">
@@ -226,7 +227,7 @@
 <h3 class="font-semibold text-on-surface flex items-center gap-2">
 <span class="material-symbols-outlined text-sm">person_outline</span>角色映射
                         </h3>
-<button class="text-primary hover:bg-primary/10 p-1 rounded transition-colors">
+<button onclick="openCreateRoleModal()" class="text-primary hover:bg-primary/10 p-1 rounded transition-colors" title="新增角色" aria-label="新增角色">
 <span class="material-symbols-outlined">add_box</span>
 </button>
 </div>
@@ -277,13 +278,11 @@
 <span class="material-symbols-outlined text-sm">account_tree</span>权限资源树
                             </h3>
 <div class="flex items-center gap-4 text-xs font-label-mono text-on-surface-variant">
-<label class="flex items-center gap-1.5 cursor-pointer"><input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0" type="checkbox"/> 菜单</label>
-<label class="flex items-center gap-1.5 cursor-pointer"><input checked="" class="rounded-sm bg-surface-container border-outline-variant text-secondary-container focus:ring-0" type="checkbox"/> 按钮</label>
-<label class="flex items-center gap-1.5 cursor-pointer"><input checked="" class="rounded-sm bg-surface-container border-outline-variant text-tertiary focus:ring-0" type="checkbox"/> API</label>
+<span class="text-[10px] text-on-surface-variant">当前登录角色 · 只读权限树</span>
 </div>
 </div>
 </div>
-<div class="flex-1 overflow-y-auto custom-scrollbar p-lg space-y-4">
+<div id="perm-tree-content" class="flex-1 overflow-y-auto custom-scrollbar p-lg space-y-4">
 <!-- Root Level -->
 <div class="space-y-3">
 <div class="flex items-center gap-2 group cursor-pointer">
@@ -361,8 +360,8 @@
 </div>
 <!-- Footer Actions -->
 <div class="p-lg border-t border-outline-variant bg-surface-container-low flex justify-end gap-md">
-<button class="px-lg py-sm border border-outline-variant rounded hover:bg-surface-container-highest transition-colors font-medium">重置</button>
-<button class="px-lg py-sm bg-primary-container text-on-primary-container rounded hover:bg-primary transition-colors font-semibold shadow-lg shadow-primary/10">更新权限配置</button>
+<button onclick="resetPermissionForm()" class="px-lg py-sm border border-outline-variant rounded hover:bg-surface-container-highest transition-colors font-medium">刷新权限</button>
+<button id="permission-edit-status" disabled title="后端尚未提供角色权限树写入接口" class="px-lg py-sm bg-surface-container-high text-on-surface-variant rounded font-semibold cursor-not-allowed opacity-70">权限编辑待接口</button>
 </div>
 </div>
 <!-- Right: Coverage Matrix & Insights -->
@@ -419,7 +418,7 @@
                         </p>
 <div class="flex justify-between items-center mt-2">
 <span class="text-[10px] text-error font-label-mono">CRITICAL SECURITY NOTICE</span>
-<button class="text-xs text-primary font-semibold hover:underline">查看审计记录</button>
+<button id="permission-audit-link" onclick="window.location.href='/audit'" class="text-xs text-primary font-semibold hover:underline">查看审计记录</button>
 </div>
 </div>
 </div>
@@ -489,13 +488,14 @@
             const container = document.getElementById('roles-container');
             if (!container) return;
             const roles = await apiGet('/api/permissions/roles');
+            document.getElementById('stat-active-roles').textContent = roles.filter(role => role.is_active).length;
             container.innerHTML = '';
             roles.forEach(role => {
                 const isActive = role.is_active;
                 const item = document.createElement('div');
                 item.className = 'p-md ' + (isActive
-                    ? 'bg-secondary-container/10 border-l-4 border-secondary-fixed rounded-sm cursor-pointer transition-all'
-                    : 'hover:bg-surface-container-high border-l-4 border-transparent rounded-sm cursor-pointer transition-all group');
+                    ? 'bg-secondary-container/10 border-l-4 border-secondary-fixed rounded-sm'
+                    : 'border-l-4 border-transparent rounded-sm group');
                 const nameClass = isActive ? 'font-medium text-on-surface' : 'font-medium text-on-surface-variant group-hover:text-on-surface';
                 const codeClass = isActive
                     ? 'text-[10px] bg-secondary-container text-on-secondary-container px-1.5 py-0.5 rounded font-label-mono'
@@ -534,10 +534,8 @@ async function loadPermTree() {
         </div>
         <div class="flex gap-1">${m.permissions.map(p=>`<span class="text-[10px] px-2 py-0.5 bg-primary-container/20 text-primary-container rounded">${escapeHtml(p)}</span>`).join('')}</div>
       </div>`).join('');
-    // Update stats
-    document.querySelectorAll('.text-2xl.font-bold').forEach(el => {
-      if (el.textContent.trim() === '12') el.textContent = tree.total_nodes || 42;
-    });
+    document.getElementById('stat-permission-nodes').textContent = tree.total_nodes;
+    document.getElementById('stat-api-coverage').textContent = `覆盖 ${tree.api_coverage}% API`;
   } catch(e) {}
 }
 function openCreateRoleModal() {
@@ -546,8 +544,7 @@ function openCreateRoleModal() {
   const desc = prompt('描述:') || '';
   apiPost('/api/permissions/roles', {name, code, description: desc}).then(()=>{showToast('创建成功','success');loadRoles();}).catch(e=>showToast('创建失败','error'));
 }
-function resetPermissionForm() { loadRoles(); loadPermTree(); showToast('已重置','success'); }
-function savePermissions() { showToast('权限配置已保存','success'); }
+function resetPermissionForm() { loadRoles(); loadPermTree(); showToast('权限数据已刷新','success'); }
 
 // Call tree loader
 loadPermTree();

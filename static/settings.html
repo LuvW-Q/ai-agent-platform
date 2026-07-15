@@ -265,10 +265,10 @@
 </div>
 <div>
 <h4 class="font-bold text-on-surface">双重验证 (2FA)</h4>
-<p class="text-caption text-on-surface-variant">未开启</p>
+<p class="text-caption text-on-surface-variant">后端尚未提供 2FA 配置接口</p>
 </div>
 </div>
-<button class="border border-outline px-4 py-1.5 rounded-lg hover:bg-surface-variant transition-colors text-body-md">立即开启</button>
+<button id="settings-2fa-status" disabled title="2FA 配置接口尚未接入" class="border border-outline px-4 py-1.5 rounded-lg text-body-md cursor-not-allowed opacity-60">待接口接入</button>
 </div>
 </div>
 <!-- Multi-device Management -->
@@ -277,32 +277,10 @@
 <span class="material-symbols-outlined text-primary text-sm">devices</span>
                             多端登录管理
                         </h4>
-<div class="space-y-4">
-<!-- Device Item -->
-<div class="flex items-center justify-between p-3 bg-surface-container-lowest rounded-lg border border-outline-variant/30">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-secondary">laptop_mac</span>
-<div>
-<p class="text-body-md font-bold">MacBook Pro - 上海, 中国</p>
-<p class="text-[10px] text-secondary font-label-mono flex items-center gap-1">
-<span class="w-1.5 h-1.5 bg-secondary rounded-full status-glow animate-pulse"></span>
-                                            当前在线
-                                        </p>
-</div>
-</div>
-<span class="text-caption text-on-surface-variant font-label-mono">IP: 192.168.1.104</span>
-</div>
-<!-- Device Item -->
-<div class="flex items-center justify-between p-3 bg-surface-container-lowest rounded-lg border border-outline-variant/30 opacity-70">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-on-surface-variant">smartphone</span>
-<div>
-<p class="text-body-md font-bold text-on-surface">iPhone 15 Pro - 北京, 中国</p>
-<p class="text-[10px] text-on-surface-variant font-label-mono">2小时前活跃</p>
-</div>
-</div>
-<button class="text-error text-caption hover:underline">强制下线</button>
-</div>
+<div class="rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-4 text-center">
+<span class="material-symbols-outlined text-on-surface-variant">devices_off</span>
+<p class="mt-2 text-body-md font-bold text-on-surface">设备列表待接口接入</p>
+<p class="mt-1 text-caption text-on-surface-variant">当前不展示模拟设备，也不提供虚假的下线操作。</p>
 </div>
 </div>
 </div>
@@ -318,27 +296,27 @@
 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
 <div>
 <h4 class="font-bold text-on-surface text-body-lg">消息通知开关</h4>
-<p class="text-body-md text-on-surface-variant">管理系统告警、代理人反馈和安全风险的消息提醒偏好。</p>
+<p class="text-body-md text-on-surface-variant">通知偏好保存接口尚未接入，以下选项仅展示规划内容。</p>
 </div>
 <div class="flex flex-col gap-4">
 <div class="flex items-center justify-between">
 <span class="text-body-md">关键告警推送 (邮件 + 站内)</span>
 <label class="switch">
-<input checked="" type="checkbox"/>
+<input checked="" disabled type="checkbox"/>
 <span class="slider"></span>
 </label>
 </div>
 <div class="flex items-center justify-between">
 <span class="text-body-md">分析进度更新</span>
 <label class="switch">
-<input checked="" type="checkbox"/>
+<input checked="" disabled type="checkbox"/>
 <span class="slider"></span>
 </label>
 </div>
 <div class="flex items-center justify-between">
 <span class="text-body-md">登录安全异常</span>
 <label class="switch">
-<input checked="" type="checkbox"/>
+<input checked="" disabled type="checkbox"/>
 <span class="slider"></span>
 </label>
 </div>
@@ -348,20 +326,20 @@
 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
 <div>
 <h4 class="font-bold text-on-surface text-body-lg">隐私设置</h4>
-<p class="text-body-md text-on-surface-variant">控制您的数据被系统其他用户看到的权限范围。</p>
+<p class="text-body-md text-on-surface-variant">隐私偏好保存接口尚未接入，以下选项暂不可修改。</p>
 </div>
 <div class="flex flex-col gap-4">
 <div class="flex items-center justify-between">
 <span class="text-body-md">公开显示我的工作动态</span>
 <label class="switch">
-<input type="checkbox"/>
+<input disabled type="checkbox"/>
 <span class="slider"></span>
 </label>
 </div>
 <div class="flex items-center justify-between">
 <span class="text-body-md">允许其他代理程序访问我的基础信息</span>
 <label class="switch">
-<input checked="" type="checkbox"/>
+<input checked="" disabled type="checkbox"/>
 <span class="slider"></span>
 </label>
 </div>

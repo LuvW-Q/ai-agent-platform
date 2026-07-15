@@ -25,7 +25,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425",
 
 <script src="/static/js/app.js"></script>
 <script>
-let activeTab = 'sources', sources = [], rules = [], warehouseData = [];
+let activeTab = 'sources', sources = [], rules = [], warehouseData = [], warehouseKeyword = '';
 
 async function init() {
   [sources, rules] = await Promise.all([apiGet('/api/dc/sources'), apiGet('/api/dc/rules')]);
@@ -58,14 +58,21 @@ async function renderTab() {
       <button onclick="doCrawl()" class="mt-3 bg-primary-container text-on-primary-container px-6 py-2.5 rounded-xl text-sm font-bold hover:opacity-80 transition-opacity">开始采集</button></div>
       <div id="crawlResult" class="mt-4 space-y-3"></div></div>`;
   } else if (activeTab==='warehouse') {
-    try { warehouseData = await apiGet('/api/dc/warehouse'); } catch(e) {}
-    el.innerHTML = `<div class="flex items-center justify-between mb-4"><h2 class="text-lg font-bold text-primary">数据仓库</h2><div class="relative"><input id="whSearch" type="text" placeholder="搜索..." onkeyup="if(event.key==='Enter')searchWH()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg pl-3 pr-3 py-1.5 text-sm"/></div></div>
+    try {
+      const query = warehouseKeyword ? `?keyword=${encodeURIComponent(warehouseKeyword)}` : '';
+      warehouseData = await apiGet(`/api/dc/warehouse${query}`);
+    } catch(e) {
+      warehouseData = [];
+      showToast(e.message || '数据仓库加载失败', 'error');
+    }
+    el.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><h2 class="text-lg font-bold text-primary">数据仓库</h2><div class="flex gap-2"><input id="whSearch" type="search" placeholder="搜索标题或内容" onkeyup="if(event.key==='Enter')searchWH()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg pl-3 pr-3 py-1.5 text-sm"/><button onclick="searchWH()" class="px-3 py-1.5 rounded-lg bg-primary-container text-on-primary-container text-sm">搜索</button></div></div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${warehouseData.map(d=>`
       <div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-4">
         <div class="flex items-center justify-between mb-2"><span class="font-bold text-sm">${escapeHtml(d.title||d.source_name)}</span><div class="flex gap-1"><span class="text-[10px] px-2 py-0.5 rounded ${d.sentiment==='positive'?'bg-secondary-container/20 text-secondary':d.sentiment==='negative'?'bg-error-container/20 text-error':'bg-surface-container-high text-on-surface-variant'}">${d.sentiment||'neutral'}</span>${!d.deep_collected?`<button onclick="deepCollect(${d.id})" class="text-[10px] px-2 py-0.5 bg-primary-container/20 text-primary rounded hover:opacity-80">深度采集</button>`:''}<button onclick="deleteWH(${d.id})" class="text-on-surface-variant hover:text-error text-xs">×</button></div></div>
         <div class="text-xs text-on-surface-variant line-clamp-2">${escapeHtml((d.summary||d.content||'').substring(0,150))}</div>
         ${d.keywords_extracted?`<div class="mt-2 flex flex-wrap gap-1">${JSON.parse(d.keywords_extracted||'[]').map(k=>`<span class="text-[10px] bg-surface-container-high px-1.5 py-0.5 rounded">${escapeHtml(k)}</span>`).join('')}</div>`:''}
       </div>`).join('')||'<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">数据仓库为空</div>'}</div>`;
+    document.getElementById('whSearch').value = warehouseKeyword;
   }
 }
 
@@ -79,23 +86,46 @@ async function doCrawl() {
     <div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-3 mb-2">
       <div class="flex items-center justify-between mb-2"><span class="text-sm font-bold">${escapeHtml(r.source)}</span><span class="text-xs">${r.count} 条</span></div>
       ${(r.items||[]).map(item=>`<div class="bg-surface-container-high/50 rounded-lg p-2 mb-1 text-xs"><div class="font-medium">${escapeHtml(item.title||'无标题')}</div><div class="text-on-surface-variant line-clamp-2">${escapeHtml((item.content||'').substring(0,200))}</div>
-        <button onclick="saveItem('${escapeHtml(item.title||'')}','${escapeHtml(item.content||'').substring(0,500)}','${escapeHtml(item.url||'')}',${r.source_id||0})" class="text-[10px] text-secondary hover:underline mt-1">保存到仓库</button>
+        <button disabled title="采集接口未返回记录 ID，暂时无法单条入库" class="text-[10px] text-on-surface-variant mt-1 cursor-not-allowed opacity-70">已暂存 · 单条入库待接口返回 ID</button>
       </div>`).join('')}
     </div>`).join('');
 }
 
-async function saveItem(title, content, url, sourceId) {
-  // Create via crawl would have already created a temp record; in this demo we just mark it saved
-  showToast('已保存到数据仓库', 'success');
+async function searchWH() {
+  warehouseKeyword = document.getElementById('whSearch').value.trim();
+  await renderTab();
 }
 
 async function deepCollect(id) {
   try { await apiPost(`/api/dc/warehouse/${id}/deep-collect`); showToast('深度采集完成', 'success'); activeTab='warehouse'; renderTab(); } catch(e) { showToast('深度采集失败', 'error'); }
 }
 
-async function deleteWH(id) { await apiDelete(`/api/dc/warehouse/${id}`); renderTab(); }
-async function deleteSource(id) { await apiDelete(`/api/dc/sources/${id}`); sources = await apiGet('/api/dc/sources'); renderTab(); }
-async function deleteRule(id) { await apiDelete(`/api/dc/rules/${id}`); rules = await apiGet('/api/dc/rules'); renderTab(); }
+async function deleteWH(id) {
+  if (!confirm('确定删除这条仓库数据吗？删除后无法恢复。')) return;
+  try {
+    await apiDelete(`/api/dc/warehouse/${id}`);
+    showToast('仓库数据已删除', 'success');
+    await renderTab();
+  } catch(e) { showToast(e.message || '删除失败', 'error'); }
+}
+async function deleteSource(id) {
+  if (!confirm('确定删除这个数据源吗？')) return;
+  try {
+    await apiDelete(`/api/dc/sources/${id}`);
+    sources = await apiGet('/api/dc/sources');
+    showToast('数据源已删除', 'success');
+    await renderTab();
+  } catch(e) { showToast(e.message || '删除失败', 'error'); }
+}
+async function deleteRule(id) {
+  if (!confirm('确定删除这条清洗规则吗？')) return;
+  try {
+    await apiDelete(`/api/dc/rules/${id}`);
+    rules = await apiGet('/api/dc/rules');
+    showToast('清洗规则已删除', 'success');
+    await renderTab();
+  } catch(e) { showToast(e.message || '删除失败', 'error'); }
+}
 
 function openSourceModal() {
   const html = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"><div class="bg-surface-container rounded-2xl p-6 w-full max-w-lg">

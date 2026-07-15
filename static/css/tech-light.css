@@ -476,11 +476,33 @@ button[class*="bg-secondary"] {
 }
 
 .app-top-nav-scroll {
-  scrollbar-width: none;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.58) rgba(219, 234, 254, 0.55);
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
 }
 
 .app-top-nav-scroll::-webkit-scrollbar {
-  display: none;
+  display: block;
+  height: 6px;
+}
+
+.app-top-nav-scroll::-webkit-scrollbar-track {
+  background: rgba(219, 234, 254, 0.55);
+  border-radius: 999px;
+}
+
+.app-top-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.58);
+  border-radius: 999px;
+}
+
+.app-top-nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.82);
 }
 
 .app-top-nav nav a,
@@ -493,6 +515,10 @@ button[class*="bg-secondary"] {
   align-items: center !important;
   gap: 10px !important;
   line-height: 1 !important;
+}
+
+.app-top-nav-scroll a.app-menu-filtered-out {
+  display: none !important;
 }
 
 .app-top-nav a[class*="bg-secondary-container"] {
