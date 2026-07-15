@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from dao.base_dao import list_roles, log_action
 from core.security import get_current_user
@@ -265,3 +265,53 @@ def delete_menu(menu_id: int, db: SessionLocal = Depends(get_db),
     db.commit()
     log_action("menu_delete", f"删除菜单: {m.name}", user.username, db)
     return {"deleted": True}
+
+
+# ===== 用户管理 =====
+
+class UserUpdateIn(BaseModel):
+    nickname: str | None = None
+    email: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
+
+
+@permission_router.get("/users")
+def list_perm_users(search: str = Query(None, description="按用户名或昵称搜索"),
+                   db: SessionLocal = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """用户管理列表 — 支持按用户名/昵称搜索"""
+    q = db.query(User)
+    if search:
+        q = q.filter((User.username.contains(search)) | (User.nickname.contains(search)))
+    users = q.order_by(User.created_at.desc()).limit(100).all()
+    return [{
+        "id": u.id, "username": u.username, "nickname": u.nickname,
+        "email": u.email, "role": u.role, "is_active": u.is_active,
+        "avatar": u.avatar or "",
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+    } for u in users]
+
+
+@permission_router.put("/users/{user_id}")
+def update_perm_user(user_id: int, body: UserUpdateIn, db: SessionLocal = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    """更新用户基本信息（昵称、邮箱、角色、启停用）"""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(404, "用户不存在")
+    # 保护：不允许通过此接口把超管停用或修改其角色（防止权限误操作）
+    if target.role == "ROOT" and body.is_active is False:
+        raise HTTPException(400, "不能停用超级管理员")
+    if target.role == "ROOT" and body.role is not None and body.role != "ROOT":
+        raise HTTPException(400, "不能修改超级管理员角色")
+    for k, v in body.model_dump().items():
+        if v is not None:
+            setattr(target, k, v)
+    db.commit()
+    log_action("user_update", f"管理员更新用户 {target.username}", user.username, db)
+    return {
+        "id": target.id, "username": target.username,
+        "nickname": target.nickname, "email": target.email,
+        "role": target.role, "is_active": target.is_active,
+    }
