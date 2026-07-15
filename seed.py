@@ -4,6 +4,9 @@
 """
 from __future__ import annotations
 
+import json
+import random
+
 from database.session import SessionLocal
 from models.role import Role
 from models.agent import Agent
@@ -360,25 +363,52 @@ def _seed_settings(db: SessionLocal):
 
 def _seed_collected_data(db: SessionLocal):
     """补充采集数据样本，让仪表盘 total_collected 有数据可展示"""
-    if db.query(CollectedData).filter(CollectedData.saved == True).first():
-        return
-    for i, d in enumerate([
-        CollectedData(source_name="百度新闻搜索", keyword="人工智能", title="人工智能技术发展现状与未来趋势",
-                      url="https://example.com/ai-trends", summary="人工智能在各行业加速渗透，预计2026年规模突破万亿",
-                      sentiment="positive", saved=True, source_id=1),
-        CollectedData(source_name="新浪新闻搜索", keyword="数据治理", title="数据治理成为企业数字化转型核心环节",
-                      url="https://example.com/data-governance", summary="数据治理体系逐步完善，提升企业数据资产价值",
-                      sentiment="positive", saved=True, source_id=2),
-        CollectedData(source_name="必应新闻搜索", keyword="信息安全", title="全球信息安全事件回顾：风险与应对",
-                      url="https://example.com/security", summary="数据泄露事件频发，企业强化安全防御体系",
-                      sentiment="negative", saved=True, source_id=3),
-        CollectedData(source_name="百度新闻搜索", keyword="联邦学习", title="联邦学习在隐私计算中的应用",
-                      url="https://example.com/federated-learning", summary="联邦学习推动数据要素流通与隐私保护平衡",
-                      sentiment="neutral", saved=True, source_id=1),
-        CollectedData(source_name="新浪新闻搜索", keyword="智慧城市", title="智慧城市建设进入新阶段",
-                      url="https://example.com/smart-city", summary="数据驱动城市治理，迈向精细化运营",
-                      sentiment="positive", saved=True, source_id=2),
-    ], start=1):
-        if not db.query(CollectedData).filter(CollectedData.url == d.url).first():
-            db.add(d)
-    print("[seed] 采集数据样本写入完成")
+    if not db.query(CollectedData).filter(CollectedData.saved == True).first():
+        kw_pool = ["数据治理", "人工智能", "大模型", "安全", "云计算", "物联网"]
+        for i, d in enumerate([
+            CollectedData(source_name="百度新闻搜索", keyword="人工智能", title="人工智能技术发展现状与未来趋势",
+                          url="https://example.com/ai-trends", summary="人工智能在各行业加速渗透，预计2026年规模突破万亿",
+                          keywords_extracted=json.dumps(kw_pool, ensure_ascii=False),
+                          sentiment="positive", saved=True, source_id=1),
+            CollectedData(source_name="新浪新闻搜索", keyword="数据治理", title="数据治理成为企业数字化转型核心环节",
+                          url="https://example.com/data-governance", summary="数据治理体系逐步完善，提升企业数据资产价值",
+                          keywords_extracted=json.dumps(["数据治理", "数字化转型", "数据资产"], ensure_ascii=False),
+                          sentiment="positive", saved=True, source_id=2),
+            CollectedData(source_name="必应新闻搜索", keyword="信息安全", title="全球信息安全事件回顾：风险与应对",
+                          url="https://example.com/security", summary="数据泄露事件频发，企业强化安全防御体系",
+                          keywords_extracted=json.dumps(["信息安全", "风险", "数据泄露"], ensure_ascii=False),
+                          sentiment="negative", saved=True, source_id=3),
+            CollectedData(source_name="百度新闻搜索", keyword="联邦学习", title="联邦学习在隐私计算中的应用",
+                          url="https://example.com/federated-learning", summary="联邦学习推动数据要素流通与隐私保护平衡",
+                          keywords_extracted=json.dumps(["联邦学习", "隐私计算", "数据要素"], ensure_ascii=False),
+                          sentiment="neutral", saved=True, source_id=1),
+            CollectedData(source_name="新浪新闻搜索", keyword="智慧城市", title="智慧城市建设进入新阶段",
+                          url="https://example.com/smart-city", summary="数据驱动城市治理，迈向精细化运营",
+                          keywords_extracted=json.dumps(["智慧城市", "城市治理", "数据驱动"], ensure_ascii=False),
+                          sentiment="positive", saved=True, source_id=2),
+        ], start=1):
+            if not db.query(CollectedData).filter(CollectedData.url == d.url).first():
+                db.add(d)
+        print("[seed] 采集数据样本写入完成")
+
+    # 大屏扩展样本：30 条带 keywords_extracted 的采集数据，确保数智大屏有词云内容
+    if db.query(CollectedData).filter(CollectedData.saved == True).count() < 30:
+        sample_sources = ["百度新闻", "新浪新闻", "36氪"]
+        sample_keywords = json.dumps(
+            ["数据治理", "人工智能", "大模型", "安全", "云计算", "物联网"],
+            ensure_ascii=False,
+        )
+        for i in range(30):
+            cd = CollectedData(
+                source_name=random.choice(sample_sources),
+                keyword="AI",
+                title=f"AI行业动态第{i+1}条",
+                content=f"这是AI行业动态第{i+1}条的内容摘要，涵盖数据治理、大模型、安全、云计算等核心议题。",
+                summary=f"AI行业第{i+1}条摘要",
+                keywords_extracted=sample_keywords,
+                sentiment=random.choice(["positive", "neutral", "negative"]),
+                saved=True,
+                deep_collected=True,
+            )
+            db.add(cd)
+        print("[seed] 采集样本数据写入完成（30 条大屏数据）")

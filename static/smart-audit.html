@@ -1,53 +1,347 @@
 <!DOCTYPE html>
-<html class="dark" lang="zh-CN"><head>
-<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>智能审计 - 数据瞭望系统</title>
+<html class="dark" lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>舆情大屏 - 数据瞭望系统</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script id="tc">tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","secondary":"#a6e6ff","secondary-container":"#14d1ff","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","on-error":"#690005","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"]}}}}</script>
-<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.tab-active{border-bottom:2px solid #b4c5ff;color:#b4c5ff}</style></head>
-<body class="bg-background text-on-background min-h-screen">
-<aside></aside>
-<main class="p-6 min-h-screen">
-  <div class="flex items-center justify-between mb-4">
-    <div><h1 class="text-2xl font-bold text-primary">智能审计</h1><p class="text-sm text-on-surface-variant mt-1">消息敏感度审计 + 数据情感分析 + 封禁管理</p></div>
-    <div class="flex gap-3"><input id="auditStart" type="date" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm"/><input id="auditEnd" type="date" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm"/><button onclick="loadAll()" class="bg-primary-container text-on-primary-container px-4 py-1.5 rounded-lg text-sm">查询</button></div>
+<script id="tc">
+tailwind.config={
+  darkMode:"class",
+  theme:{
+    extend:{
+      colors:{
+        "background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-variant":"#2a3548",
+        "on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7",
+        "primary":"#b4c5ff","primary-container":"#0052d9",
+        "secondary":"#a6e6ff","secondary-container":"#14d1ff",
+        "tertiary":"#ffb59c",
+        "error":"#ffb4ab","error-container":"#93000a","on-error":"#690005",
+        "outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"
+      },
+      borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},
+      fontFamily:{Inter:["Inter"]}
+    }
+  }
+};
+</script>
+<style>
+body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}
+.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}
+.stat-card{background:rgba(20,32,49,0.6);border:1px solid rgba(67,70,84,0.15);border-radius:0.5rem;padding:1rem}
+.stat-card .value{font-size:1.75rem;font-weight:700;font-family:'JetBrains Mono',monospace}
+.panel-card{background:rgba(20,32,49,0.6);border:1px solid rgba(67,70,84,0.15);border-radius:0.5rem}
+.msg-item{transition:background 0.15s}
+.msg-item:hover{background:rgba(42,53,72,0.5)}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#434654;border-radius:2px}
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen overflow-x-hidden">
+
+<!-- ===== Top Bar ===== -->
+<header class="flex items-center justify-between px-6 py-3 border-b border-outline-variant/20">
+  <div class="flex items-center gap-3">
+    <span class="material-symbols-outlined text-primary">monitoring</span>
+    <h1 class="text-lg font-bold text-primary">舆情监控大屏</h1>
+    <span class="text-xs bg-surface-container-high/50 px-2 py-0.5 rounded text-on-surface-variant">实时</span>
   </div>
-  <div class="flex gap-4 mb-4 border-b border-outline-variant/20 pb-2">
-    <button class="tab-btn tab-active pb-2 px-1 text-sm font-medium" data-tab="msgs">消息审计</button>
-    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface" data-tab="datas">数据审计</button>
-    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface" data-tab="users">用户管理</button>
+  <div class="flex items-center gap-4 text-sm">
+    <span class="flex items-center gap-1 text-on-surface-variant">
+      <span class="material-symbols-outlined text-base">update</span>
+      <span id="refreshTime">-</span>
+    </span>
+    <button onclick="loadAll()" class="flex items-center gap-1 bg-primary-container/20 text-primary px-3 py-1.5 rounded-lg hover:bg-primary-container/30 text-xs">
+      <span class="material-symbols-outlined text-base">refresh</span> 刷新
+    </button>
   </div>
-  <div id="tabContent"></div>
-</main>
+</header>
+
+<!-- ===== Main Grid ===== -->
+<div class="grid grid-cols-12 gap-4 p-4" style="min-height:calc(100vh - 52px)">
+
+  <!-- === Left Col (9 cols): Stats + Msgs + Charts === -->
+  <div class="col-span-12 xl:col-span-9 flex flex-col gap-4">
+
+    <!-- Row 1: Stats Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="stat-card">
+        <div class="flex items-center gap-1 text-on-surface-variant text-xs mb-1">
+          <span class="material-symbols-outlined text-sm">warning</span> 高风险
+        </div>
+        <div class="value text-error" id="statHigh">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="flex items-center gap-1 text-on-surface-variant text-xs mb-1">
+          <span class="material-symbols-outlined text-sm">error_outline</span> 中风险
+        </div>
+        <div class="value text-tertiary" id="statMedium">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="flex items-center gap-1 text-on-surface-variant text-xs mb-1">
+          <span class="material-symbols-outlined text-sm">check_circle</span> 低风险
+        </div>
+        <div class="value text-secondary" id="statLow">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="flex items-center gap-1 text-on-surface-variant text-xs mb-1">
+          <span class="material-symbols-outlined text-sm">inbox</span> 消息总数
+        </div>
+        <div class="value text-primary" id="statTotal">0</div>
+      </div>
+    </div>
+
+    <!-- Row 2: Pie Chart + Sentiment Bar Chart -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="panel-card p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-on-surface-variant flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">pie_chart</span> 风险等级分布
+          </h3>
+          <span class="text-[10px] text-on-surface-variant" id="pieUpdate">-</span>
+        </div>
+        <div id="pieChart" style="height:200px"></div>
+      </div>
+      <div class="panel-card p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-on-surface-variant flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">bar_chart</span> 采集数据情感分布
+          </h3>
+          <span class="text-[10px] text-on-surface-variant" id="barUpdate">-</span>
+        </div>
+        <div id="barChart" style="height:200px"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Recent Sensitive Messages -->
+    <div class="panel-card flex-1 flex flex-col min-h-0">
+      <div class="flex items-center justify-between px-3 py-2.5 border-b border-outline-variant/10">
+        <h3 class="text-sm font-medium flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm text-error">report</span>
+          最近敏感消息
+          <span class="text-[10px] text-on-surface-variant bg-surface-container-high/50 px-1.5 py-0.5 rounded ml-1" id="msgCount">0</span>
+        </h3>
+        <div class="flex gap-2">
+          <input id="auditStart" type="date" class="bg-surface-container-high/40 border border-outline-variant/15 rounded px-2 py-1 text-xs w-28"/>
+          <input id="auditEnd" type="date" class="bg-surface-container-high/40 border border-outline-variant/15 rounded px-2 py-1 text-xs w-28"/>
+        </div>
+      </div>
+      <div id="msgList" class="flex-1 overflow-y-auto p-2 space-y-1 min-h-0" style="max-height:320px">
+        <div class="text-center py-8 text-on-surface-variant text-xs">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Right Col (3 cols): AI Analysis Panel === -->
+  <div class="col-span-12 xl:col-span-3 flex flex-col gap-4">
+    <div class="panel-card flex flex-col flex-1 min-h-0">
+      <div class="px-3 py-2.5 border-b border-outline-variant/10">
+        <h3 class="text-sm font-medium flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm text-primary">psychology</span>
+          AI 风险分析
+        </h3>
+      </div>
+      <div class="p-3 space-y-3 flex flex-col flex-1 min-h-0">
+        <div class="space-y-2">
+          <label class="text-xs text-on-surface-variant">分析类型</label>
+          <div class="flex gap-2">
+            <button id="aiModeMsg" class="flex-1 text-xs px-3 py-1.5 rounded-lg bg-primary-container/20 text-primary border border-primary/30" onclick="setAiMode('msg')">消息分析</button>
+            <button id="aiModeData" class="flex-1 text-xs px-3 py-1.5 rounded-lg bg-surface-container-high/50 text-on-surface-variant border border-outline-variant/20 hover:bg-surface-variant/30" onclick="setAiMode('data')">数据分析</button>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <label class="text-xs text-on-surface-variant">
+            <span id="aiInputLabel">发送者ID (conversation_id)</span>
+          </label>
+          <input id="aiInput" type="text" placeholder="输入 ID..." class="w-full bg-surface-container-high/40 border border-outline-variant/20 rounded-lg px-3 py-2 text-xs text-on-surface placeholder-on-surface-variant/40 focus:outline-none focus:border-primary/50"/>
+        </div>
+        <button onclick="runAiAnalysis()" class="w-full bg-primary-container/30 text-primary text-xs font-medium px-4 py-2 rounded-lg hover:bg-primary-container/40 flex items-center justify-center gap-1">
+          <span class="material-symbols-outlined text-sm">play_arrow</span> 执行分析
+        </button>
+        <div id="aiResult" class="flex-1 bg-surface-container-high/30 rounded-lg p-3 overflow-y-auto min-h-0 text-xs leading-relaxed">
+          <div class="text-on-surface-variant text-center py-6">输入 ID 后点击执行分析</div>
+        </div>
+        <div id="aiLoading" class="hidden text-center text-on-surface-variant text-xs py-4">分析中,请稍候...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="/static/js/app.js"></script>
 <script>
-let tab='msgs';
-document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('tab-active'));b.classList.add('tab-active');loadAll();}));
+// ===== State =====
+let pieChart = null;
+let barChart = null;
+let aiMode = 'msg';  // 'msg' | 'data'
+let pollTimer = null;
 
-async function loadAll(){try{
-  const s=document.getElementById('auditStart').value, e=document.getElementById('auditEnd').value;
-  const params=new URLSearchParams();if(s)params.set('start',s+'T00:00:00');if(e)params.set('end',e+'T23:59:59');
-  if(tab==='msgs'){
-    const [msgs,stats]=await Promise.all([apiGet('/api/smart-audit/messages?'+params),apiGet('/api/smart-audit/messages/stats?'+params)]);
-    const el=document.getElementById('tabContent');
-    el.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">${['low','medium','high'].map(l=>`<div class="bg-surface-container/50 rounded-xl p-4 text-center border ${l==='high'?'border-error/30':l==='medium'?'border-tertiary/30':'border-secondary/30'}"><div class="text-2xl font-bold ${l==='high'?'text-error':l==='medium'?'text-tertiary':'text-secondary'}">${stats[l]||0}</div><div class="text-xs text-on-surface-variant mt-1">${l==='high'?'高风险':'低风险'}</div></div>`).join('')}<div class="bg-surface-container/50 rounded-xl p-4 text-center"><div class="text-2xl font-bold text-primary">${stats.total||0}</div><div class="text-xs text-on-surface-variant mt-1">总计</div></div></div>
-    <div class="space-y-2">${msgs.map(m=>`<div class="flex items-center justify-between bg-surface-container/50 rounded-lg px-4 py-3 ${m.risk_level==='high'?'border border-error/30':m.risk_level==='medium'?'border border-tertiary/30':''}"><div class="flex-1 min-w-0"><div class="flex items-center gap-2"><span class="px-2 py-0.5 text-[10px] rounded ${m.risk_level==='high'?'bg-error-container/20 text-error':m.risk_level==='medium'?'bg-tertiary-container/20 text-tertiary':'bg-secondary-container/20 text-secondary'}">${m.risk_level}</span><span class="text-sm">${escapeHtml(m.sender_name||'?'+m.sender_id)}</span></div><div class="text-xs text-on-surface-variant truncate mt-1">${escapeHtml(m.content.substring(0,120))}</div></div><div class="flex gap-2 ml-3">${m.risk_level==='high'?`<button onclick="banUser(${m.sender_id})" class="text-[10px] px-2 py-1 bg-error-container/20 text-error rounded hover:bg-error/20">封禁</button>`:''}${m.group_id?`<button onclick="banGroup(${m.group_id})" class="text-[10px] px-2 py-1 bg-surface-container-high rounded hover:bg-surface-variant">封禁群</button>`:''}</div></div>`).join('')||'<div class="text-center py-8 text-on-surface-variant">暂无消息</div>'}</div>`;
-  }else if(tab==='datas'){
-    const data=await apiGet('/api/smart-audit/data?'+params);
-    document.getElementById('tabContent').innerHTML=`<div class="grid grid-cols-3 gap-3 mb-4">${['positive','neutral','negative'].map(s=>`<div class="bg-surface-container/50 rounded-xl p-4 text-center"><div class="text-2xl font-bold ${s==='positive'?'text-secondary':s==='negative'?'text-error':'text-on-surface-variant'}">${data.filter(d=>d.sentiment===s).length}</div><div class="text-xs text-on-surface-variant mt-1">${s==='positive'?'正面':s==='negative'?'负面':'中性'}</div></div>`).join('')}</div><div class="grid grid-cols-1 md:grid-cols-2 gap-3">${data.map(d=>`<div class="bg-surface-container/50 rounded-xl p-4"><div class="flex items-center justify-between mb-2"><span class="text-sm font-bold">${escapeHtml(d.title||d.source_name)}</span><select onchange="markSentiment(${d.id},this.value)" class="bg-surface-container-high border border-outline-variant/20 rounded px-2 py-1 text-xs"><option ${d.sentiment==='positive'?'selected':''}>positive</option><option ${d.sentiment==='neutral'?'selected':''}>neutral</option><option ${d.sentiment==='negative'?'selected':''}>negative</option></select></div><div class="text-xs text-on-surface-variant line-clamp-2">${escapeHtml(d.summary||'')}</div></div>`).join('')}</div>`;
-  }else{
-    const users=await apiGet('/api/smart-audit/users');
-    document.getElementById('tabContent').innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${users.map(u=>`<div class="bg-surface-container/50 rounded-xl p-4 flex items-center justify-between"><div><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full ${u.is_active?'bg-secondary':'bg-error'}"></span><span class="text-sm font-bold">${escapeHtml(u.nickname||u.username)}</span><span class="text-[10px] px-2 py-0.5 rounded bg-surface-container-high">${escapeHtml(u.role)}</span></div><div class="text-xs text-on-surface-variant mt-1">${escapeHtml(u.email)} · ${u.message_count}条消息</div></div><div class="flex gap-2">${u.is_active?`<button onclick="banUser(${u.id})" class="text-[10px] px-2 py-1 bg-error-container/20 text-error rounded">封禁</button>`:`<button onclick="unbanUser(${u.id})" class="text-[10px] px-2 py-1 bg-secondary-container/20 text-secondary rounded">解封</button>`}</div></div>`).join('')}</div>`;
+// ===== Init Charts =====
+function initCharts() {
+  pieChart = echarts.init(document.getElementById('pieChart'), 'dark');
+  barChart = echarts.init(document.getElementById('barChart'), 'dark');
+
+  pieChart.setOption({
+    tooltip:{trigger:'item', formatter:'{b}: {c} ({d}%)'},
+    color:['#ffb4ab','#ffb59c','#a6e6ff','#b4c5ff'],
+    series:[{
+      type:'pie', radius:['40%','70%'], avoidLabelOverlap:true,
+      label:{show:false}, emphasis:{label:{show:true,fontSize:12,fontWeight:'bold'}},
+      data:[{name:'高风险',value:0},{name:'中风险',value:0},{name:'低风险',value:0}]
+    }]
+  });
+  barChart.setOption({
+    tooltip:{trigger:'axis'},
+    color:['#a6e6ff','#c3c6d7','#ffb4ab'],
+    xAxis:{type:'category',data:['正面','中性','负面'],axisLabel:{color:'#c3c6d7',fontSize:10}},
+    yAxis:{type:'value',splitLine:{lineStyle:{color:'rgba(67,70,84,0.2)'}}},
+    series:[{type:'bar',data:[0,0,0],barWidth:'40%'}]
+  });
+}
+
+// ===== AI Mode Toggle =====
+function setAiMode(mode) {
+  aiMode = mode;
+  document.getElementById('aiModeMsg').className = (mode==='msg'
+    ? 'flex-1 text-xs px-3 py-1.5 rounded-lg bg-primary-container/20 text-primary border border-primary/30'
+    : 'flex-1 text-xs px-3 py-1.5 rounded-lg bg-surface-container-high/50 text-on-surface-variant border border-outline-variant/20 hover:bg-surface-variant/30');
+  document.getElementById('aiModeData').className = (mode==='data'
+    ? 'flex-1 text-xs px-3 py-1.5 rounded-lg bg-primary-container/20 text-primary border border-primary/30'
+    : 'flex-1 text-xs px-3 py-1.5 rounded-lg bg-surface-container-high/50 text-on-surface-variant border border-outline-variant/20 hover:bg-surface-variant/30');
+  document.getElementById('aiInputLabel').textContent = mode==='msg' ? '发送者ID (conversation_id)' : '采集数据ID (data_id)';
+  document.getElementById('aiInput').placeholder = mode==='msg' ? '输入发送者ID...' : '输入采集数据ID...';
+}
+
+// ===== Run AI Analysis =====
+async function runAiAnalysis() {
+  const val = document.getElementById('aiInput').value.trim();
+  if (!val) { showToast('请输入ID','error'); return; }
+  const loading = document.getElementById('aiLoading');
+  const resultDiv = document.getElementById('aiResult');
+  loading.classList.remove('hidden');
+  resultDiv.innerHTML = '';
+  try {
+    const params = new URLSearchParams();
+    if (aiMode === 'msg') params.set('conversation_id', val);
+    else params.set('data_id', val);
+    const res = await apiPost('/api/smart-audit/ai-analyze?'+params.toString());
+    loading.classList.add('hidden');
+    const r = res||{};
+    const riskColor = r.risk_level==='high' ? 'text-error' : r.risk_level==='medium' ? 'text-tertiary' : 'text-secondary';
+    resultDiv.innerHTML = `
+      <div class="space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="text-on-surface-variant">风险等级:</span>
+          <span class="font-semibold ${riskColor}">${escapeHtml(r.risk_level||'unknown')}</span>
+        </div>
+        ${r.risk_types ? `<div class="flex flex-wrap gap-1">${(r.risk_types||[]).map(t => `<span class="px-2 py-0.5 text-[10px] rounded bg-surface-container-high/60 text-on-surface-variant">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+        <div class="pt-1 border-t border-outline-variant/10">
+          <div class="text-on-surface-variant text-[10px] mb-1">分析结论</div>
+          <div class="text-on-surface">${escapeHtml(r.analysis||'无返回')}</div>
+        </div>
+        ${r.suggestions ? `<div class="pt-1 border-t border-outline-variant/10">
+          <div class="text-on-surface-variant text-[10px] mb-1">建议措施</div>
+          <div class="text-primary">${escapeHtml(r.suggestions)}</div>
+        </div>` : ''}
+      </div>`;
+  } catch(e) {
+    loading.classList.add('hidden');
+    resultDiv.innerHTML = `<div class="text-error text-center py-4">分析请求失败: ${escapeHtml(e.message||e)}</div>`;
   }
-}catch(e){showToast('加载失败','error');}}
+}
 
-async function banUser(id){if(!confirm('确认封禁该用户？其消息将全部撤回'))return;await apiPost('/api/smart-audit/ban/user/'+id+'?reason=违规消息');showToast('已封禁','success');loadAll();}
-async function unbanUser(id){await apiPost('/api/smart-audit/ban/user/'+id+'/unban');showToast('已解封','success');loadAll();}
-async function banGroup(id){if(!confirm('确认封禁并解散该群？'))return;await apiPost('/api/smart-audit/ban/group/'+id+'?reason=违规');showToast('已封禁群','success');loadAll();}
-async function markSentiment(id,v){await apiPost('/api/smart-audit/data/'+id+'/mark-sentiment?sentiment='+v);loadAll();}
+// ===== Load Data =====
+async function loadAll() {
+  document.getElementById('refreshTime').textContent = new Date().toLocaleTimeString();
+  const s = document.getElementById('auditStart').value;
+  const e = document.getElementById('auditEnd').value;
+  const params = new URLSearchParams();
+  if (s) params.set('start', s+'T00:00:00');
+  if (e) params.set('end', e+'T23:59:59');
 
-if(requireAuth())loadAll();
+  try {
+    // Fetch stats, messages, and collection data in parallel
+    const [msgs, stats, data] = await Promise.all([
+      apiGet('/api/smart-audit/messages?limit=50&'+params.toString()),
+      apiGet('/api/smart-audit/messages/stats?'+params.toString()),
+      apiGet('/api/smart-audit/data?limit=100&'+params.toString()),
+    ]);
+
+    // ---- Stats Cards ----
+    document.getElementById('statHigh').textContent = stats.high||0;
+    document.getElementById('statMedium').textContent = stats.medium||0;
+    document.getElementById('statLow').textContent = stats.low||0;
+    document.getElementById('statTotal').textContent = stats.total||0;
+
+    // ---- Pie Chart ----
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('pieUpdate').textContent = now;
+    pieChart.setOption({
+      series:[{data:[
+        {name:'高风险',value:stats.high||0},
+        {name:'中风险',value:stats.medium||0},
+        {name:'低风险',value:stats.low||0},
+      ]}]
+    });
+
+    // ---- Sentiment Bar ----
+    document.getElementById('barUpdate').textContent = now;
+    const pos = (data||[]).filter(d => d.sentiment==='positive').length;
+    const neu = (data||[]).filter(d => d.sentiment==='neutral'||!d.sentiment).length;
+    const neg = (data||[]).filter(d => d.sentiment==='negative').length;
+    barChart.setOption({series:[{data:[pos,neu,neg]}]});
+
+    // ---- Message List ----
+    const list = document.getElementById('msgList');
+    const msgsArr = msgs||[];
+    document.getElementById('msgCount').textContent = msgsArr.length;
+    if (msgsArr.length===0) {
+      list.innerHTML = '<div class="text-center py-8 text-on-surface-variant text-xs">暂无敏感消息</div>';
+    } else {
+      list.innerHTML = msgsArr.map(m => {
+        const rl = (m.risk_level||'low').toLowerCase();
+        const borderColor = rl==='high' ? 'border-l-error/40' : rl==='medium' ? 'border-l-tertiary/40' : 'border-l-secondary/20';
+        const dotColor = rl==='high' ? 'bg-error' : rl==='medium' ? 'bg-tertiary' : 'bg-secondary';
+        return `<div class="msg-item flex items-start gap-2 px-3 py-2 rounded-lg border-l-2 ${borderColor}">
+          <span class="w-1.5 h-1.5 rounded-full ${dotColor} mt-1.5 flex-shrink-0"></span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 text-xs">
+              <span class="font-medium">${escapeHtml(m.sender_name||'ID:'+m.sender_id)}</span>
+              <span class="text-on-surface-variant text-[10px]">${m.created_at ? new Date(m.created_at).toLocaleString() : ''}</span>
+              <span class="ml-auto px-1.5 py-0.5 text-[10px] rounded ${rl==='high'?'bg-error-container/20 text-error':rl==='medium'?'bg-tertiary/20 text-tertiary':'bg-secondary/20 text-secondary'}">${rl}</span>
+            </div>
+            <div class="text-xs text-on-surface-variant truncate mt-0.5">${escapeHtml((m.content||'').substring(0,200))}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {
+    showToast('数据加载失败','error');
+  }
+}
+
+// Auto-refresh every 15s
+function startPoll() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(loadAll, 15000);
+}
+
+// Override page unload to clean timer
+window.addEventListener('beforeunload', function() {
+  if (pollTimer) clearInterval(pollTimer);
+});
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+  if (requireAuth()) {
+    initCharts();
+    loadAll();
+    startPoll();
+  }
+});
 </script>
-</body></html>
+</body>
+</html>

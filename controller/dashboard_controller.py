@@ -94,3 +94,49 @@ def get_metrics(db: SessionLocal = Depends(get_db), current: User = Depends(get_
         online_users=online_users,
         risk_distribution=risk_distribution,
     )
+
+
+@dashboard_router.get("/screen-data")
+def screen_data(db: SessionLocal = Depends(get_db), current: User = Depends(get_current_user)):
+    """大屏专用：采集量/活跃员工/实时消息流+词云数据"""
+    # 按 source_name 统计采集量（模拟国家分布）
+    source_stats = db.query(
+        CollectedData.source_name, func.count(CollectedData.id)
+    ).filter(CollectedData.saved == True).group_by(CollectedData.source_name).all()
+
+    # 词云数据
+    keywords_all = []
+    for cd in db.query(CollectedData.keywords_extracted).filter(
+        CollectedData.keywords_extracted != "", CollectedData.saved == True
+    ).limit(100).all():
+        try:
+            keywords_all.extend(json.loads(cd.keywords_extracted))
+        except Exception:
+            pass
+    wordcloud = {}
+    for kw in keywords_all:
+        wordcloud[kw] = wordcloud.get(kw, 0) + 1
+
+    # 活跃员工
+    active_agents = db.query(Agent).filter(Agent.status == "published").count()
+
+    # 采集总量
+    total_collected = db.query(CollectedData).filter(CollectedData.saved == True).count()
+
+    # 实时消息流（最近20条消息）
+    recent_msgs = db.query(Message).order_by(Message.created_at.desc()).limit(20).all()
+
+    return {
+        "source_stats": [{"name": s[0], "value": s[1]} for s in source_stats],
+        "wordcloud": [{"name": k, "value": v} for k, v in sorted(wordcloud.items(), key=lambda x: -x[1])[:50]],
+        "active_agents": active_agents,
+        "total_collected": total_collected,
+        "total_messages": db.query(Message).count(),
+        "recent_messages": [
+            {
+                "content": (m.content or "")[:50],
+                "time": m.created_at.isoformat() if m.created_at else "",
+            }
+            for m in recent_msgs
+        ],
+    }

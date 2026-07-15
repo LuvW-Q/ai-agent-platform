@@ -1,6 +1,7 @@
 """
 智能审计：聊天消息敏感度评估 + 采集数据情感分析 + 封禁管理
 """
+import json
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
@@ -201,3 +202,82 @@ def list_users(search: str = Query(None), db: SessionLocal = Depends(get_db),
         "created_at": u.created_at.isoformat() if u.created_at else None,
         "message_count": db.query(Message).filter(Message.sender_id == u.id).count(),
     } for u in users]
+
+
+# ============ AI 风险分析 ============
+@smart_audit.post("/ai-analyze")
+async def ai_risk_analyze(
+    conversation_id: str = Query("", description="会话标识(以 sender_id 解析最近消息)"),
+    data_id: int = Query(None, description="采集数据ID"),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """将当前会话或采集数据送 LLM 做风险分析
+
+    优先使用 data_id 取采集数据；否则用 conversation_id(映射到 sender_id)
+    拉取最近 20 条消息。无 API Key 或无内容时优雅返回,不报错。
+    """
+    chat_model = get_default_model(db)
+    if not chat_model or not chat_model.api_key or "placeholder" in (chat_model.api_key or ""):
+        return {"risk_level": "unknown", "risk_types": [],
+                "analysis": "无法执行 AI 分析:未配置有效的 API Key",
+                "suggestions": "请在系统设置中配置有效的模型 API Key"}
+
+    content = ""
+    if data_id:
+        d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
+        if d:
+            content = (d.title or "") + "\n" + (d.content or "")[:3000]
+    elif conversation_id:
+        try:
+            sid = int(conversation_id)
+        except (TypeError, ValueError):
+            sid = None
+        if sid is not None:
+            msgs = (db.query(Message)
+                    .filter(Message.sender_id == sid,
+                            Message.msg_type == "text",
+                            Message.status != "recalled")
+                    .order_by(Message.created_at.desc()).limit(20).all())
+            content = "\n".join(m.content for m in msgs if m.content)[:4000]
+
+    if not content:
+        # 优雅返回而非 400,便于大屏调用方统一展示
+        return {"risk_level": "unknown", "risk_types": [],
+                "analysis": "无可分析的内容(请提供有效的 data_id 或 conversation_id)",
+                "suggestions": ""}
+
+    client = OpenAIClient(
+        api_key=chat_model.api_key,
+        endpoint=chat_model.endpoint,
+        model_name=chat_model.model_name,
+        temperature=0.3,
+        max_tokens=1024,
+    )
+    try:
+        prompt = f"""请对以下内容进行安全风险分析,以JSON格式返回:
+{{
+  "risk_level": "high/medium/low",
+  "risk_types": ["涉政", "涉黄", "涉恐", "暴恐", "广告", "正常"],
+  "analysis": "分析结论(100字以内)",
+  "suggestions": "建议措施"
+}}
+内容:{content[:4000]}"""
+        resp = await client.chat_completion([{"role": "user", "content": prompt}])
+        text = OpenAIClient.extract_content(resp) or ""
+        try:
+            result = json.loads(text.strip().strip("`").strip("json").strip())
+        except Exception:
+            result = {
+                "risk_level": "unknown",
+                "risk_types": [],
+                "analysis": text[:200] or "(模型返回为空)",
+                "suggestions": "",
+            }
+        return result
+    except Exception as e:
+        return {"risk_level": "unknown", "risk_types": [],
+                "analysis": f"AI 分析失败:{type(e).__name__}: {str(e)[:150]}",
+                "suggestions": "请稍后重试或检查模型配置"}
+    finally:
+        await client.close()
