@@ -79,6 +79,8 @@ class AgentCreate(BaseModel):
     skill_ids: str = ""
     fallback_message: str = "系统繁忙，请稍后再试"
     description: str = ""
+    agent_type: str = "model"       # model=对话型, api=接口型
+    api_id: int | None = None       # 关联 api_registries.id
 
 
 # ===== IM消息 =====

@@ -15,6 +15,7 @@ from models.sensitive_word import SensitiveWord
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.menu import Menu
 from models.setting import Setting
+from models.api_registry import ApiRegistry
 from core.security import hash_password
 
 
@@ -31,6 +32,7 @@ def run_seed():
         _seed_sources_and_rules(db)
         _seed_collected_data(db)
         _seed_menus(db)
+        _seed_api_registries(db)
         _seed_settings(db)
         db.commit()
         print("[seed] 种子数据写入完成")
@@ -295,8 +297,12 @@ def _seed_menus(db: SessionLocal):
     common_menus = [
         Menu(name="系统设置", icon="settings", path="/settings", sort_order=99, role_codes="ROOT,AUDIT,OPS,USER"),
     ]
+    # 接口管理（B线）— 接口注册表 + 接口型数字员工
+    api_menus = [
+        Menu(name="接口管理", icon="api", path="/api-registry", sort_order=24, role_codes="ROOT,OPS"),
+    ]
     added = 0
-    for m in user_menus + admin_menus + common_menus:
+    for m in user_menus + admin_menus + common_menus + api_menus:
         if m.path not in existing_paths:
             db.add(m)
             added += 1
@@ -304,6 +310,34 @@ def _seed_menus(db: SessionLocal):
         print(f"[seed] 菜单写入完成（新增 {added} 条）")
     else:
         print("[seed] 菜单无变更")
+
+
+def _seed_api_registries(db: SessionLocal):
+    """初始化接口注册表样本：让接口管理页一启动就有数据可展示"""
+    if db.query(ApiRegistry).first():
+        return
+    for api in [
+        ApiRegistry(name="高德地图地理编码", code="gaode_geocode",
+                    base_url="https://restapi.amap.com/v3/geocode/geo?{params}",
+                    method="GET", headers='{"Content-Type":"application/json"}',
+                    response_path="geocodes",
+                    auth_type="query", auth_key="",
+                    description="将地址转为经纬度坐标"),
+        ApiRegistry(name="天气查询（wttr.in）", code="wttr",
+                    base_url="https://wttr.in/{params}?format=j1",
+                    method="GET", headers='{"User-Agent":"Mozilla/5.0"}',
+                    response_path="current_condition",
+                    auth_type="none", auth_key="",
+                    description="全球城市天气快速查询"),
+        ApiRegistry(name="GitHub 用户信息", code="github_user",
+                    base_url="https://api.github.com/users/{params}",
+                    method="GET", headers='{"Accept":"application/vnd.github+json"}',
+                    response_path="name",
+                    auth_type="none", auth_key="",
+                    description="根据 GitHub 用户名拉取公开资料"),
+    ]:
+        db.add(api)
+    print("[seed] 接口注册表样本写入完成")
 
 
 def _seed_settings(db: SessionLocal):

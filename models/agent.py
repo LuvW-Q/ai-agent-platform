@@ -19,6 +19,9 @@ class Agent(Base):
     fallback_message = Column(String(500), default="系统繁忙，请稍后再试")  # 降级兜底话术
     status = Column(String(20), default="draft")           # draft/published
     description = Column(String(500), default="")
+    # 接口型数字员工扩展：model=对话型, api=接口型(联动 api_registries)
+    agent_type = Column(String(20), default="model")
+    api_id = Column(Integer, nullable=True)                # 关联 api_registries 表
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

@@ -145,3 +145,9 @@ def chat_mgmt_page():
 def creative_page():
     """创意工坊"""
     return FileResponse(os.path.join(STATIC_DIR, "creative-workshop.html"))
+
+
+@page_router.get("/api-registry", include_in_schema=False)
+def api_registry_page():
+    """接口管理"""
+    return FileResponse(os.path.join(STATIC_DIR, "api-registry.html"))

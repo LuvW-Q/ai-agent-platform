@@ -28,6 +28,8 @@ class AgentUpdateIn(BaseModel):
     fallback_message: str | None = None
     description: str | None = None
     status: str | None = None  # draft/published
+    agent_type: str | None = None  # model/api
+    api_id: int | None = None
 
 
 @agent_router.get("")
@@ -56,6 +58,8 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
             "skill_names": skill_names,
             "fallback_message": a.fallback_message or "系统繁忙，请稍后再试",
             "status": a.status, "description": a.description or "",
+            "agent_type": a.agent_type or "model",
+            "api_id": a.api_id,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
     return result
@@ -74,6 +78,8 @@ def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = D
         fallback_message=body.fallback_message or "系统繁忙，请稍后再试",
         description=body.description,
         status="draft",
+        agent_type=body.agent_type or "model",
+        api_id=body.api_id,
     )
     saved = create_agent(agent, db)
     if not saved:
@@ -85,6 +91,8 @@ def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = D
         "persona_prompt": saved.persona_prompt, "skill_bindings": saved.skill_bindings,
         "skill_ids": saved.skill_ids, "fallback_message": saved.fallback_message,
         "status": saved.status, "description": saved.description,
+        "agent_type": saved.agent_type or "model",
+        "api_id": saved.api_id,
     }
 
 
@@ -115,6 +123,10 @@ def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(
         agent.description = body.description
     if body.status is not None:
         agent.status = body.status
+    if body.agent_type is not None:
+        agent.agent_type = body.agent_type
+    if body.api_id is not None:
+        agent.api_id = body.api_id
     db.commit()
     db.refresh(agent)
 
@@ -137,6 +149,8 @@ def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(
         "persona_prompt": agent.persona_prompt, "skill_bindings": agent.skill_bindings,
         "skill_ids": agent.skill_ids, "fallback_message": agent.fallback_message,
         "status": agent.status, "description": agent.description,
+        "agent_type": agent.agent_type or "model",
+        "api_id": agent.api_id,
     }
 
 

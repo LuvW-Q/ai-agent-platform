@@ -28,6 +28,7 @@ from controller.dc_controller import dc_router
 from controller.smart_audit_controller import smart_audit as smart_audit_router
 from controller.setting_controller import setting_router
 from controller.creative_controller import creative_router
+from controller.api_registry_controller import api_registry_router, migrate_agents_table_extensions
 
 # 导入新模型，确保建表时创建
 from models.ai_model import AIModel
@@ -41,6 +42,7 @@ from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.collection_task import CollectionTask
 from models.menu import Menu
 from models.setting import Setting
+from models.api_registry import ApiRegistry
 
 # 建表
 Base.metadata.create_all(bind=engine)
@@ -158,6 +160,9 @@ def migrate_ds_configs_template():
 
 migrate_ds_configs_template()
 
+# 数据库迁移：为agents表添加 agent_type 和 api_id 列（接口型数字员工支持）
+migrate_agents_table_extensions()
+
 
 # 写入种子数据
 from seed import run_seed
@@ -209,6 +214,7 @@ app.include_router(dc_router)
 app.include_router(smart_audit_router)
 app.include_router(setting_router)
 app.include_router(creative_router)
+app.include_router(api_registry_router)
 
 # WebSocket路由
 app.include_router(ws_router)
