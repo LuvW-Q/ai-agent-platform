@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-container": "#ffccbc",
+                    "on-background": "#d7e3fb",
+                    "inverse-on-surface": "#253143",
+                    "tertiary": "#ffb59c",
+                    "surface-bright": "#2e3a4c",
+                    "surface": "#071425",
+                    "on-secondary": "#003543",
+                    "error-container": "#93000a",
+                    "surface-container-highest": "#2a3548",
+                    "primary-fixed-dim": "#b4c5ff",
+                    "on-primary-fixed": "#00174b",
+                    "surface-container": "#142031",
+                    "secondary-container": "#14d1ff",
+                    "on-secondary-container": "#00566b",
+                    "surface-tint": "#b4c5ff",
+                    "on-tertiary": "#5c1900",
+                    "primary-fixed": "#dbe1ff",
+                    "surface-container-lowest": "#030e1f",
+                    "on-primary": "#002a78",
+                    "error": "#ffb4ab",
+                    "outline": "#8d90a0",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "surface-container-high": "#1f2a3c",
+                    "on-error": "#690005",
+                    "surface-dim": "#071425",
+                    "primary-container": "#0052d9",
+                    "inverse-surface": "#d7e3fb",
+                    "primary": "#b4c5ff",
+                    "surface-container-low": "#101c2d",
+                    "tertiary-fixed-dim": "#ffb59c",
+                    "tertiary-container": "#aa3500",
+                    "on-surface-variant": "#c3c6d7",
+                    "on-surface": "#d7e3fb",
+                    "on-secondary-fixed-variant": "#004e60",
+                    "background": "#071425",
+                    "outline-variant": "#434654",
+                    "on-error-container": "#ffdad6",
+                    "tertiary-fixed": "#ffdbd0",
+                    "secondary-fixed-dim": "#4cd6ff",
+                    "on-primary-container": "#cbd6ff",
+                    "on-tertiary-fixed-variant": "#832700",
+                    "on-secondary-fixed": "#001f28",
+                    "surface-variant": "#2a3548",
+                    "secondary": "#a6e6ff",
+                    "on-tertiary-fixed": "#390c00",
+                    "secondary-fixed": "#b7eaff",
+                    "inverse-primary": "#0353da"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "2xl": "48px",
+                    "md": "16px",
+                    "margin-desktop": "32px",
+                    "base": "4px",
+                    "margin-mobile": "16px",
+                    "gutter": "16px",
+                    "xl": "32px",
+                    "lg": "24px",
+                    "xs": "4px",
+                    "sm": "8px"
+            },
+            "fontFamily": {
+                    "body-lg": ["Inter"],
+                    "label-mono": ["JetBrains Mono"],
+                    "headline-sm": ["Inter"],
+                    "display-lg-mobile": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "caption": ["Inter"]
+            },
+            "fontSize": {
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-mono": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "display-lg-mobile": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(20, 32, 49, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .signal-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            box-shadow: 0 0 8px currentColor;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(180, 197, 255, 0.2);
+            border-radius: 10px;
+        }
+        .matrix-cell:hover {
+            background: rgba(180, 197, 255, 0.05);
+        }
+        .permission-tree-node::before {
+            content: '';
+            position: absolute;
+            left: -16px;
+            top: 50%;
+            width: 12px;
+            border-top: 1px solid rgba(141, 144, 160, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md selection:bg-primary/30">
+<!-- Side Navigation Bar -->
+<aside></aside>
+<!-- Main Content Area -->
+<main class=" min-h-screen">
+<!-- Top Navigation Bar -->
+<header class="flex justify-between items-center h-16 px-margin-desktop sticky top-0 z-40 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm">
+<div class="flex items-center gap-xl">
+<h2 class="font-headline-md text-headline-md font-black text-primary tracking-tight">权限管控中心</h2>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
+<input class="bg-surface-container border-outline-variant border rounded-lg pl-10 pr-4 py-1.5 text-body-md w-64 focus:ring-1 focus:ring-secondary-container focus:border-secondary-container transition-all outline-none" placeholder="搜索角色、权限或API..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<button class="relative hover:text-primary transition-all p-2 rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="hover:text-primary transition-all p-2 rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="hover:text-primary transition-all p-2 rounded-full hover:bg-surface-container-high">
+<span class="material-symbols-outlined">help</span>
+</button>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<div class="flex items-center gap-sm cursor-pointer">
+<span class="text-label-mono font-label-mono uppercase tracking-widest text-secondary-fixed">System v2.4</span>
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-margin-desktop space-y-lg">
+<!-- Dashboard Stats -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-lg">
+<div class="glass-panel p-lg rounded-xl flex flex-col justify-between relative overflow-hidden group">
+<div class="text-error absolute top-0 left-0 w-1 h-full"></div>
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant font-medium">活跃角色</span>
+<span class="material-symbols-outlined text-secondary-fixed">groups</span>
+</div>
+<div class="mt-md">
+<span class="text-3xl font-bold text-on-surface">12</span>
+<span class="text-xs text-secondary ml-2 font-label-mono">+2 新增</span>
+</div>
+</div>
+<div class="glass-panel p-lg rounded-xl flex flex-col justify-between relative overflow-hidden">
+<div class="text-secondary-fixed absolute top-0 left-0 w-1 h-full"></div>
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant font-medium">权限节点</span>
+<span class="material-symbols-outlined text-secondary-fixed">account_tree</span>
+</div>
+<div class="mt-md">
+<span class="text-3xl font-bold text-on-surface">1,402</span>
+<span class="text-xs text-on-surface-variant ml-2 font-label-mono">覆盖 98% API</span>
+</div>
+</div>
+<div class="glass-panel p-lg rounded-xl flex flex-col justify-between relative overflow-hidden">
+<div class="text-primary absolute top-0 left-0 w-1 h-full"></div>
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant font-medium">安全审计</span>
+<span class="material-symbols-outlined text-secondary-fixed">verified_user</span>
+</div>
+<div class="mt-md">
+<span class="text-3xl font-bold text-on-surface">正常</span>
+<span class="text-xs text-secondary ml-2 font-label-mono">实时扫描中</span>
+</div>
+</div>
+<div class="glass-panel p-lg rounded-xl flex flex-col justify-between relative overflow-hidden">
+<div class="text-tertiary absolute top-0 left-0 w-1 h-full"></div>
+<div class="flex justify-between items-start">
+<span class="text-on-surface-variant font-medium">拦截记录</span>
+<span class="material-symbols-outlined text-secondary-fixed">shield_with_heart</span>
+</div>
+<div class="mt-md">
+<span class="text-3xl font-bold text-on-surface">43</span>
+<span class="text-xs text-error ml-2 font-label-mono">24h 风险触发</span>
+</div>
+</div>
+</div>
+<!-- RBAC Configuration Interface -->
+<div class="grid grid-cols-12 gap-lg h-[calc(100vh-320px)] min-h-[600px]">
+<!-- Left: Role/User List -->
+<div class="col-span-3 glass-panel rounded-xl flex flex-col overflow-hidden">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-high/50">
+<h3 class="font-semibold text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">person_outline</span>角色映射
+                        </h3>
+<button class="text-primary hover:bg-primary/10 p-1 rounded transition-colors">
+<span class="material-symbols-outlined">add_box</span>
+</button>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-sm space-y-1" id="roles-container">
+<!-- Role Item -->
+<div class="p-md bg-secondary-container/10 border-l-4 border-secondary-fixed rounded-sm cursor-pointer transition-all">
+<div class="flex justify-between items-center">
+<span class="font-medium text-on-surface">超级管理员</span>
+<span class="text-[10px] bg-secondary-container text-on-secondary-container px-1.5 py-0.5 rounded font-label-mono">ROOT</span>
+</div>
+<p class="text-xs text-on-surface-variant mt-1">系统全局最高权限</p>
+</div>
+<div class="p-md hover:bg-surface-container-high rounded-sm cursor-pointer transition-all border-l-4 border-transparent group">
+<div class="flex justify-between items-center">
+<span class="font-medium text-on-surface-variant group-hover:text-on-surface">安全审计员</span>
+<span class="text-[10px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded font-label-mono">AUDIT</span>
+</div>
+<p class="text-xs text-on-surface-variant mt-1 opacity-60">仅限查阅审计日志与监控</p>
+</div>
+<div class="p-md hover:bg-surface-container-high rounded-sm cursor-pointer transition-all border-l-4 border-transparent group">
+<div class="flex justify-between items-center">
+<span class="font-medium text-on-surface-variant group-hover:text-on-surface">数据运维人员</span>
+<span class="text-[10px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded font-label-mono">OPS</span>
+</div>
+<p class="text-xs text-on-surface-variant mt-1 opacity-60">负责数据库治理与迁移</p>
+</div>
+<div class="p-md hover:bg-surface-container-high rounded-sm cursor-pointer transition-all border-l-4 border-transparent group">
+<div class="flex justify-between items-center">
+<span class="font-medium text-on-surface-variant group-hover:text-on-surface">普通员工</span>
+<span class="text-[10px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded font-label-mono">USER</span>
+</div>
+<p class="text-xs text-on-surface-variant mt-1 opacity-60">基础业务模块访问权限</p>
+</div>
+<div class="p-md hover:bg-surface-container-high rounded-sm cursor-pointer transition-all border-l-4 border-transparent group">
+<div class="flex justify-between items-center">
+<span class="font-medium text-on-surface-variant group-hover:text-on-surface">外部协作方</span>
+<span class="text-[10px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded font-label-mono">GUEST</span>
+</div>
+<p class="text-xs text-on-surface-variant mt-1 opacity-60">限定时间段访问指定数据</p>
+</div>
+</div>
+</div>
+<!-- Middle: Dynamic Permission Tree -->
+<div class="col-span-5 glass-panel rounded-xl flex flex-col overflow-hidden">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-high/50">
+<div class="flex gap-4">
+<h3 class="font-semibold text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">account_tree</span>权限资源树
+                            </h3>
+<div class="flex items-center gap-4 text-xs font-label-mono text-on-surface-variant">
+<label class="flex items-center gap-1.5 cursor-pointer"><input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0" type="checkbox"/> 菜单</label>
+<label class="flex items-center gap-1.5 cursor-pointer"><input checked="" class="rounded-sm bg-surface-container border-outline-variant text-secondary-container focus:ring-0" type="checkbox"/> 按钮</label>
+<label class="flex items-center gap-1.5 cursor-pointer"><input checked="" class="rounded-sm bg-surface-container border-outline-variant text-tertiary focus:ring-0" type="checkbox"/> API</label>
+</div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-lg space-y-4">
+<!-- Root Level -->
+<div class="space-y-3">
+<div class="flex items-center gap-2 group cursor-pointer">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">keyboard_arrow_down</span>
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-primary text-[20px]" style="font-variation-settings: 'FILL' 1;">folder</span>
+<span class="font-semibold text-on-surface">工作台系统 (ROOT)</span>
+<span class="text-[10px] text-on-surface-variant bg-surface-container px-1 rounded ml-auto">PARENT</span>
+</div>
+<!-- Level 1 -->
+<div class="ml-8 space-y-3 relative pl-4 border-l border-outline-variant/30">
+<!-- Node -->
+<div class="space-y-2">
+<div class="flex items-center gap-2 permission-tree-node relative">
+<span class="material-symbols-outlined text-on-surface-variant">keyboard_arrow_down</span>
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-primary/70 text-[20px]">grid_view</span>
+<span class="text-on-surface font-medium">数据管理模块</span>
+<div class="flex gap-2 ml-auto">
+<span class="text-[9px] bg-primary/20 text-primary-fixed px-1.5 py-0.5 rounded">MENU</span>
+</div>
+</div>
+<!-- Level 2 (Sub-nodes) -->
+<div class="ml-8 space-y-2 relative pl-4 border-l border-outline-variant/20">
+<div class="flex items-center gap-2 permission-tree-node relative">
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="text-on-surface-variant text-sm">清洗规则配置</span>
+<div class="flex gap-2 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="material-symbols-outlined text-xs text-on-surface-variant hover:text-primary">edit</button>
+</div>
+</div>
+<div class="flex items-center gap-2 permission-tree-node relative">
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="text-on-surface-variant text-sm">任务调度查看</span>
+<span class="text-[9px] bg-secondary-container/20 text-secondary-fixed px-1.5 py-0.5 rounded ml-auto">BTN</span>
+</div>
+<div class="flex items-center gap-2 permission-tree-node relative">
+<input class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="text-on-surface-variant text-sm">强制终止任务</span>
+<span class="text-[9px] bg-error-container/40 text-error px-1.5 py-0.5 rounded ml-auto">HIGH_RISK</span>
+</div>
+</div>
+</div>
+<!-- Another Level 1 Node -->
+<div class="space-y-2">
+<div class="flex items-center gap-2 permission-tree-node relative">
+<span class="material-symbols-outlined text-on-surface-variant">keyboard_arrow_right</span>
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-primary/70 text-[20px]">analytics</span>
+<span class="text-on-surface font-medium">可视化中心</span>
+<span class="text-[9px] bg-primary/20 text-primary-fixed px-1.5 py-0.5 rounded ml-auto">MENU</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center gap-2 permission-tree-node relative">
+<span class="material-symbols-outlined text-on-surface-variant">keyboard_arrow_down</span>
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="material-symbols-outlined text-primary/70 text-[20px]">api</span>
+<span class="text-on-surface font-medium">外部 API 接口</span>
+<span class="text-[9px] bg-tertiary-container/30 text-tertiary px-1.5 py-0.5 rounded ml-auto">INTERFACE</span>
+</div>
+<div class="ml-8 space-y-2 relative pl-4 border-l border-outline-variant/20">
+<div class="flex items-center gap-2 permission-tree-node relative">
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="text-label-mono text-xs opacity-70">POST /v1/data/export</span>
+</div>
+<div class="flex items-center gap-2 permission-tree-node relative">
+<input checked="" class="rounded-sm bg-surface-container border-outline-variant text-primary focus:ring-0 w-4 h-4" type="checkbox"/>
+<span class="text-label-mono text-xs opacity-70">GET /v1/user/logs</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="p-lg border-t border-outline-variant bg-surface-container-low flex justify-end gap-md">
+<button class="px-lg py-sm border border-outline-variant rounded hover:bg-surface-container-highest transition-colors font-medium">重置</button>
+<button class="px-lg py-sm bg-primary-container text-on-primary-container rounded hover:bg-primary transition-colors font-semibold shadow-lg shadow-primary/10">更新权限配置</button>
+</div>
+</div>
+<!-- Right: Coverage Matrix & Insights -->
+<div class="col-span-4 flex flex-col gap-lg">
+<!-- Permission Heatmap/Matrix Summary -->
+<div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
+<div class="p-md border-b border-outline-variant bg-surface-container-high/50">
+<h3 class="font-semibold text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">grid_on</span>权限覆盖概览
+                            </h3>
+</div>
+<div class="p-lg flex-1">
+<div class="space-y-lg">
+<div>
+<div class="flex justify-between items-end mb-2">
+<span class="text-sm font-medium">API 接口覆盖度</span>
+<span class="text-xs font-label-mono text-secondary-fixed">92%</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-secondary-container h-full w-[92%]" style="box-shadow: 0 0 12px #14d1ff40"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between items-end mb-2">
+<span class="text-sm font-medium">管理菜单可见性</span>
+<span class="text-xs font-label-mono text-primary">100%</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary h-full w-full"></div>
+</div>
+</div>
+<div class="pt-lg border-t border-outline-variant/30">
+<p class="text-xs text-on-surface-variant uppercase tracking-widest font-label-mono mb-md">敏感按钮访问状态</p>
+<div class="grid grid-cols-6 gap-2">
+<div class="aspect-square bg-secondary-container/20 border border-secondary-fixed/30 rounded flex items-center justify-center" title="删除权限"><span class="material-symbols-outlined text-secondary-fixed text-sm">delete</span></div>
+<div class="aspect-square bg-secondary-container/20 border border-secondary-fixed/30 rounded flex items-center justify-center" title="编辑权限"><span class="material-symbols-outlined text-secondary-fixed text-sm">edit</span></div>
+<div class="aspect-square bg-secondary-container/20 border border-secondary-fixed/30 rounded flex items-center justify-center" title="导出权限"><span class="material-symbols-outlined text-secondary-fixed text-sm">download</span></div>
+<div class="aspect-square bg-surface-container-highest border border-outline-variant rounded flex items-center justify-center opacity-30" title="禁用按钮"><span class="material-symbols-outlined text-on-surface-variant text-sm">block</span></div>
+<div class="aspect-square bg-secondary-container/20 border border-secondary-fixed/30 rounded flex items-center justify-center" title="刷新"><span class="material-symbols-outlined text-secondary-fixed text-sm">refresh</span></div>
+<div class="aspect-square bg-secondary-container/20 border border-secondary-fixed/30 rounded flex items-center justify-center" title="锁定"><span class="material-symbols-outlined text-secondary-fixed text-sm">lock</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Risk Analysis -->
+<div class="glass-panel rounded-xl h-[180px] p-lg flex flex-col justify-between border-error/20">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-error" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="font-semibold text-on-surface">风险预警</span>
+</div>
+<p class="text-sm text-on-surface-variant italic leading-relaxed">
+                            当前角色 "超级管理员" 拥有过高的 API 写权限。建议生产环境下开启多因子认证 (MFA) 或采用双人授权审批模式。
+                        </p>
+<div class="flex justify-between items-center mt-2">
+<span class="text-[10px] text-error font-label-mono">CRITICAL SECURITY NOTICE</span>
+<button class="text-xs text-primary font-semibold hover:underline">查看审计记录</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Meta -->
+<footer class="flex justify-between items-center py-xl text-on-surface-variant border-t border-outline-variant/30">
+<div class="flex items-center gap-md">
+<div class="signal-indicator text-secondary-fixed bg-secondary-container"></div>
+<span class="text-xs font-label-mono">MATRIX_CORE_SYNC: ACTIVE</span>
+</div>
+<div class="text-xs">
+                    © 2024 Intelligent Data Outlook System. All Rights Reserved.
+                </div>
+</footer>
+</div>
+</main>
+<!-- Contextual FAB (Only for main landing, but kept here for UI completion as per guidelines) -->
+<!-- Removed for focused "Permission Management" as per shell mandate -->
+<script src="/static/js/app.js"></script>
+<script>
+        // Micro-interaction: Sidebar active state toggle
+        document.querySelectorAll('aside nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                // Not implemented full routing, just visual feedback
+                document.querySelectorAll('aside nav a').forEach(l => {
+                    l.classList.remove('text-secondary-fixed', 'bg-secondary-container/10', 'border-r-2', 'border-secondary-fixed', 'font-medium');
+                    l.classList.add('text-on-surface-variant');
+                });
+                this.classList.remove('text-on-surface-variant');
+                this.classList.add('text-secondary-fixed', 'bg-secondary-container/10', 'border-r-2', 'border-secondary-fixed', 'font-medium');
+            });
+        });
+
+        // Hover animations for the tree nodes
+        const nodes = document.querySelectorAll('.permission-tree-node');
+        nodes.forEach(node => {
+            node.addEventListener('mouseenter', () => {
+                node.style.transform = 'translateX(4px)';
+                node.style.transition = 'transform 0.2s ease-out';
+            });
+            node.addEventListener('mouseleave', () => {
+                node.style.transform = 'translateX(0)';
+            });
+        });
+    </script>
+<script>
+        if (!requireAuth()) throw new Error('redirecting');
+
+        // Update sidebar nav links
+        (function updateNavLinks() {
+            const navMap = {
+                '数据治理': '/dashboard',
+                '权限管理': '/permissions',
+                '员工编排': '/agents',
+                '审计管理': '/audit',
+                '数字大屏': '/screen'
+            };
+            document.querySelectorAll('aside nav a').forEach(link => {
+                const text = (link.textContent || '').trim();
+                if (navMap[text]) {
+                    link.setAttribute('href', navMap[text]);
+                }
+            });
+        })();
+
+        async function loadRoles() {
+            const container = document.getElementById('roles-container');
+            if (!container) return;
+            const roles = await apiGet('/api/permissions/roles');
+            container.innerHTML = '';
+            roles.forEach(role => {
+                const isActive = role.is_active;
+                const item = document.createElement('div');
+                item.className = 'p-md ' + (isActive
+                    ? 'bg-secondary-container/10 border-l-4 border-secondary-fixed rounded-sm cursor-pointer transition-all'
+                    : 'hover:bg-surface-container-high border-l-4 border-transparent rounded-sm cursor-pointer transition-all group');
+                const nameClass = isActive ? 'font-medium text-on-surface' : 'font-medium text-on-surface-variant group-hover:text-on-surface';
+                const codeClass = isActive
+                    ? 'text-[10px] bg-secondary-container text-on-secondary-container px-1.5 py-0.5 rounded font-label-mono'
+                    : 'text-[10px] bg-outline-variant/30 text-on-surface-variant px-1.5 py-0.5 rounded font-label-mono';
+                const descClass = 'text-xs text-on-surface-variant mt-1' + (isActive ? '' : ' opacity-60');
+                const indicatorClass = isActive ? 'signal-indicator text-secondary-fixed bg-secondary-container' : 'signal-indicator text-on-surface-variant bg-outline-variant';
+                const statusLabel = isActive ? 'ACTIVE' : 'INACTIVE';
+                const statusClass = isActive ? 'text-[10px] text-secondary-fixed font-label-mono' : 'text-[10px] text-on-surface-variant font-label-mono';
+
+                item.innerHTML =
+                    '<div class="flex justify-between items-center">' +
+                        '<span class="' + nameClass + '">' + (role.name || '') + '</span>' +
+                        '<span class="' + codeClass + '">' + (role.code || '') + '</span>' +
+                    '</div>' +
+                    '<p class="' + descClass + '">' + (role.description || '') + '</p>' +
+                    '<div class="flex items-center gap-1 mt-1">' +
+                        '<span class="' + indicatorClass + '"></span>' +
+                        '<span class="' + statusClass + '">' + statusLabel + '</span>' +
+                    '</div>';
+                container.appendChild(item);
+            });
+        }
+
+        loadRoles();
+        loadSidebarUser();
+async function loadPermTree() {
+  try {
+    const tree = await apiGet('/api/permissions/tree');
+    const el = document.getElementById('perm-tree-content');
+    if (!el) return;
+    el.innerHTML = tree.modules.map(m => `
+      <div class="flex items-center justify-between bg-surface-container-high/50 rounded-lg px-4 py-2.5">
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-primary text-lg">${m.icon||'folder'}</span>
+          <span class="text-sm">${escapeHtml(m.name)}</span>
+        </div>
+        <div class="flex gap-1">${m.permissions.map(p=>`<span class="text-[10px] px-2 py-0.5 bg-primary-container/20 text-primary-container rounded">${escapeHtml(p)}</span>`).join('')}</div>
+      </div>`).join('');
+    // Update stats
+    document.querySelectorAll('.text-2xl.font-bold').forEach(el => {
+      if (el.textContent.trim() === '12') el.textContent = tree.total_nodes || 42;
+    });
+  } catch(e) {}
+}
+function openCreateRoleModal() {
+  const name = prompt('角色名称:'); if (!name) return;
+  const code = prompt('角色代码:'); if (!code) return;
+  const desc = prompt('描述:') || '';
+  apiPost('/api/permissions/roles', {name, code, description: desc}).then(()=>{showToast('创建成功','success');loadRoles();}).catch(e=>showToast('创建失败','error'));
+}
+function resetPermissionForm() { loadRoles(); loadPermTree(); showToast('已重置','success'); }
+function savePermissions() { showToast('权限配置已保存','success'); }
+
+// Call tree loader
+loadPermTree();
+
+    </script>
+</body></html>

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DataOutlook - 个人设置</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "outline-variant": "#434654",
+                    "on-secondary": "#003543",
+                    "on-primary-fixed": "#00174b",
+                    "surface": "#071425",
+                    "on-background": "#d7e3fb",
+                    "tertiary-fixed": "#ffdbd0",
+                    "surface-container-lowest": "#030e1f",
+                    "on-surface": "#d7e3fb",
+                    "on-tertiary-fixed": "#390c00",
+                    "surface-container-highest": "#2a3548",
+                    "surface-container-high": "#1f2a3c",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "background": "#071425",
+                    "tertiary-container": "#aa3500",
+                    "secondary": "#a6e6ff",
+                    "on-tertiary": "#5c1900",
+                    "on-primary-container": "#cbd6ff",
+                    "error": "#ffb4ab",
+                    "inverse-primary": "#0353da",
+                    "tertiary-fixed-dim": "#ffb59c",
+                    "on-surface-variant": "#c3c6d7",
+                    "secondary-fixed-dim": "#4cd6ff",
+                    "on-tertiary-fixed-variant": "#832700",
+                    "surface-bright": "#2e3a4c",
+                    "primary": "#b4c5ff",
+                    "secondary-container": "#14d1ff",
+                    "on-tertiary-container": "#ffccbc",
+                    "secondary-fixed": "#b7eaff",
+                    "surface-container": "#142031",
+                    "on-primary": "#002a78",
+                    "error-container": "#93000a",
+                    "on-secondary-fixed-variant": "#004e60",
+                    "tertiary": "#ffb59c",
+                    "surface-dim": "#071425",
+                    "primary-fixed-dim": "#b4c5ff",
+                    "on-secondary-fixed": "#001f28",
+                    "outline": "#8d90a0",
+                    "surface-variant": "#2a3548",
+                    "inverse-surface": "#d7e3fb",
+                    "on-secondary-container": "#00566b",
+                    "inverse-on-surface": "#253143",
+                    "surface-container-low": "#101c2d",
+                    "primary-fixed": "#dbe1ff",
+                    "on-error-container": "#ffdad6",
+                    "on-error": "#690005",
+                    "surface-tint": "#b4c5ff",
+                    "primary-container": "#0052d9"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "gutter": "16px",
+                    "base": "4px",
+                    "xs": "4px",
+                    "margin-mobile": "16px",
+                    "sm": "8px",
+                    "xl": "32px",
+                    "md": "16px",
+                    "2xl": "48px",
+                    "lg": "24px",
+                    "margin-desktop": "32px"
+            },
+            "fontFamily": {
+                    "headline-sm": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-mono": ["JetBrains Mono"],
+                    "display-lg-mobile": ["Inter"],
+                    "caption": ["Inter"],
+                    "body-md": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "headline-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-mono": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "display-lg-mobile": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "caption": ["12px", {"lineHeight": "16px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #071425;
+            color: #d7e3fb;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(20, 32, 49, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .status-glow {
+            box-shadow: 0 0 8px rgba(0, 209, 255, 0.4);
+        }
+        /* Custom Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #434654;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #0052d9; }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #071425; }
+        ::-webkit-scrollbar-thumb { background: #2a3548; border-radius: 10px; }
+    </style>
+</head>
+<body class="dark selection:bg-primary selection:text-on-primary">
+<!-- Sidebar Wrapper -->
+<aside></aside>
+<!-- Main Content Canvas -->
+<main class=" min-h-screen flex flex-col relative">
+<!-- Header -->
+<header class="h-16 flex items-center justify-between px-8 border-b border-outline-variant sticky top-0 bg-surface/80 backdrop-blur-md z-40">
+<div class="flex items-center gap-4">
+<h2 class="font-headline-md text-headline-md font-bold text-on-surface">个人设置</h2>
+<div class="bg-primary/10 text-primary px-3 py-1 rounded-full text-[10px] font-bold border border-primary/20 tracking-wider">USER PROFILE</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative group">
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary cursor-pointer transition-colors">notifications</span>
+<span class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></span>
+</div>
+<div class="h-8 w-px bg-outline-variant"></div>
+<div class="flex items-center gap-3">
+<div class="text-right hidden lg:block">
+<p id="settings-username" class="text-body-md font-bold text-on-surface leading-tight">李明</p>
+<p id="settings-role" class="text-caption text-on-surface-variant">高级系统管理员</p>
+</div>
+<img class="w-10 h-10 rounded-full border-2 border-primary/30 object-cover" data-alt="A cinematic, high-definition portrait of a professional male technologist in a dark studio. Subtle cyan rim lighting highlights his profile. He is wearing a minimalist tech-wear jacket. The background is a soft-focus dark server room with glowing blue status lights, emphasizing an atmosphere of expertise and data security." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDau9AxW8Od6zl6sK6zt6GaenuRpRD7ClZWE2-aO6E4tRLvIcsHGkTTIBvry1s7CCDB7QTGs--LY1Z37-wqdl68wXIRyifMKz9BvoVzovby1XmhbPwMlklNpsf9I-WRiLGJMNiRzJRSSCcy-K9sERimuJXyhYTN6JhcQfhR4DWKU6lfGWF5GQCT6TTBicdZ-0kiPrvRKBzuxq2ZhCeJ3-S02CrmTM4mMn2m4CvUgG8m2SpApfVKW0COditijdAusNN70Od8D2YzXt91"/>
+</div>
+</div>
+</header>
+<!-- Setting Content Grid -->
+<div class="p-8 max-w-6xl w-full mx-auto space-y-8">
+<!-- Section 1: Basic Info (Bento Grid Style) -->
+<section class="space-y-4">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined">person</span>
+<h3 class="font-headline-sm text-headline-sm">基础信息</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+<!-- Avatar Card -->
+<div class="md:col-span-4 glass-panel rounded-xl p-6 flex flex-col items-center justify-center space-y-4 group">
+<div class="relative">
+<div class="w-32 h-32 rounded-full overflow-hidden border-4 border-outline-variant group-hover:border-primary transition-colors duration-500">
+<img class="w-full h-full object-cover" data-alt="Close up portrait of a professional user, highly detailed skin textures, soft volumetric lighting from the side, futuristic data-visualization overlays faintly visible in the background, dark blue and deep gray color palette, sharp focus, 8k resolution cinematic style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuArAo7cDNkaRrz_jJAMl7ZFjS3mldTDI3EdL5zdGFaaCNLul4edqN_Ra_isvHcGNn-Sic6-tt7ywYyqDMfcMPszU2_HTmzlhmrXsmDI-eE4W7C7lNzWlRJu9KXpk5L0qZgHru4aoc7q8xKaBuanim1WAsVx9_-uStZoF-YD8U70kKwnIigUGEqOGvZnwSeY1UF6aq-d2h8sq9dN-uY6k7h0iimQA40cDX4qOxRf34zA-DMdi_y_sDcUcOt-GslFRYz4BRLNE_b9PHrp"/>
+</div>
+<label class="absolute bottom-1 right-1 bg-primary text-on-primary w-10 h-10 rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer" title="上传头像">
+<span class="material-symbols-outlined">photo_camera</span>
+</button>
+</div>
+<div class="text-center">
+<p class="text-on-surface font-bold">李明</p>
+<p class="text-caption text-on-surface-variant">liming_dev@outlook.com</p>
+</div>
+</div>
+<!-- Nickname and Signature Card -->
+<div class="md:col-span-8 glass-panel rounded-xl p-8 space-y-6">
+<div class="grid grid-cols-1 gap-6">
+<div class="space-y-2">
+<label class="text-caption text-on-surface-variant uppercase tracking-wider font-bold">昵称</label>
+<div class="relative">
+<input id="settings-nickname" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container/30 transition-all text-on-surface" type="text" value="李明"/>
+<span class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant material-symbols-outlined text-sm">edit</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-caption text-on-surface-variant uppercase tracking-wider font-bold">邮箱</label>
+<div class="relative">
+<input id="settings-email" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container/30 transition-all text-on-surface" type="email" value=""/>
+<span class="absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant material-symbols-outlined text-sm">mail</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-caption text-on-surface-variant uppercase tracking-wider font-bold">个性签名</label>
+<textarea id="settings-signature" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container focus:ring-1 focus:ring-secondary-container/30 transition-all text-on-surface resize-none" rows="3">专注智能数据架构与安全治理，探索大数据未来的无限可能。</textarea>
+</div>
+</div>
+<div class="flex justify-end">
+<button id="settings-save" class="bg-primary-container text-on-primary-container px-6 py-2.5 rounded-lg font-bold hover:bg-primary-container/80 transition-all active:scale-95">保存更改</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 2: Security Center -->
+<section class="space-y-4">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined">security</span>
+<h3 class="font-headline-sm text-headline-sm">安全中心</h3>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<!-- Password Update -->
+<div class="glass-panel rounded-xl p-6 space-y-4">
+<div class="flex items-center justify-between border-b border-outline-variant pb-4">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-secondary/10 rounded-lg">
+<span class="material-symbols-outlined text-secondary">lock</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">登录密码</h4>
+<p class="text-caption text-on-surface-variant">建议定期更换复杂密码以保障账号安全</p>
+</div>
+</div>
+<button class="text-secondary hover:underline font-bold text-body-md">修改</button>
+</div>
+<div class="flex items-center justify-between py-2">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-tertiary/10 rounded-lg">
+<span class="material-symbols-outlined text-tertiary">passkey</span>
+</div>
+<div>
+<h4 class="font-bold text-on-surface">双重验证 (2FA)</h4>
+<p class="text-caption text-on-surface-variant">未开启</p>
+</div>
+</div>
+<button class="border border-outline px-4 py-1.5 rounded-lg hover:bg-surface-variant transition-colors text-body-md">立即开启</button>
+</div>
+</div>
+<!-- Multi-device Management -->
+<div class="glass-panel rounded-xl p-6 space-y-4">
+<h4 class="font-bold text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm">devices</span>
+                            多端登录管理
+                        </h4>
+<div class="space-y-4">
+<!-- Device Item -->
+<div class="flex items-center justify-between p-3 bg-surface-container-lowest rounded-lg border border-outline-variant/30">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary">laptop_mac</span>
+<div>
+<p class="text-body-md font-bold">MacBook Pro - 上海, 中国</p>
+<p class="text-[10px] text-secondary font-label-mono flex items-center gap-1">
+<span class="w-1.5 h-1.5 bg-secondary rounded-full status-glow animate-pulse"></span>
+                                            当前在线
+                                        </p>
+</div>
+</div>
+<span class="text-caption text-on-surface-variant font-label-mono">IP: 192.168.1.104</span>
+</div>
+<!-- Device Item -->
+<div class="flex items-center justify-between p-3 bg-surface-container-lowest rounded-lg border border-outline-variant/30 opacity-70">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant">smartphone</span>
+<div>
+<p class="text-body-md font-bold text-on-surface">iPhone 15 Pro - 北京, 中国</p>
+<p class="text-[10px] text-on-surface-variant font-label-mono">2小时前活跃</p>
+</div>
+</div>
+<button class="text-error text-caption hover:underline">强制下线</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 3: System Config -->
+<section class="space-y-4">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined">settings_suggest</span>
+<h3 class="font-headline-sm text-headline-sm">系统配置</h3>
+</div>
+<div class="glass-panel rounded-xl overflow-hidden divide-y divide-outline-variant/30">
+<!-- System Name -->
+<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+<div>
+<h4 class="font-bold text-on-surface text-body-lg">系统名称</h4>
+<p class="text-body-md text-on-surface-variant">显示在顶部导航与侧边栏的系统名称，保存后立即生效。</p>
+</div>
+<div class="flex flex-col gap-3">
+<input id="setting-system-name" data-setting-key="system_name" type="text"
+       class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container text-on-surface"
+       value="智能数据瞭望系统"/>
+<button id="setting-system-name-save"
+        class="self-end bg-primary-container text-on-primary-container px-5 py-2 rounded-lg font-bold hover:bg-primary-container/80 active:scale-95 transition-all">保存名称</button>
+</div>
+</div>
+<!-- Notification Settings -->
+<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+<div>
+<h4 class="font-bold text-on-surface text-body-lg">消息通知开关</h4>
+<p class="text-body-md text-on-surface-variant">管理系统告警、代理人反馈和安全风险的消息提醒偏好。</p>
+</div>
+<div class="flex flex-col gap-4">
+<div class="flex items-center justify-between">
+<span class="text-body-md">关键告警推送 (邮件 + 站内)</span>
+<label class="switch">
+<input data-setting-key="notify_critical" checked="" type="checkbox"/>
+<span class="slider"></span>
+</label>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-body-md">分析进度更新</span>
+<label class="switch">
+<input data-setting-key="notify_analysis" checked="" type="checkbox"/>
+<span class="slider"></span>
+</label>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-body-md">登录安全异常</span>
+<label class="switch">
+<input data-setting-key="notify_login_alert" checked="" type="checkbox"/>
+<span class="slider"></span>
+</label>
+</div>
+</div>
+</div>
+<!-- Privacy Settings -->
+<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+<div>
+<h4 class="font-bold text-on-surface text-body-lg">隐私设置</h4>
+<p class="text-body-md text-on-surface-variant">控制您的数据被系统其他用户看到的权限范围。</p>
+</div>
+<div class="flex flex-col gap-4">
+<div class="flex items-center justify-between">
+<span class="text-body-md">公开显示我的工作动态</span>
+<label class="switch">
+<input data-setting-key="profile_public" type="checkbox"/>
+<span class="slider"></span>
+</label>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-body-md">允许其他代理程序访问我的基础信息</span>
+<label class="switch">
+<input data-setting-key="allow_agent_access" checked="" type="checkbox"/>
+<span class="slider"></span>
+</label>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Danger Zone -->
+<div class="pt-10 flex justify-center">
+<button onclick="logout()" class="flex items-center gap-2 text-error/60 hover:text-error transition-colors px-6 py-3 border border-error/20 hover:border-error/50 rounded-xl bg-error/5">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-bold">退出当前账号登录</span>
+</button>
+</div>
+</div>
+<!-- Password Change Modal -->
+<div id="pwd-modal" class="fixed inset-0 z-[9999] hidden items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="glass-panel rounded-2xl p-8 w-full max-w-md space-y-6">
+        <div class="flex items-center justify-between">
+            <h3 class="font-headline-md text-headline-md font-bold text-primary">修改密码</h3>
+            <button onclick="closePwdModal()" class="text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="text-caption text-on-surface-variant block mb-1">原密码</label>
+                <input id="pwd-old" type="password" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container text-on-surface" placeholder="输入当前密码"/>
+            </div>
+            <div>
+                <label class="text-caption text-on-surface-variant block mb-1">新密码</label>
+                <input id="pwd-new" type="password" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container text-on-surface" placeholder="至少6位"/>
+            </div>
+            <div>
+                <label class="text-caption text-on-surface-variant block mb-1">确认新密码</label>
+                <input id="pwd-confirm" type="password" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container text-on-surface" placeholder="再次输入新密码"/>
+            </div>
+        </div>
+        <div class="flex justify-end gap-3">
+            <button onclick="closePwdModal()" class="px-4 py-2 bg-surface-container-high text-on-surface-variant rounded-lg hover:bg-surface-container transition-colors">取消</button>
+            <button id="pwd-save" class="px-6 py-2 bg-primary-container text-on-primary-container rounded-lg font-bold hover:opacity-80 transition-opacity">确认修改</button>
+        </div>
+    </div>
+</div>
+<!-- Decorative Background Element -->
+<div class="fixed bottom-0 right-0 w-[500px] h-[500px] pointer-events-none opacity-20">
+
+</div>
+</main>
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+async function loadProfile() {
+    try {
+        const user = await apiGet('/api/auth/profile');
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+        const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        set('settings-nickname', user.nickname || '');
+        set('settings-email', user.email || '');
+        set('settings-signature', user.signature || '');
+        setText('settings-username', user.username || '');
+        setText('settings-role', user.role || '');
+        // Update avatar card name/email
+        document.querySelectorAll('.text-center .font-bold, .text-center p').forEach(p => {
+            if (p.textContent === '\u674e\u660e') p.textContent = user.nickname || user.username;
+        });
+        document.querySelectorAll('.text-center .text-caption').forEach(p => {
+            if (p.textContent.includes('outlook')) p.textContent = user.email || '';
+        });
+    } catch (e) { showToast('\u52a0\u8f7d\u8d44\u6599\u5931\u8d25', 'error'); }
+}
+
+// Load system settings from /api/settings and backfill controls
+async function loadSettings() {
+    try {
+        const settings = await apiGet('/api/settings');
+        const map = {};
+        (settings || []).forEach(s => { map[s.key] = s.value; });
+        // \u7cfb\u7edf\u540d\u79f0\u8f93\u5165\u6846
+        const nameInput = document.getElementById('setting-system-name');
+        if (nameInput && map['system_name']) nameInput.value = map['system_name'];
+        // \u5e03\u5c14\u5f00\u5173\uff1adata-setting-key \u5339\u914d
+        document.querySelectorAll('input[type="checkbox"][data-setting-key]').forEach(el => {
+            const key = el.getAttribute('data-setting-key');
+            const val = map[key];
+            if (val !== undefined) {
+                el.checked = val === true || val === 'true' || val === '1';
+            }
+        });
+    } catch (e) { /* \u9759\u9ed8\uff1a\u8bbe\u7f6e\u52a0\u8f7d\u5931\u8d25\u4e0d\u963b\u585e\u7528\u6237\u8d44\u6599 */ }
+}
+
+// Save profile
+document.getElementById('settings-save').onclick = async () => {
+    const body = {};
+    const nickname = document.getElementById('settings-nickname')?.value;
+    const email = document.getElementById('settings-email')?.value;
+    const signature = document.getElementById('settings-signature')?.value;
+    if (nickname) body.nickname = nickname;
+    if (email) body.email = email;
+    if (signature) body.signature = signature;
+    try {
+        const res = await fetch('/api/auth/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + Token.access },
+            body: JSON.stringify(body)
+        });
+        if (res.ok) { showToast('\u4fdd\u5b58\u6210\u529f', 'success'); loadProfile(); }
+        else { showToast('\u4fdd\u5b58\u5931\u8d25', 'error'); }
+    } catch (e) { showToast('\u7f51\u7edc\u9519\u8bef', 'error'); }
+};
+
+// Save system name via /api/settings/system-name
+document.getElementById('setting-system-name-save')?.addEventListener('click', async () => {
+    const input = document.getElementById('setting-system-name');
+    if (!input) return;
+    const value = input.value.trim();
+    if (!value) { showToast('系统名称不能为空', 'error'); return; }
+    try {
+        await apiPost('/api/settings/system-name', { value });
+        // 同步刷新顶部导航/侧边栏系统名称
+        try { (await import('/static/js/app.js')).loadSystemName?.(); } catch(e) {}
+        document.querySelectorAll('.app-top-nav h1, .app-utility-rail h1').forEach(el => { el.textContent = value; });
+        showToast('系统名称已更新', 'success');
+    } catch (e) { showToast('保存失败', 'error'); }
+});
+
+// Bind boolean switches to PUT /api/settings/{key}
+document.querySelectorAll('input[type="checkbox"][data-setting-key]').forEach(el => {
+    el.addEventListener('change', async () => {
+        const key = el.getAttribute('data-setting-key');
+        const value = el.checked ? 'true' : 'false';
+        try {
+            await apiPut('/api/settings/' + encodeURIComponent(key), { value });
+            showToast('设置已保存', 'success');
+        } catch (e) { showToast('保存失败', 'error'); }
+    });
+});
+
+// Password change modal
+function openPwdModal() {
+    document.getElementById('pwd-modal').classList.remove('hidden');
+    document.getElementById('pwd-modal').classList.add('flex');
+}
+function closePwdModal() {
+    document.getElementById('pwd-modal').classList.add('hidden');
+    document.getElementById('pwd-modal').classList.remove('flex');
+    ['pwd-old', 'pwd-new', 'pwd-confirm'].forEach(id => document.getElementById(id).value = '');
+}
+
+// Wire the "\u4fee\u6539" button next to password section
+document.querySelectorAll('button').forEach(btn => {
+    if (btn.textContent.trim() === '\u4fee\u6539' && btn.closest('.glass-panel')) {
+        btn.onclick = openPwdModal;
+    }
+});
+
+// Save password
+document.getElementById('pwd-save').onclick = async () => {
+    const oldPwd = document.getElementById('pwd-old').value;
+    const newPwd = document.getElementById('pwd-new').value;
+    const confirmPwd = document.getElementById('pwd-confirm').value;
+    if (!oldPwd || !newPwd) { showToast('\u8bf7\u586b\u5199\u5b8c\u90e8\u5b57\u6bb5', 'error'); return; }
+    if (newPwd !== confirmPwd) { showToast('\u4e24\u6b21\u5bc6\u7801\u4e0d\u4e00\u81f4', 'error'); return; }
+    if (newPwd.length < 6) { showToast('\u65b0\u5bc6\u7801\u81f3\u5c116\u4f4d', 'error'); return; }
+    try {
+        const res = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + Token.access },
+            body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast('\u5bc6\u7801\u4fee\u6539\u6210\u529f', 'success');
+            closePwdModal();
+        } else {
+            showToast(data.detail || '\u4fee\u6539\u5931\u8d25', 'error');
+        }
+    } catch (e) { showToast('\u7f51\u7edc\u9519\u8bef', 'error'); }
+};
+
+// Micro-interactions
+document.querySelectorAll('input[type="text"], textarea').forEach(el => {
+    el.addEventListener('focus', () => { el.parentElement.style.transform = 'scale(1.01)'; el.parentElement.style.transition = 'all 0.3s'; });
+    el.addEventListener('blur', () => { el.parentElement.style.transform = 'scale(1)'; });
+});
+
+loadSidebarUser();
+async function uploadSettingsAvatar(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/auth/avatar', { method: 'POST', body: fd, headers: { 'Authorization': 'Bearer ' + Token.access } });
+    if (res.ok) {
+      const d = await res.json();
+      const imgEl = document.querySelector('.w-32.h-32 img') || document.querySelector('.w-10.h-10');
+      if (imgEl) imgEl.src = d.avatar;
+      showToast('头像上传成功', 'success');
+    } else { showToast('上传失败', 'error'); }
+  } catch(e) { showToast('上传失败', 'error'); }
+}
+
+loadProfile();
+loadSettings();
+</script>
+</body></html>

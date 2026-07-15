@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>智能数据瞭望系统 - 审计大屏</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Theme Config -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "on-tertiary-container": "#ffccbc",
+                "on-background": "#d7e3fb",
+                "inverse-on-surface": "#253143",
+                "tertiary": "#ffb59c",
+                "surface-bright": "#2e3a4c",
+                "surface": "#071425",
+                "on-secondary": "#003543",
+                "error-container": "#93000a",
+                "surface-container-highest": "#2a3548",
+                "primary-fixed-dim": "#b4c5ff",
+                "on-primary-fixed": "#00174b",
+                "surface-container": "#142031",
+                "secondary-container": "#14d1ff",
+                "on-secondary-container": "#00566b",
+                "surface-tint": "#b4c5ff",
+                "on-tertiary": "#5c1900",
+                "primary-fixed": "#dbe1ff",
+                "surface-container-lowest": "#030e1f",
+                "on-primary": "#002a78",
+                "error": "#ffb4ab",
+                "outline": "#8d90a0",
+                "on-primary-fixed-variant": "#003ea8",
+                "surface-container-high": "#1f2a3c",
+                "on-error": "#690005",
+                "surface-dim": "#071425",
+                "primary-container": "#0052d9",
+                "inverse-surface": "#d7e3fb",
+                "primary": "#b4c5ff",
+                "surface-container-low": "#101c2d",
+                "tertiary-fixed-dim": "#ffb59c",
+                "tertiary-container": "#aa3500",
+                "on-surface-variant": "#c3c6d7",
+                "on-surface": "#d7e3fb",
+                "on-secondary-fixed-variant": "#004e60",
+                "background": "#071425",
+                "outline-variant": "#434654",
+                "on-error-container": "#ffdad6",
+                "tertiary-fixed": "#ffdbd0",
+                "secondary-fixed-dim": "#4cd6ff",
+                "on-primary-container": "#cbd6ff",
+                "on-tertiary-fixed-variant": "#832700",
+                "on-secondary-fixed": "#001f28",
+                "surface-variant": "#2a3548",
+                "secondary": "#a6e6ff",
+                "on-tertiary-fixed": "#390c00",
+                "secondary-fixed": "#b7eaff",
+                "inverse-primary": "#0353da"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+            },
+            "spacing": {
+                "2xl": "48px",
+                "md": "16px",
+                "margin-desktop": "32px",
+                "base": "4px",
+                "margin-mobile": "16px",
+                "gutter": "16px",
+                "xl": "32px",
+                "lg": "24px",
+                "xs": "4px",
+                "sm": "8px"
+            },
+            "fontFamily": {
+                "body-lg": ["Inter"],
+                "label-mono": ["JetBrains Mono"],
+                "headline-sm": ["Inter"],
+                "display-lg": ["Inter"],
+                "body-md": ["Inter"],
+                "headline-md": ["Inter"]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        body {
+            background-color: #071425;
+            color: #d7e3fb;
+            overflow: hidden;
+        }
+        .glass-panel {
+            background: rgba(20, 32, 49, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .scan-line {
+            background: linear-gradient(to bottom, transparent 0%, rgba(180, 197, 255, 0.1) 50%, transparent 100%);
+            background-size: 100% 4px;
+            animation: scan 10s linear infinite;
+        }
+        @keyframes scan {
+            from { background-position: 0 0; }
+            to { background-position: 0 100%; }
+        }
+        .glow-text {
+            text-shadow: 0 0 10px rgba(180, 197, 255, 0.5);
+        }
+        .data-point {
+            animation: pulse-glow 2s infinite alternate;
+        }
+        @keyframes pulse-glow {
+            from { opacity: 0.4; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1.1); }
+        }
+        .scrolling-list {
+            mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md h-screen w-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 left-0 right-0 z-50 h-16 flex items-center px-8 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/30">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary text-3xl">monitoring</span>
+<h1 class="font-headline-md text-headline-md font-black text-primary tracking-tight">智能数据瞭望系统</h1>
+<div class="ml-4 px-3 py-1 bg-primary/10 border border-primary/20 rounded-full">
+<span class="font-label-mono text-label-mono text-primary uppercase tracking-widest animate-pulse">Live monitoring</span>
+</div>
+</div>
+<div class="flex-grow flex justify-center">
+<div class="flex gap-8">
+<a class="text-primary border-b-2 border-primary pb-1 font-label-mono text-label-mono" href="#">数字大屏</a>
+<a class="text-on-surface-variant hover:text-primary transition-all font-label-mono text-label-mono" href="#">数据治理</a>
+<a class="text-on-surface-variant hover:text-primary transition-all font-label-mono text-label-mono" href="#">审计管理</a>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">settings</span>
+</div>
+<div class="flex items-center gap-3 pl-6 border-l border-outline-variant/30">
+<div class="text-right">
+<p class="font-label-mono text-label-mono text-on-surface">Admin_01</p>
+<p class="text-[10px] text-on-surface-variant">System Auditor</p>
+</div>
+<img class="w-10 h-10 rounded-full border border-primary/30" data-alt="A professional male corporate headshot with a neutral expression, wearing a minimalist dark futuristic uniform. The lighting is low-key with a subtle cyan rim light to match the high-tech dashboard aesthetic. The background is a soft-focus data center with glowing blue server racks." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDt37zdOPJx47I2sCozbTfB1JvP1AdsmaIlK6UqLMIETx7OBoS2MRghfH74-vIUC4BK5XA4QafxW7N6JCoXfmQ-a2QAnysnLo9tlaJfcolClLZKR9N9Q43Sv93ab3vb0GNI2CCDHmRSyhhEwFS67BtUy6wlsxtv0UhUEYMXT9oo82ZATlpDESef6umHw8LFblzg-IVrVFFHKpKlih3ovRoAncRXCbYX7x_Vm-9ylO4HMPMQD2RaSBc8KZc3gUYsK2ZmzUCKJH7POXCy"/>
+</div>
+</div>
+</nav>
+<!-- Sidebar Navigation (Fixed) -->
+<aside></aside>
+<!-- Main Content Canvas -->
+<main class=" pt-20 p-8 h-full overflow-hidden relative">
+<!-- Background Animation Effect -->
+
+<div class="grid grid-cols-12 gap-6 h-full pb-8">
+<!-- Left Column: Key Stats & Trends -->
+<div class="col-span-3 flex flex-col gap-6">
+<!-- Real-time Stats Cards -->
+<div class="grid grid-rows-3 gap-4 flex-1">
+<div class="glass-panel p-6 rounded-xl relative overflow-hidden group" style="border-left:4px solid #b4c5ff">
+<p class="text-on-surface-variant text-sm mb-2">今日消息总量</p>
+<div class="flex items-end justify-between">
+<h2 id="screen-messages" class="text-display-lg font-display-lg text-primary glow-text">124,892</h2>
+<span class="text-secondary text-sm font-label-mono mb-2">+12.5%</span>
+</div>
+<div class="h-12 mt-4">
+<canvas class="w-full h-full" id="sparkline-1"></canvas>
+</div>
+</div>
+<div class="glass-panel p-6 rounded-xl relative overflow-hidden" style="border-left:4px solid #a6e6ff">
+<p class="text-on-surface-variant text-sm mb-2">活跃用户数</p>
+<div class="flex items-end justify-between">
+<h2 id="screen-users" class="text-display-lg font-display-lg text-secondary glow-text">15,403</h2>
+<span class="text-primary text-sm font-label-mono mb-2">+3.2%</span>
+</div>
+<div class="h-12 mt-4 flex items-center gap-1">
+<div class="flex-1 bg-surface-container h-1 rounded-full overflow-hidden">
+<div class="bg-secondary h-full" style="width:78%"></div>
+</div>
+<span class="text-[10px] text-on-surface-variant">78% 负载</span>
+</div>
+</div>
+<div class="glass-panel p-6 rounded-xl relative overflow-hidden" style="border-left:4px solid #ffb59c">
+<p class="text-on-surface-variant text-sm mb-2">数据采集趋势</p>
+<div class="h-32 mt-2">
+<canvas class="w-full h-full" id="sparkline-2"></canvas>
+</div>
+</div>
+</div>
+</div>
+<!-- Center Column: Core Visualizer -->
+<div class="col-span-6 flex flex-col gap-6">
+<div class="glass-panel rounded-xl flex-1 relative flex flex-col items-center justify-center overflow-hidden">
+<div class="absolute top-6 left-8 flex flex-col">
+<h3 class="text-headline-sm font-headline-sm text-primary mb-1">核心风险预警球</h3>
+<p class="text-xs text-on-surface-variant">实时计算全域舆情指数</p>
+</div>
+<div class="relative w-full h-[500px] flex items-center justify-center">
+<!-- 3D Risk Globe -->
+<canvas id="risk-globe-canvas" width="400" height="400" class="absolute z-10" style="filter:drop-shadow(0 0 40px rgba(180,197,255,0.3))"></canvas>
+<!-- Floating HUD Overlay -->
+<div class="absolute bottom-8 flex gap-8">
+<div class="text-center px-4 py-2 border-r border-outline-variant/30">
+<p class="text-[10px] uppercase text-on-surface-variant">安全风险</p>
+<p class="text-xl font-bold text-error">CRITICAL</p>
+</div>
+<div class="text-center px-4 py-2 border-r border-outline-variant/30">
+<p class="text-[10px] uppercase text-on-surface-variant">处理时延</p>
+<p class="text-xl font-bold text-secondary">42ms</p>
+</div>
+<div class="text-center px-4 py-2">
+<p class="text-[10px] uppercase text-on-surface-variant">信任评分</p>
+<p id="screen-trust" class="text-xl font-bold text-primary">98.4</p>
+</div>
+</div>
+</div>
+<!-- Scan Line Overlay -->
+<div class="absolute inset-0 scan-line opacity-20 pointer-events-none"></div>
+</div>
+</div>
+<!-- Right Column: Audit & Emotional Analysis -->
+<div class="col-span-3 flex flex-col gap-6 h-full overflow-hidden">
+<!-- Audit Distribution Card -->
+<div class="glass-panel p-6 rounded-xl">
+<h3 class="text-headline-sm font-headline-sm text-primary mb-4">审计分级分布</h3>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-error"></span>高风险</span>
+<span class="font-label-mono text-on-surface"><span id="screen-audit-high">14 (5%)</span></span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-error h-full" style="width: 5%"></div>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary"></span>中风险</span>
+<span class="font-label-mono text-on-surface"><span id="screen-audit-medium">82 (28%)</span></span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full" style="width: 28%"></div>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary"></span>低风险</span>
+<span class="font-label-mono text-on-surface"><span id="screen-audit-low">196 (67%)</span></span>
+</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full" style="width: 67%"></div>
+</div>
+</div>
+</div>
+<!-- Emotional Tendency Ring -->
+<div class="glass-panel p-6 rounded-xl flex flex-col items-center">
+<h3 class="text-headline-sm font-headline-sm text-primary mb-6 self-start">情感倾向分析</h3>
+<div class="relative w-32 h-32 mb-6">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-surface-container-high" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" stroke-width="8"></circle>
+<circle class="text-secondary drop-shadow-[0_0_8px_rgba(76,214,255,0.4)]" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" stroke-dasharray="351.8" stroke-dashoffset="105.5" stroke-width="8"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span id="screen-sentiment" class="text-2xl font-bold text-secondary">70%</span>
+<span class="text-[10px] text-on-surface-variant">正面倾向</span>
+</div>
+</div>
+<div class="flex gap-4 text-xs">
+<div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-secondary"></span> 正向</div>
+<div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-outline"></span> 一般</div>
+<div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-error"></span> 负向</div>
+</div>
+</div>
+<!-- Recent Risk Scrolling List -->
+<div class="glass-panel p-6 rounded-xl flex-1 flex flex-col min-h-0">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-headline-sm font-headline-sm text-primary">实时风险事件</h3>
+<span class="material-symbols-outlined text-error animate-pulse">emergency</span>
+</div>
+<div class="flex-1 overflow-hidden scrolling-list relative">
+<div class="space-y-4 absolute w-full top-0" id="risk-scroll">
+<div class="p-3 bg-error/10 border-l-2 border-error rounded-r-lg">
+<div class="flex justify-between items-center mb-1">
+<span class="text-error font-bold text-xs uppercase">Security Alert</span>
+<span class="text-[10px] text-on-surface-variant font-label-mono">14:22:01</span>
+</div>
+<p class="text-xs text-on-surface leading-snug">检测到异常大流量数据导出行为：员工 ID_9921</p>
+</div>
+<div class="p-3 bg-surface-container-high border-l-2 border-tertiary rounded-r-lg">
+<div class="flex justify-between items-center mb-1">
+<span class="text-tertiary font-bold text-xs uppercase">Audit Warning</span>
+<span class="text-[10px] text-on-surface-variant font-label-mono">14:19:54</span>
+</div>
+<p class="text-xs text-on-surface leading-snug">审计流程中断：节点 [数据脱敏] 响应超时</p>
+</div>
+<div class="p-3 bg-surface-container-high border-l-2 border-primary rounded-r-lg">
+<div class="flex justify-between items-center mb-1">
+<span class="text-primary font-bold text-xs uppercase">System Notification</span>
+<span class="text-[10px] text-on-surface-variant font-label-mono">14:15:30</span>
+</div>
+<p class="text-xs text-on-surface leading-snug">全域采集节点更新完成，接入率 99.8%</p>
+</div>
+<!-- More clones for scrolling effect -->
+<div class="p-3 bg-error/10 border-l-2 border-error rounded-r-lg">
+<div class="flex justify-between items-center mb-1">
+<span class="text-error font-bold text-xs uppercase">Access Violation</span>
+<span class="text-[10px] text-on-surface-variant font-label-mono">14:12:12</span>
+</div>
+<p class="text-xs text-on-surface leading-snug">越权访问尝试：外部 IP 182.16.0.45 探测管理后台</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+// Simple sparkline drawing
+function drawSparkline(id, color) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    // 使用固定趋势数据替代随机数，真实场景应连接时序数据库
+    const data = [15, 18, 22, 28, 25, 32, 38, 35, 30, 27, 33, 40];
+
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.moveTo(0, canvas.height - data[0]);
+
+    const step = canvas.width / (data.length - 1);
+    for(let i = 1; i < data.length; i++) {
+        ctx.lineTo(i * step, canvas.height - data[i]);
+    }
+    ctx.stroke();
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, color.replace('1)', '0.2)'));
+    grad.addColorStop(1, 'transparent');
+    ctx.lineTo((data.length - 1) * step, canvas.height);
+    ctx.lineTo(0, canvas.height);
+    ctx.fillStyle = grad;
+    ctx.fill();
+}
+
+// Risk list scrolling animation
+let scrollEl = document.getElementById('risk-scroll');
+let currentScroll = 0;
+let scrollAnimating = false;
+function animateScroll() {
+    if (!scrollAnimating || !scrollEl) return;
+    currentScroll -= 0.5;
+    if (Math.abs(currentScroll) >= scrollEl.offsetHeight / 2) {
+        currentScroll = 0;
+    }
+    scrollEl.style.transform = `translateY(${currentScroll}px)`;
+    requestAnimationFrame(animateScroll);
+}
+
+
+// ===== 3D Risk Globe =====
+function drawRiskGlobe(trustScore, threatCount) {
+  const canvas = document.getElementById('risk-globe-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const cx = 200, cy = 200, r = 140;
+  ctx.clearRect(0, 0, 400, 400);
+
+  // Globe base gradient
+  const grad = ctx.createRadialGradient(cx - 20, cy - 30, r * 0.1, cx, cy, r);
+  const riskPct = Math.min(1, threatCount / 20); // threatCount越高越红
+  const r_val = Math.floor(180 + 75 * riskPct);
+  const g_val = Math.floor(210 - 180 * riskPct);
+  const b_val = Math.floor(255 - 200 * riskPct);
+  grad.addColorStop(0, `rgba(${r_val},${g_val},${b_val},0.9)`);
+  grad.addColorStop(0.5, `rgba(${Math.floor(r_val*0.6)},${Math.floor(g_val*0.5)},${b_val},0.6)`);
+  grad.addColorStop(1, `rgba(${Math.floor(r_val*0.2)},${Math.floor(g_val*0.2)},${b_val},0.2)`);
+
+  // Main sphere
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.strokeStyle = 'rgba(180,197,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Grid lines (latitude)
+  for (let i = 1; i <= 5; i++) {
+    const lat = r * (i / 6);
+    const hw = Math.sqrt(r * r - lat * lat);
+    ctx.beginPath(); ctx.ellipse(cx, cy, hw, r * 0.15, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(180,197,255,0.08)'; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+  // Grid lines (longitude)
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI;
+    ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.quadraticCurveTo(cx + r * Math.sin(angle) * 1.8, cy, cx, cy + r);
+    ctx.strokeStyle = 'rgba(180,197,255,0.08)'; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+
+  // Threat hotspots (red dots based on threat count)
+  const hotspots = [
+    {x: 0.3, y: -0.4}, {x: -0.4, y: 0.2}, {x: 0.5, y: 0.3}, {x: -0.3, y: -0.5}, {x: 0.1, y: 0.6}
+  ];
+  for (let i = 0; i < Math.min(threatCount, hotspots.length); i++) {
+    const h = hotspots[i];
+    const hx = cx + h.x * r * 0.7;
+    const hy = cy + h.y * r * 0.7;
+    const pulse = 4 + Math.sin(Date.now() / 1000 + i) * 2;
+    const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, pulse * 4);
+    glow.addColorStop(0, 'rgba(255,80,80,0.9)');
+    glow.addColorStop(0.3, 'rgba(255,80,80,0.4)');
+    glow.addColorStop(1, 'rgba(255,80,80,0)');
+    ctx.beginPath(); ctx.arc(hx, hy, pulse * 4, 0, Math.PI * 2);
+    ctx.fillStyle = glow; ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, hy, pulse, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff4d4d'; ctx.fill();
+  }
+
+  // Trust score ring
+  const scoreAngle = (trustScore / 100) * Math.PI * 2;
+  ctx.beginPath(); ctx.arc(cx, cy, r + 8, -Math.PI / 2, -Math.PI / 2 + scoreAngle);
+  ctx.strokeStyle = trustScore > 80 ? '#4edea3' : trustScore > 50 ? '#ffb786' : '#ffb4ab';
+  ctx.lineWidth = 4; ctx.shadowBlur = 12; ctx.shadowColor = trustScore > 80 ? '#4edea3' : '#ffb786';
+  ctx.stroke(); ctx.shadowBlur = 0;
+
+  // Center text
+  ctx.fillStyle = '#d7e3fb'; ctx.font = 'bold 28px Inter'; ctx.textAlign = 'center';
+  ctx.fillText(Math.round(trustScore), cx, cy - 5);
+  ctx.font = '12px Inter'; ctx.fillStyle = '#8d90a0';
+  ctx.fillText('信任评分', cx, cy + 20);
+}
+
+// Animate globe
+let globeAnimId = null;
+function startGlobeAnimation(trust, threats) {
+  if (globeAnimId) cancelAnimationFrame(globeAnimId);
+  function animate() {
+    drawRiskGlobe(trust, threats);
+    globeAnimId = requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+
+// Load audit logs from API and render into risk-scroll
+async function loadAuditLogs() {
+    try {
+        const logs = await apiGet('/api/audit/logs');
+        if (!logs || !logs.length) return;
+        scrollEl = document.getElementById('risk-scroll');
+        if (!scrollEl) return;
+
+        const riskStyles = {
+            high:   { bg: 'bg-error/10', border: 'border-error', text: 'text-error' },
+            medium: { bg: 'bg-surface-container-high', border: 'border-tertiary', text: 'text-tertiary' },
+            low:    { bg: 'bg-surface-container-high', border: 'border-primary', text: 'text-primary' },
+        };
+
+        const html = logs.map(log => {
+            const s = riskStyles[log.risk_level] || riskStyles.low;
+            const time = log.created_at ? new Date(log.created_at).toLocaleTimeString('zh-CN', { hour12: false }) : '--:--:--';
+            return `<div class="p-3 ${s.bg} border-l-2 ${s.border} rounded-r-lg">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="${s.text} font-bold text-xs uppercase">${escapeHtml(log.event_type)}</span>
+                    <span class="text-[10px] text-on-surface-variant font-label-mono">${time}</span>
+                </div>
+                <p class="text-xs text-on-surface leading-snug">${escapeHtml(log.description)}</p>
+            </div>`;
+        }).join('');
+
+        scrollEl.innerHTML = html;
+        // Duplicate for smooth infinite scroll
+        scrollEl.innerHTML += scrollEl.innerHTML;
+        // Start animation
+        scrollAnimating = true;
+        animateScroll();
+    } catch (e) { /* 静默 */ }
+}
+
+// Load metrics from backend API
+async function loadMetrics() {
+    const m = await apiGet('/api/dashboard/metrics');
+
+    document.getElementById('screen-messages').textContent = fmtNum(m.today_messages);
+    document.getElementById('screen-users').textContent = fmtNum(m.active_users);
+    document.getElementById('screen-trust').textContent = m.trust_score;
+    startGlobeAnimation(m.trust_score, m.active_threats);
+
+    const total = m.audit_high + m.audit_medium + m.audit_low;
+    const highPct = Math.round(m.audit_high / total * 100);
+    const medPct = Math.round(m.audit_medium / total * 100);
+    const lowPct = Math.round(m.audit_low / total * 100);
+
+    document.getElementById('screen-audit-high').textContent = `${m.audit_high} (${highPct}%)`;
+    document.getElementById('screen-audit-medium').textContent = `${m.audit_medium} (${medPct}%)`;
+    document.getElementById('screen-audit-low').textContent = `${m.audit_low} (${lowPct}%)`;
+
+    // Update audit progress bars widths
+    const highBar = document.querySelector('.bg-error.h-full');
+    const medBar = document.querySelector('.bg-tertiary.h-full');
+    const lowBar = document.querySelector('.bg-primary.h-full');
+    if (highBar) highBar.style.width = highPct + '%';
+    if (medBar) medBar.style.width = medPct + '%';
+    if (lowBar) lowBar.style.width = lowPct + '%';
+
+    // Update sentiment ring SVG
+    document.getElementById('screen-sentiment').textContent = `${m.sentiment_positive}%`;
+    const sentimentCircle = document.querySelector('svg circle:nth-of-type(2)');
+    if (sentimentCircle) {
+        sentimentCircle.setAttribute('stroke-dashoffset', 351.8 * (1 - m.sentiment_positive / 100));
+    }
+}
+
+// Load sidebar user info
+loadSidebarUser();
+
+// Update sidebar nav links
+const navMap = {
+    '数据治理': '/dashboard',
+    '权限管理': '/permissions',
+    '员工编排': '/agents',
+    '审计管理': '/audit',
+    '数字大屏': '/screen'
+};
+document.querySelectorAll('aside a, aside div').forEach(el => {
+    const text = el.textContent || '';
+    for (const [key, href] of Object.entries(navMap)) {
+        if (text.includes(key)) {
+            if (el.tagName === 'A') {
+                el.setAttribute('href', href);
+            } else {
+                el.setAttribute('onclick', `window.location.href='${href}'`);
+                el.style.cursor = 'pointer';
+            }
+            break;
+        }
+    }
+});
+
+window.onload = () => {
+    drawSparkline('sparkline-1', '#b4c5ff');
+    drawSparkline('sparkline-2', '#ffb59c');
+    // 从API加载审计日志并启动滚动动画
+    loadAuditLogs();
+};
+
+// Resize observer for sparklines
+window.onresize = () => {
+    drawSparkline('sparkline-1', '#b4c5ff');
+    drawSparkline('sparkline-2', '#ffb59c');
+};
+
+loadMetrics();
+</script>
+</body></html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>消息中心 — 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "background": "#0b1326", "surface": "#0b1326", "surface-dim": "#0b1326",
+        "surface-bright": "#31394d", "surface-container-lowest": "#060e20",
+        "surface-container-low": "#131b2e", "surface-container": "#171f33",
+        "surface-container-high": "#222a3d", "surface-container-highest": "#2d3449",
+        "surface-variant": "#2d3449", "primary": "#adc6ff",
+        "on-primary": "#002e6a", "primary-container": "#4d8eff",
+        "on-primary-container": "#00285d", "primary-fixed": "#d8e2ff",
+        "primary-fixed-dim": "#adc6ff", "secondary": "#4edea3",
+        "on-secondary": "#003824", "secondary-container": "#00a572",
+        "on-secondary-container": "#00311f", "tertiary": "#ffb786",
+        "error": "#ffb4ab", "on-error": "#690005",
+        "error-container": "#93000a", "on-error-container": "#ffdad6",
+        "outline": "#8c909f", "outline-variant": "#424754",
+        "on-surface": "#dae2fd", "on-surface-variant": "#c2c6d6",
+        "on-background": "#dae2fd", "inverse-surface": "#dae2fd",
+        "inverse-on-surface": "#283044", "inverse-primary": "#005ac2",
+      },
+      borderRadius: { DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem" },
+      fontFamily: {
+        "display-lg": ["Inter"], "body-md": ["Inter"], "headline-lg": ["Inter"],
+        "body-sm": ["Inter"], "headline-md": ["Inter"], "headline-sm": ["Inter"],
+        "label-md": ["JetBrains Mono"], "body-lg": ["Inter"], "label-sm": ["JetBrains Mono"]
+      },
+    }
+  }
+};
+</script>
+<style>
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  .fill-icon { font-variation-settings: 'FILL' 1; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #424754; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8c909f; }
+</style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen">
+<!-- Sidebar placeholder (app.js will replace with unified sidebar) -->
+<aside></aside>
+
+<!-- Main Content -->
+<main class=" min-h-screen p-lg">
+  <!-- Page Header -->
+  <div class="mb-lg">
+    <h1 class="font-headline-md text-headline-md font-bold text-on-surface">消息中心</h1>
+    <p class="text-body-sm text-on-surface-variant mt-1">查看会话列表、好友申请和系统通知</p>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="grid grid-cols-4 gap-md mb-lg">
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="material-symbols-outlined text-primary text-lg">chat</span>
+        <span class="text-xs text-outline">活跃会话</span>
+      </div>
+      <p class="text-2xl font-bold text-on-surface" id="stat-conversations">-</p>
+    </div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="material-symbols-outlined text-secondary text-lg">people</span>
+        <span class="text-xs text-outline">好友数</span>
+      </div>
+      <p class="text-2xl font-bold text-on-surface" id="stat-friends">-</p>
+    </div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="material-symbols-outlined text-tertiary text-lg">groups</span>
+        <span class="text-xs text-outline">群聊数</span>
+      </div>
+      <p class="text-2xl font-bold text-on-surface" id="stat-groups">-</p>
+    </div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="material-symbols-outlined text-error text-lg">notifications</span>
+        <span class="text-xs text-outline">待处理申请</span>
+      </div>
+      <p class="text-2xl font-bold text-on-surface" id="stat-requests">-</p>
+    </div>
+  </div>
+
+  <!-- Two Column Layout -->
+  <div class="grid grid-cols-2 gap-lg">
+    <!-- Left: Conversations -->
+    <section class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+      <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+        <h2 class="text-sm font-bold text-on-surface flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-sm">forum</span>
+          最近会话
+        </h2>
+        <a href="/im" class="text-xs text-primary hover:underline">进入IM控制台</a>
+      </div>
+      <div id="conv-list" class="divide-y divide-outline-variant/30 max-h-[500px] overflow-y-auto">
+        <div class="text-center text-outline text-sm py-lg">加载中...</div>
+      </div>
+    </section>
+
+    <!-- Right: Friend Requests + System Notifications -->
+    <section class="space-y-lg">
+      <!-- Friend Requests -->
+      <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+        <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+          <h2 class="text-sm font-bold text-on-surface flex items-center gap-2">
+            <span class="material-symbols-outlined text-secondary text-sm">person_add</span>
+            好友申请
+          </h2>
+          <span id="req-count" class="text-xs bg-error text-on-error px-2 rounded-full hidden">0</span>
+        </div>
+        <div id="req-list" class="divide-y divide-outline-variant/30 max-h-[300px] overflow-y-auto">
+          <div class="text-center text-outline text-sm py-lg">加载中...</div>
+        </div>
+      </div>
+
+      <!-- System Notifications -->
+      <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+        <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+          <h2 class="text-sm font-bold text-on-surface flex items-center gap-2">
+            <span class="material-symbols-outlined text-tertiary text-sm">notifications_active</span>
+            系统通知
+          </h2>
+          <a href="/audit" class="text-xs text-primary hover:underline">查看审计日志</a>
+        </div>
+        <div id="notif-list" class="divide-y divide-outline-variant/30 max-h-[200px] overflow-y-auto">
+          <div class="text-center text-outline text-sm py-lg">加载中...</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="mt-lg flex gap-md">
+    <a href="/im" class="flex items-center gap-2 px-lg py-sm bg-primary text-on-primary rounded-xl text-sm font-bold hover:brightness-110 transition-all">
+      <span class="material-symbols-outlined text-sm">forum</span>
+      进入即时通信
+    </a>
+    <a href="/agents" class="flex items-center gap-2 px-lg py-sm bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container-high transition-all">
+      <span class="material-symbols-outlined text-sm">smart_toy</span>
+      数字员工
+    </a>
+    <a href="/query" class="flex items-center gap-2 px-lg py-sm bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container-high transition-all">
+      <span class="material-symbols-outlined text-sm">terminal</span>
+      智能问数
+    </a>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+// Load all data
+async function loadAll() {
+  try {
+    const [convs, friends, groups, requests, audits] = await Promise.all([
+      apiGet('/api/messages/conversations'),
+      apiGet('/api/friends'),
+      apiGet('/api/groups'),
+      apiGet('/api/friends/requests'),
+      apiGet('/api/audit/logs?limit=5'),
+    ]);
+
+    // Update stats
+    document.getElementById('stat-conversations').textContent = (convs || []).length;
+    document.getElementById('stat-friends').textContent = (friends || []).length;
+    document.getElementById('stat-groups').textContent = (groups || []).length;
+    const pendingReqs = (requests || []).filter(r => r.status === 'pending');
+    document.getElementById('stat-requests').textContent = pendingReqs.length;
+
+    // Render conversations
+    renderConversations(convs || []);
+
+    // Render friend requests
+    renderRequests(requests || []);
+
+    // Render system notifications (from audit logs)
+    renderNotifications(audits || []);
+
+    // WebSocket event handlers for real-time updates
+    IM.on('friend_request', () => loadAll());
+    IM.on('friend_accepted', () => loadAll());
+    IM.on('group_invite', () => loadAll());
+    IM.on('chat', () => loadConversations());
+
+  } catch (e) {
+    console.error('loadAll:', e);
+    showToast('加载失败', 'error');
+  }
+}
+
+async function loadConversations() {
+  try {
+    const convs = await apiGet('/api/messages/conversations');
+    renderConversations(convs || []);
+    document.getElementById('stat-conversations').textContent = (convs || []).length;
+  } catch {}
+}
+
+function renderConversations(convs) {
+  const container = document.getElementById('conv-list');
+  if (!convs.length) {
+    container.innerHTML = '<div class="text-center text-outline text-sm py-lg">暂无会话<div class="text-xs mt-1">在IM控制台发起对话</div></div>';
+    return;
+  }
+  container.innerHTML = convs.map(c => {
+    const isGroup = !!c.group_id;
+    const link = isGroup ? `/im?group=${c.group_id}` : `/im?peer=${c.peer_id}`;
+    const icon = isGroup
+      ? '<span class="material-symbols-outlined text-on-surface-variant">groups</span>'
+      : (c.peer_avatar
+        ? `<img src="${escapeHtml(c.peer_avatar)}" class="w-full h-full object-cover"/>`
+        : '<span class="material-symbols-outlined text-on-surface-variant">person</span>');
+    return `
+      <a href="${link}" class="flex items-center gap-3 p-md hover:bg-surface-container-high transition-colors cursor-pointer">
+        <div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden flex-shrink-0">${icon}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex justify-between items-start">
+            <span class="text-sm font-medium truncate">${escapeHtml(c.peer_name || '群聊')}</span>
+            <span class="text-[10px] text-outline flex-shrink-0 ml-1">${c.last_time ? timeAgo(c.last_time) : ''}</span>
+          </div>
+          <p class="text-xs text-outline truncate mt-0.5">${escapeHtml(c.last_message || '')}</p>
+        </div>
+      </a>`;
+  }).join('');
+}
+
+function renderRequests(requests) {
+  const container = document.getElementById('req-list');
+  const badge = document.getElementById('req-count');
+  const pending = requests.filter(r => r.status === 'pending');
+
+  if (badge) {
+    if (pending.length > 0) {
+      badge.textContent = pending.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  if (!pending.length) {
+    container.innerHTML = '<div class="text-center text-outline text-sm py-lg">暂无待处理的好友申请</div>';
+    return;
+  }
+
+  container.innerHTML = pending.map(r => `
+    <div class="flex items-center gap-3 p-md">
+      <div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden flex-shrink-0">
+        ${r.from_avatar ? `<img src="${escapeHtml(r.from_avatar)}" class="w-full h-full object-cover"/>` : '<span class="material-symbols-outlined text-sm text-on-surface-variant">person</span>'}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium truncate">${escapeHtml(r.from_nickname || r.from_username)}</p>
+        <p class="text-xs text-outline truncate">${escapeHtml(r.message || '请求添加你为好友')}</p>
+      </div>
+      <div class="flex gap-1 flex-shrink-0">
+        <button class="px-2 py-1 bg-secondary text-on-secondary text-xs rounded hover:brightness-110 transition-all" data-action="accept" data-id="${r.id}">接受</button>
+        <button class="px-2 py-1 border border-outline-variant text-outline text-xs rounded hover:bg-surface-variant transition-all" data-action="reject" data-id="${r.id}">拒绝</button>
+      </div>
+    </div>
+  `).join('');
+
+  // Bind buttons
+  container.querySelectorAll('[data-action="accept"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await apiPost('/api/friends/requests/' + btn.dataset.id + '/accept', {});
+        showToast('已接受好友申请', 'success');
+        loadAll();
+      } catch { showToast('操作失败', 'error'); }
+    });
+  });
+  container.querySelectorAll('[data-action="reject"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        await apiPost('/api/friends/requests/' + btn.dataset.id + '/reject', {});
+        showToast('已拒绝', 'info');
+        loadAll();
+      } catch { showToast('操作失败', 'error'); }
+    });
+  });
+}
+
+function renderNotifications(audits) {
+  const container = document.getElementById('notif-list');
+  if (!audits || !audits.length) {
+    container.innerHTML = '<div class="text-center text-outline text-sm py-lg">暂无系统通知</div>';
+    return;
+  }
+  const riskColors = { high: 'text-error', medium: 'text-tertiary', low: 'text-outline' };
+  container.innerHTML = audits.map(a => `
+    <div class="p-md flex gap-2">
+      <span class="material-symbols-outlined text-sm ${riskColors[a.risk_level] || 'text-outline'} flex-shrink-0 mt-0.5">
+        ${a.risk_level === 'high' ? 'warning' : a.risk_level === 'medium' ? 'info' : 'check_circle'}
+      </span>
+      <div class="min-w-0">
+        <p class="text-xs ${riskColors[a.risk_level] || 'text-outline'} font-medium">${escapeHtml(a.event_type || '')}</p>
+        <p class="text-xs text-on-surface-variant mt-0.5 line-clamp-2">${escapeHtml(a.description || '')}</p>
+        <p class="text-[10px] text-outline mt-0.5">${a.created_at ? timeAgo(a.created_at) : ''}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+loadAll();
+</script>
+</body>
+</html>

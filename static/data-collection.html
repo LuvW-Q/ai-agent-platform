@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>数据采集 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-dim":"#071425","surface-bright":"#2e3a4c","surface-container-lowest":"#030e1f","surface-container-low":"#101c2d","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","on-primary":"#002a78","secondary":"#a6e6ff","secondary-container":"#14d1ff","on-secondary-container":"#00566b","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"],"label-mono":["JetBrains Mono"]}}}}
+</script>
+<style>
+body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.tab-active{border-bottom:2px solid #b4c5ff;color:#b4c5ff}.custom-scrollbar::-webkit-scrollbar{width:4px}.custom-scrollbar::-webkit-scrollbar-thumb{background:#434654;border-radius:10px}.result-card{transition:all .15s ease}.result-card:hover{background:#1f2a3c!important}
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<aside></aside>
+<main class="p-6 min-h-screen">
+  <div class="flex items-center gap-6 mb-6 border-b border-outline-variant/20 pb-3">
+    <button class="tab-btn tab-active pb-2 px-1 text-sm font-medium transition-colors" data-tab="sources">数据源管理</button>
+    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors" data-tab="rules">清洗规则</button>
+    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors" data-tab="crawl">数据采集</button>
+    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors" data-tab="warehouse">数据仓库</button>
+  </div>
+  <div id="tabContent"></div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+/* ========== Global State ========== */
+let activeTab = 'sources', sources = [], rules = [], warehouseData = [];
+let testCache = {};
+
+const TEMPLATES = {
+  baidu: {
+    name: '百度新闻搜索', method: 'GET', parse_type: 'selector', parse_rule: '.result',
+    url: 'https://news.baidu.com/ns?word={keyword}&tn=news',
+    headers: '{"User-Agent":"Mozilla/5.0"}',
+  },
+  rss: {
+    name: '', method: 'GET', parse_type: 'crawl4ai', parse_rule: '',
+    url: '', headers: '{"User-Agent":"Mozilla/5.0"}',
+  },
+  custom: {
+    name: '', method: 'GET', parse_type: 'selector', parse_rule: '',
+    url: '', headers: '{}',
+  },
+};
+
+/* ========== Init ========== */
+async function init() {
+  await Promise.all([loadSources(), loadRules()]);
+  renderTab();
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      activeTab = b.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('tab-active'));
+      b.classList.add('tab-active');
+      renderTab();
+    });
+  });
+}
+if (requireAuth()) init();
+
+/* ========== Data Loaders ========== */
+async function loadSources() {
+  try { sources = await apiGet('/api/dc/sources'); } catch(e) { sources = []; }
+}
+async function loadRules() {
+  try { rules = await apiGet('/api/dc/rules'); } catch(e) { rules = []; }
+}
+
+/* ========== Tab Renderer ========== */
+function renderTab() {
+  const el = document.getElementById('tabContent');
+  if (activeTab === 'sources') renderSourcesTab(el);
+  else if (activeTab === 'rules') renderRulesTab(el);
+  else if (activeTab === 'crawl') renderCrawlTab(el);
+  else if (activeTab === 'warehouse') renderWarehouseTab(el);
+}
+
+/* ============ Sources Tab ============ */
+
+function renderSourcesTab(el) {
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-primary">数据源配置</h2>
+      <button onclick="openSourceModal()" class="bg-primary-container text-on-primary-container px-4 py-2 rounded-xl text-sm font-medium hover:opacity-80 transition-opacity">
+        <span class="material-symbols-outlined text-sm">add</span> 添加数据源
+      </button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3" id="sourceGrid">
+      ${renderSourceCards()}
+    </div>`;
+}
+
+function renderSourceCards() {
+  if (!sources.length) return '<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无数据源，点击右上角添加</div>';
+  return sources.map(s => {
+    const tr = testCache[s.id];
+    const statusBadge = s.status === 'active'
+      ? '<span class="text-[10px] px-2 py-0.5 rounded bg-secondary-container/20 text-secondary">活跃</span>'
+      : '<span class="text-[10px] px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant">停用</span>';
+    const tplBadge = s.template
+      ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-primary-container/20 text-primary shrink-0">' + s.template + '</span>'
+      : '';
+    const testWidget = tr
+      ? (tr.success
+          ? '<span class="text-[10px] px-2 py-1 rounded bg-secondary-container/20 text-secondary">' + tr.status_code + ' · ' + tr.elapsed_ms + 'ms</span>'
+          : '<span class="text-[10px] px-2 py-1 rounded bg-error-container/20 text-error">失败</span>')
+      : '';
+    return `
+    <div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-4">
+      <div class="flex items-start justify-between mb-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="material-symbols-outlined text-sm text-primary shrink-0">link</span>
+          <span class="font-bold text-sm truncate">${escapeHtml(s.name)}</span>
+          ${tplBadge}
+        </div>
+        <button onclick="deleteSource(${s.id})" class="text-on-surface-variant hover:text-error text-xs shrink-0 ml-2">×</button>
+      </div>
+      <div class="text-[10px] text-on-surface-variant space-y-1">
+        <div class="truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url).substring(0, 80)}${s.url.length > 80 ? '...' : ''}</div>
+        <div>方法: ${s.method} · 解析: ${s.parse_type}${s.parse_rule ? ' · ' + escapeHtml(s.parse_rule) : ' · 全文'}</div>
+      </div>
+      <div class="flex items-center gap-2 mt-3 pt-2 border-t border-outline-variant/10">
+        ${statusBadge}
+        <button onclick="testSource(${s.id})" class="text-[10px] px-2 py-1 rounded bg-surface-container-high/50 text-on-surface-variant hover:text-primary transition-colors" id="testBtn${s.id}">
+          <span class="material-symbols-outlined text-[12px]">wifi_find</span> 测试连接
+        </button>
+        ${testWidget}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function testSource(id) {
+  const btn = document.getElementById('testBtn' + id);
+  if (!btn) return;
+  btn.innerHTML = '<span class="material-symbols-outlined text-[12px] animate-spin">progress_activity</span> 测试中...';
+  btn.disabled = true;
+  try {
+    const res = await apiPost('/api/dc/sources/' + id + '/test');
+    testCache[id] = res;
+    showToast(res.success ? ('连接成功 · ' + res.status_code) : ('连接失败: ' + (res.error || res.status_code)), res.success ? 'success' : 'error');
+  } catch(e) {
+    testCache[id] = { success: false, error: e.message || '请求失败' };
+    showToast('测试请求失败', 'error');
+  }
+  renderSourcesTab(document.getElementById('tabContent'));
+}
+
+function openSourceModal() {
+  selectedTemplate = 'custom';
+  const existing = document.querySelector('.fixed.inset-0');
+  if (existing) existing.remove();
+
+  const html = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick="if(event.target===this)this.remove()">
+    <div class="bg-surface-container rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <h3 class="text-lg font-bold text-primary mb-4">添加数据源</h3>
+      <div class="mb-4">
+        <label class="text-xs text-on-surface-variant mb-2 block">快速模板</label>
+        <div class="flex gap-2">
+          <button onclick="selectTemplate('baidu')" data-tpl="baidu" class="tpl-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border border-outline-variant/20 hover:bg-surface-container-high transition-colors">
+            <span class="material-symbols-outlined text-primary text-sm">travel_explore</span> 百度新闻
+          </button>
+          <button onclick="selectTemplate('rss')" data-tpl="rss" class="tpl-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border border-outline-variant/20 hover:bg-surface-container-high transition-colors">
+            <span class="material-symbols-outlined text-secondary text-sm">rss_feed</span> RSS
+          </button>
+          <button onclick="selectTemplate('custom')" data-tpl="custom" class="tpl-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border border-outline-variant/20 hover:bg-surface-container-high transition-colors">
+            <span class="material-symbols-outlined text-tertiary text-sm">web</span> 自定义网页
+          </button>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <div><label class="text-xs text-on-surface-variant">名称</label><input id="dsName" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/></div>
+        <div><label class="text-xs text-on-surface-variant">URL（支持{keyword}占位符）</label>
+          <input id="dsUrl" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1" placeholder="https://example.com/search?q={keyword}"/>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-xs text-on-surface-variant">请求方法</label>
+            <select id="dsMethod" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"><option>GET</option><option>POST</option></select>
+          </div>
+          <div><label class="text-xs text-on-surface-variant">解析方式</label>
+            <select id="dsParse" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1">
+              <option value="selector">CSS选择器</option><option value="xpath">XPath</option><option value="crawl4ai">Crawl4AI 全文</option>
+            </select>
+          </div>
+        </div>
+        <div><label class="text-xs text-on-surface-variant">解析规则（CSS选择器 / XPath）</label>
+          <input id="dsRule" placeholder="如: .news-item, //div[@class='content']" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/>
+        </div>
+        <div><label class="text-xs text-on-surface-variant">Headers (JSON)</label>
+          <textarea id="dsHeaders" rows="2" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1 font-mono">{}</textarea>
+        </div>
+        <div><label class="text-xs text-on-surface-variant">Body（POST时使用）</label>
+          <textarea id="dsBody" rows="2" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1 font-mono"></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-4">
+        <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface">取消</button>
+        <button onclick="saveSource()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg font-medium hover:opacity-90">保存</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  selectTemplate(selectedTemplate);
+}
+
+let selectedTemplate = 'custom';
+
+function selectTemplate(tpl) {
+  selectedTemplate = tpl;
+  const t = TEMPLATES[tpl];
+  const nameEl = document.getElementById('dsName');
+  const urlEl = document.getElementById('dsUrl');
+  const methodEl = document.getElementById('dsMethod');
+  const parseEl = document.getElementById('dsParse');
+  const ruleEl = document.getElementById('dsRule');
+  const headersEl = document.getElementById('dsHeaders');
+  const bodyEl = document.getElementById('dsBody');
+  if (nameEl) nameEl.value = t.name;
+  if (urlEl) urlEl.value = t.url;
+  if (methodEl) methodEl.value = t.method;
+  if (parseEl) parseEl.value = t.parse_type;
+  if (ruleEl) ruleEl.value = t.parse_rule;
+  if (headersEl) headersEl.value = t.headers;
+  if (bodyEl) bodyEl.value = '';
+  document.querySelectorAll('.tpl-btn').forEach(b => b.classList.remove('bg-primary-container/40', 'border-primary/40'));
+  const btn = document.querySelector('.tpl-btn[data-tpl="' + tpl + '"]');
+  if (btn) btn.classList.add('bg-primary-container/40', 'border-primary/40');
+}
+
+async function saveSource() {
+  const data = {
+    name: document.getElementById('dsName').value,
+    url: document.getElementById('dsUrl').value,
+    method: document.getElementById('dsMethod').value,
+    parse_type: document.getElementById('dsParse').value,
+    parse_rule: document.getElementById('dsRule').value,
+    headers: document.getElementById('dsHeaders').value,
+    body: document.getElementById('dsBody').value,
+    template: selectedTemplate,
+  };
+  if (!data.name || !data.url) { showToast('请填写名称和URL', 'error'); return; }
+  try {
+    await apiPost('/api/dc/sources', data);
+    document.querySelector('.fixed.inset-0')?.remove();
+    showToast('数据源已添加', 'success');
+    await loadSources();
+    renderTab();
+  } catch(e) {
+    showToast('添加失败: ' + (e.message || '未知错误'), 'error');
+  }
+}
+
+async function deleteSource(id) {
+  if (!confirm('确认删除此数据源？')) return;
+  try { await apiDelete('/api/dc/sources/' + id); } catch(e) {}
+  delete testCache[id];
+  await loadSources();
+  renderTab();
+}
+
+/* ============ Rules Tab ============ */
+
+function renderRulesTab(el) {
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-primary">清洗规则</h2>
+      <button onclick="openRuleModal()" class="bg-primary-container text-on-primary-container px-4 py-2 rounded-xl text-sm font-medium hover:opacity-80">
+        <span class="material-symbols-outlined text-sm">add</span> 添加规则
+      </button>
+    </div>
+    <div class="space-y-2" id="ruleList">
+      ${renderRuleItems()}
+    </div>`;
+}
+
+function renderRuleItems() {
+  if (!rules.length) return '<div class="text-center py-12 text-on-surface-variant text-sm">暂无清洗规则</div>';
+  const typeLabels = {
+    remove_html: '去除HTML标签', trim_whitespace: '去除多余空白',
+    remove_empty: '去除空数据', regex_replace: '正则替换', deduplicate: '去重',
+  };
+  return rules.map(r => `
+    <div class="flex items-center justify-between bg-surface-container/50 rounded-lg px-4 py-3">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="material-symbols-outlined text-sm text-secondary">auto_fix</span>
+        <span class="text-sm font-medium truncate">${escapeHtml(r.name)}</span>
+        <span class="text-[10px] px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant">${typeLabels[r.rule_type] || r.rule_type}</span>
+      </div>
+      <button onclick="deleteRule(${r.id})" class="text-on-surface-variant hover:text-error text-xs shrink-0 ml-2">删除</button>
+    </div>`).join('');
+}
+
+async function deleteRule(id) {
+  if (!confirm('确认删除此规则？')) return;
+  try { await apiDelete('/api/dc/rules/' + id); } catch(e) {}
+  await loadRules();
+  renderTab();
+}
+
+function openRuleModal() {
+  const types = [
+    { v: 'remove_html', l: '去除HTML标签' },
+    { v: 'trim_whitespace', l: '去除多余空白' },
+    { v: 'remove_empty', l: '去除空数据' },
+    { v: 'regex_replace', l: '正则替换' },
+    { v: 'deduplicate', l: '去重' },
+  ];
+  const existing = document.querySelector('.fixed.inset-0');
+  if (existing) existing.remove();
+
+  const html = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick="if(event.target===this)this.remove()">
+    <div class="bg-surface-container rounded-2xl p-6 w-full max-w-md">
+      <h3 class="text-lg font-bold text-primary mb-4">添加清洗规则</h3>
+      <div class="space-y-3">
+        <div><label class="text-xs text-on-surface-variant">名称</label><input id="ruleName" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/></div>
+        <div><label class="text-xs text-on-surface-variant">类型</label>
+          <select id="ruleType" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1">
+            ${types.map(t => '<option value="' + t.v + '">' + t.l + '</option>').join('')}
+          </select>
+        </div>
+        <div><label class="text-xs text-on-surface-variant">配置 (JSON)</label>
+          <textarea id="ruleConfig" rows="2" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1 font-mono">{}</textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-4">
+        <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface">取消</button>
+        <button onclick="saveRule()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg font-medium hover:opacity-90">保存</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function saveRule() {
+  const data = {
+    name: document.getElementById('ruleName').value,
+    rule_type: document.getElementById('ruleType').value,
+    config: document.getElementById('ruleConfig').value,
+  };
+  if (!data.name) { showToast('请填写名称', 'error'); return; }
+  try {
+    await apiPost('/api/dc/rules', data);
+    document.querySelector('.fixed.inset-0')?.remove();
+    showToast('规则已添加', 'success');
+    await loadRules();
+    renderTab();
+  } catch(e) {
+    showToast('添加失败: ' + (e.message || '未知错误'), 'error');
+  }
+}
+
+/* ============ Crawl Tab ============ */
+
+function renderCrawlTab(el) {
+  const activeSources = sources.filter(s => s.status === 'active');
+  el.innerHTML = `
+    <div class="max-w-3xl">
+      <h2 class="text-lg font-bold text-primary mb-4">数据采集</h2>
+      <div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-4 mb-4">
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-on-surface-variant">关键词</label>
+            <input id="crawlKeyword" type="text" placeholder="输入搜索关键词，如：人工智能、新质生产力..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2.5 text-sm mt-1"/>
+          </div>
+          <div>
+            <label class="text-xs text-on-surface-variant mb-2 block">选择数据源</label>
+            <div class="flex flex-wrap gap-2">
+              ${activeSources.length
+                ? activeSources.map(s => '<label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container-high/50 border border-outline-variant/20 text-xs cursor-pointer hover:bg-surface-container-high transition-colors"><input type="checkbox" class="source-cb" value="' + s.id + '" checked/> ' + escapeHtml(s.name) + '</label>').join('')
+                : '<span class="text-xs text-on-surface-variant">无活跃数据源</span>'}
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-on-surface-variant mb-2 block">清洗规则（可选）</label>
+            <div class="flex flex-wrap gap-2">
+              ${rules.length
+                ? rules.map(r => '<label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container-high/50 border border-outline-variant/20 text-xs cursor-pointer hover:bg-surface-container-high transition-colors"><input type="checkbox" class="rule-cb" value="' + r.id + '"/> ' + escapeHtml(r.name) + '</label>').join('')
+                : '<span class="text-xs text-on-surface-variant">无清洗规则</span>'}
+            </div>
+          </div>
+          <button onclick="doCrawl()" id="crawlBtn" class="mt-2 bg-primary-container text-on-primary-container px-6 py-2.5 rounded-xl text-sm font-bold hover:opacity-80 transition-opacity">
+            <span class="material-symbols-outlined text-sm">travel_explore</span> 开始采集
+          </button>
+        </div>
+      </div>
+      <div id="crawlResult"></div>
+    </div>`;
+}
+
+async function doCrawl() {
+  const kw = document.getElementById('crawlKeyword').value.trim();
+  if (!kw) { showToast('请输入关键词', 'error'); return; }
+
+  const sourceIds = [...document.querySelectorAll('.source-cb:checked')].map(c => parseInt(c.value));
+  if (!sourceIds.length) { showToast('请至少选择一个数据源', 'error'); return; }
+  const ruleIds = [...document.querySelectorAll('.rule-cb:checked')].map(c => parseInt(c.value));
+
+  const btn = document.getElementById('crawlBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span> 采集中...';
+
+  try {
+    const res = await apiPost('/api/dc/crawl', { keyword: kw, source_ids: sourceIds, clean_rule_ids: ruleIds });
+    const el = document.getElementById('crawlResult');
+    let total = 0;
+    res.results.forEach(r => { total += r.count || 0; });
+
+    el.innerHTML = '<div class="text-sm font-bold text-secondary mb-3"><span class="material-symbols-outlined text-sm">list_alt</span> 采集结果 · 共 ' + total + ' 条</div>' +
+      res.results.map(r => {
+        if (r.error) {
+          return '<div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-3 mb-2"><div class="flex items-center gap-2 mb-1"><span class="material-symbols-outlined text-sm text-error">error</span><span class="text-sm font-bold">' + escapeHtml(r.source) + '</span><span class="text-xs text-error">' + escapeHtml(r.error) + '</span></div></div>';
+        }
+        return '<div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-3 mb-2">' +
+          '<div class="flex items-center justify-between mb-2"><span class="text-sm font-bold">' + escapeHtml(r.source) + '</span><span class="text-[10px] px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant">' + r.count + ' 条</span></div>' +
+          (r.items || []).map(item => '<div class="result-card bg-surface-container-high/30 rounded-lg p-2.5 mb-1.5 text-xs">' +
+            '<div class="font-medium text-sm">' + escapeHtml(item.title || '无标题') + '</div>' +
+            '<div class="text-on-surface-variant line-clamp-2 mt-0.5">' + escapeHtml((item.content || '').substring(0, 200)) + '</div>' +
+            '<div class="flex items-center gap-2 mt-1.5">' +
+            (!item.saved
+              ? '<button onclick="saveCrawlItem(' + item.id + ', this)" class="text-[10px] text-secondary hover:underline flex items-center gap-0.5"><span class="material-symbols-outlined text-[10px]">save</span> 保存到仓库</button>'
+              : '<span class="text-[10px] text-secondary/60">已保存</span>') +
+            (item.url ? '<a href="' + escapeHtml(item.url) + '" target="_blank" class="text-[10px] text-on-surface-variant hover:text-primary underline">查看原文</a>' : '') +
+            '</div></div>').join('') +
+          '</div>';
+      }).join('');
+  } catch(e) {
+    showToast('采集失败: ' + (e.message || '未知错误'), 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span class="material-symbols-outlined text-sm">travel_explore</span> 开始采集';
+}
+
+async function saveCrawlItem(id, btnEl) {
+  try {
+    await apiPost('/api/dc/warehouse/' + id + '/save');
+    showToast('已保存到数据仓库', 'success');
+    if (btnEl) {
+      btnEl.outerHTML = '<span class="text-[10px] text-secondary/60">已保存</span>';
+    }
+  } catch(e) {
+    showToast('保存失败', 'error');
+  }
+}
+
+/* ============ Warehouse Tab ============ */
+
+function renderWarehouseTab(el) {
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-primary">数据仓库</h2>
+      <div class="flex items-center gap-2">
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">search</span>
+          <input id="whSearch" type="text" placeholder="搜索标题或内容..." onkeydown="if(event.key==='Enter')searchWH()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg pl-8 pr-3 py-1.5 text-sm w-56"/>
+        </div>
+        <button onclick="searchWH()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs hover:text-primary transition-colors">搜索</button>
+      </div>
+    </div>
+    <div id="whContent"><div class="text-center py-12 text-on-surface-variant text-sm"><span class="material-symbols-outlined animate-spin">progress_activity</span> 加载中...</div></div>
+    <div id="whGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>`;
+  loadWarehouseData();
+}
+
+async function loadWarehouseData() {
+  try { warehouseData = await apiGet('/api/dc/warehouse'); } catch(e) { warehouseData = []; }
+  const grid = document.getElementById('whGrid');
+  if (!grid) return;
+  grid.innerHTML = renderWarehouseItems();
+}
+
+function renderWarehouseItems() {
+  if (!warehouseData.length) return '<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">数据仓库为空</div>';
+  return warehouseData.map(d => {
+    const sentimentClass = d.sentiment === 'positive' ? 'bg-secondary-container/20 text-secondary'
+      : d.sentiment === 'negative' ? 'bg-error-container/20 text-error' : 'bg-surface-container-high text-on-surface-variant';
+    let keywords = [];
+    try { keywords = JSON.parse(d.keywords_extracted || '[]'); } catch(e) {}
+    let ents = {};
+    try { ents = JSON.parse(d.entities || '{}'); } catch(e) {}
+    const entParts = [];
+    if (ents.time) entParts.push('<span class="text-[10px] text-on-surface-variant"><span class="text-primary">时间:</span> ' + escapeHtml(ents.time) + '</span>');
+    if (ents.location) entParts.push('<span class="text-[10px] text-on-surface-variant"><span class="text-primary">地点:</span> ' + escapeHtml(ents.location) + '</span>');
+    if (ents.person) entParts.push('<span class="text-[10px] text-on-surface-variant"><span class="text-primary">人物:</span> ' + escapeHtml(ents.person) + '</span>');
+
+    return '<div class="bg-surface-container/50 rounded-xl border border-outline-variant/20 p-4">' +
+      '<div class="flex items-start justify-between mb-2">' +
+      '<div class="min-w-0 flex-1"><div class="font-bold text-sm truncate">' + escapeHtml(d.title || d.source_name || '无标题') + '</div>' +
+      '<div class="text-[10px] text-on-surface-variant mt-0.5">' + escapeHtml(d.source_name) + (d.keyword ? ' · 关键词: ' + escapeHtml(d.keyword) : '') + '</div></div>' +
+      '<div class="flex items-center gap-1 shrink-0 ml-2">' +
+      '<span class="text-[10px] px-2 py-0.5 rounded ' + sentimentClass + '">' + (d.sentiment || 'neutral') + '</span>' +
+      (!d.deep_collected
+        ? '<button onclick="deepCollect(' + d.id + ')" class="text-[10px] px-2 py-0.5 bg-primary-container/20 text-primary rounded hover:opacity-80" title="深度采集">深度</button>'
+        : '<span class="text-[10px] px-1.5 py-0.5 text-secondary/60" title="已深度采集">深度</span>') +
+      '<button onclick="deleteWH(' + d.id + ')" class="text-on-surface-variant hover:text-error text-xs">×</button></div></div>' +
+      '<div class="text-xs text-on-surface-variant line-clamp-2 mt-1">' + escapeHtml((d.summary || d.content || '').substring(0, 150)) + '</div>' +
+      (keywords.length ? '<div class="mt-2 flex flex-wrap gap-1">' + keywords.map(k => '<span class="text-[10px] bg-surface-container-high px-1.5 py-0.5 rounded">' + escapeHtml(k) + '</span>').join('') + '</div>' : '') +
+      (entParts.length ? '<div class="mt-2 flex flex-wrap gap-x-3 gap-y-1">' + entParts.join('') + '</div>' : '') +
+      (d.url ? '<div class="mt-2 pt-2 border-t border-outline-variant/10"><a href="' + escapeHtml(d.url) + '" target="_blank" class="text-[10px] text-on-surface-variant hover:text-primary underline">查看来源</a></div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+async function searchWH() {
+  const kw = document.getElementById('whSearch').value.trim();
+  const qs = kw ? '?keyword=' + encodeURIComponent(kw) : '';
+  try {
+    warehouseData = await apiGet('/api/dc/warehouse' + qs);
+  } catch(e) { showToast('搜索失败', 'error'); return; }
+  const grid = document.getElementById('whGrid');
+  if (grid) grid.innerHTML = renderWarehouseItems();
+}
+
+async function deepCollect(id) {
+  try {
+    await apiPost('/api/dc/warehouse/' + id + '/deep-collect');
+    showToast('深度采集完成', 'success');
+    await loadWarehouseData();
+  } catch(e) {
+    showToast('深度采集失败: ' + (e.message || ''), 'error');
+  }
+}
+
+async function deleteWH(id) {
+  if (!confirm('确认删除此仓库数据？')) return;
+  try { await apiDelete('/api/dc/warehouse/' + id); } catch(e) {}
+  await loadWarehouseData();
+}
+</script>
+</body></html>

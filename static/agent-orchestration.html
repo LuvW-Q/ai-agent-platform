@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>员工编排 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-low":"#101c2d","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","on-primary":"#002a78","secondary":"#a6e6ff","secondary-container":"#14d1ff","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"],"label-mono":["JetBrains Mono"]}}}}</script>
+<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.glass{background:rgba(20,32,49,0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.05)}.custom-scrollbar::-webkit-scrollbar{width:4px}.custom-scrollbar::-webkit-scrollbar-thumb{background:#434654;border-radius:10px}</style></head>
+<body class="bg-background text-on-background min-h-screen">
+<aside></aside>
+<main class="p-6 min-h-screen">
+  <div class="flex items-center justify-between mb-6">
+    <div><h1 class="text-2xl font-bold text-primary">智能数字员工编排中心</h1><p class="text-sm text-on-surface-variant mt-1">创建、发布与编排数字员工</p></div>
+    <div class="flex gap-3">
+      <button onclick="openCreateModal()" class="flex items-center gap-2 bg-primary-container text-on-primary-container px-4 py-2 rounded-xl text-sm hover:opacity-80"><span class="material-symbols-outlined">add</span>新建</button>
+    </div>
+  </div>
+
+  <!-- Agents Grid -->
+  <div id="agentGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+
+  <!-- Create/Edit Modal -->
+  <div id="agentModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+    <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4"><h2 id="modalTitle" class="text-lg font-bold text-primary">新建数字员工</h2><button onclick="closeAgentModal()" class="text-on-surface-variant"><span class="material-symbols-outlined">close</span></button></div>
+      <div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-xs text-on-surface-variant">名称</label><input id="agName" type="text" placeholder="名称" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/></div>
+          <div><label class="text-xs text-on-surface-variant">头像URL</label><input id="agAvatar" type="text" placeholder="https://..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/></div>
+        </div>
+        <div><label class="text-xs text-on-surface-variant">人设 Prompt</label><textarea id="agPrompt" rows="3" placeholder="你是..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"></textarea></div>
+        <div><label class="text-xs text-on-surface-variant">描述</label><input id="agDesc" type="text" placeholder="简短描述" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-xs text-on-surface-variant">绑定模型</label><select id="agModel" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"><option value="">选择模型</option></select></div>
+          <div><label class="text-xs text-on-surface-variant">降级话术</label><input id="agFallback" type="text" value="系统繁忙，请稍后再试" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"/></div>
+        </div>
+        <div><label class="text-xs text-on-surface-variant">绑定技能（多选）</label><div id="skillChecks" class="space-y-1 max-h-32 overflow-y-auto bg-surface-container-high/30 rounded-lg p-2 mt-1"></div></div>
+      </div>
+      <div class="flex justify-end gap-3 mt-5"><button onclick="closeAgentModal()" class="px-4 py-2 text-sm">取消</button><button onclick="saveAgent()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg hover:opacity-80">保存</button></div>
+    </div>
+  </div>
+
+  <!-- Detail / Publish Modal -->
+  <div id="detailModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+    <div class="bg-surface-container rounded-2xl p-6 w-full max-w-lg mx-4">
+      <div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold text-primary">员工详情</h3><button onclick="closeDetailModal()" class="text-on-surface-variant"><span class="material-symbols-outlined">close</span></button></div>
+      <div id="detailContent"></div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+let agents=[], models=[], skills=[], editId=null;
+
+async function loadData(){try{[agents,models,skills]=await Promise.all([apiGet('/api/agents'),apiGet('/api/models'),apiGet('/api/skills')]);renderGrid();}catch(e){showToast('加载失败','error');}}
+
+function renderGrid(){
+  const g=document.getElementById('agentGrid');
+  if(!agents.length){g.innerHTML='<div class=\"col-span-full text-center py-12 text-on-surface-variant\">暂无数字员工，点击上方按钮创建</div>';return;}
+  g.innerHTML=agents.map(a=>{
+    const sc={draft:'bg-surface-container-high text-on-surface-variant',published:'bg-secondary-container/20 text-secondary',testing:'bg-tertiary-container/20 text-tertiary'};
+    const sl={draft:'草稿',published:'已发布',testing:'测试中'};
+    const model= models.find(m=>m.id===a.model_id);
+    return `<div class=\"bg-surface-container/50 rounded-2xl border border-outline-variant/20 p-5 hover:border-secondary-container/30 transition-all\">
+      <div class=\"flex items-start justify-between mb-3\">
+        <div class=\"flex items-center gap-3\">
+          <div class=\"w-10 h-10 rounded-full bg-primary-container/30 flex items-center justify-center\"><span class=\"material-symbols-outlined text-primary\">smart_toy</span></div>
+          <div><h3 class=\"font-bold\">${escapeHtml(a.name)}</h3><p class=\"text-xs text-on-surface-variant\">${escapeHtml(model?model.name:'未绑定模型')}</p></div>
+        </div>
+        <span class=\"text-[10px] px-2 py-1 rounded ${sc[a.status]||sc.draft}\">${sl[a.status]||a.status}</span>
+      </div>
+      <p class=\"text-xs text-on-surface-variant mb-3 line-clamp-2\">${escapeHtml(a.description||'')}</p>
+      <div class=\"flex gap-2\">
+        <button onclick=\"editAgent(${a.id})\" class=\"text-[10px] px-3 py-1.5 bg-surface-container-high rounded-lg hover:bg-surface-variant\">编辑</button>
+        ${a.status!=='published'?`<button onclick=\"publishAgent(${a.id})\" class=\"text-[10px] px-3 py-1.5 bg-secondary-container/20 text-secondary rounded-lg hover:bg-secondary-container/30\">发布</button>`:`<button onclick=\"unpublishAgent(${a.id})\" class=\"text-[10px] px-3 py-1.5 bg-tertiary-container/20 text-tertiary rounded-lg hover:bg-tertiary-container/30\">下线</button>`}
+        <button onclick=\"deleteAgent(${a.id})\" class=\"text-[10px] px-3 py-1.5 text-error hover:bg-error-container/10 rounded-lg\">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openCreateModal(){
+  editId=null;
+  document.getElementById('modalTitle').textContent='新建数字员工';
+  ['agName','agAvatar','agPrompt','agDesc','agFallback'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=id==='agFallback'?'系统繁忙，请稍后再试':'';});
+  // Fill model select
+  const ms=document.getElementById('agModel');
+  ms.innerHTML='<option value=\"\">选择模型</option>'+models.filter(m=>m.model_type==='chat'&&m.is_active).map(m=>`<option value=\"${m.id}\">${escapeHtml(m.name)}</option>`).join('');
+  // Fill skill checks
+  document.getElementById('skillChecks').innerHTML=skills.filter(s=>s.status==='active').map(s=>`<label class=\"flex items-center gap-2 text-xs py-1 px-2 hover:bg-surface-container-high rounded\"><input type=\"checkbox\" class=\"skill-cb\" value=\"${s.id}\"/>${escapeHtml(s.name)} (${s.skill_type})</label>`).join('')||'<span class=\"text-xs text-on-surface-variant\">暂无技能</span>';
+  document.getElementById('agentModal').classList.remove('hidden');document.getElementById('agentModal').classList.add('flex');
+}
+
+function closeAgentModal(){document.getElementById('agentModal').classList.add('hidden');document.getElementById('agentModal').classList.remove('flex');}
+function closeDetailModal(){document.getElementById('detailModal').classList.add('hidden');document.getElementById('detailModal').classList.remove('flex');}
+
+async function editAgent(id){
+  editId=id;const a=agents.find(x=>x.id===id);if(!a)return;
+  document.getElementById('modalTitle').textContent='编辑数字员工';
+  document.getElementById('agName').value=a.name||'';
+  document.getElementById('agAvatar').value=a.avatar||'';
+  document.getElementById('agPrompt').value=a.persona_prompt||'';
+  document.getElementById('agDesc').value=a.description||'';
+  document.getElementById('agFallback').value=a.fallback_message||'系统繁忙，请稍后再试';
+  const ms=document.getElementById('agModel');
+  ms.innerHTML='<option value=\"\">选择模型</option>'+models.filter(m=>m.model_type==='chat'&&m.is_active).map(m=>`<option value=\"${m.id}\" ${a.model_id===m.id?'selected':''}>${escapeHtml(m.name)}</option>`).join('');
+  const skillIds=(a.skill_ids||'').split(',').map(x=>parseInt(x.trim())).filter(x=>x);
+  document.getElementById('skillChecks').innerHTML=skills.filter(s=>s.status==='active').map(s=>`<label class=\"flex items-center gap-2 text-xs py-1 px-2 hover:bg-surface-container-high rounded\"><input type=\"checkbox\" class=\"skill-cb\" value=\"${s.id}\" ${skillIds.includes(s.id)?'checked':''}/>${escapeHtml(s.name)}</label>`).join('');
+  document.getElementById('agentModal').classList.remove('hidden');document.getElementById('agentModal').classList.add('flex');
+}
+
+async function saveAgent(){
+  const name=document.getElementById('agName').value.trim();
+  if(!name){showToast('请填写名称','error');return;}
+  const skillIds=[...document.querySelectorAll('.skill-cb:checked')].map(c=>c.value).join(',');
+  const modelId=document.getElementById('agModel').value;
+  const model=models.find(m=>m.id===parseInt(modelId));
+  const data={
+    name,base_model:model?model.model_name:'gpt-4o',persona_prompt:document.getElementById('agPrompt').value,
+    description:document.getElementById('agDesc').value.trim(),avatar:document.getElementById('agAvatar').value.trim(),
+    model_id:modelId?parseInt(modelId):null,skill_ids:skillIds,
+    fallback_message:document.getElementById('agFallback').value||'系统繁忙，请稍后再试',
+  };
+  try{
+    if(editId){await apiPut('/api/agents/'+editId,data);showToast('更新成功','success');}
+    else{await apiPost('/api/agents',data);showToast('创建成功','success');}
+    closeAgentModal();loadData();
+  }catch(e){showToast('保存失败: '+e.message,'error');}
+}
+
+async function publishAgent(id){
+  try{await apiPut('/api/agents/'+id,{status:'published'});showToast('已发布上线','success');loadData();}
+  catch(e){showToast('发布失败','error');}
+}
+async function unpublishAgent(id){
+  try{await apiPut('/api/agents/'+id,{status:'draft'});showToast('已下线','success');loadData();}
+  catch(e){showToast('操作失败','error');}
+}
+async function deleteAgent(id){
+  if(!confirm('确认删除？'))return;
+  try{await apiDelete('/api/agents/'+id);showToast('删除成功','success');loadData();}
+  catch(e){showToast('删除失败','error');}
+}
+
+if(requireAuth())loadData();
+</script>
+</body></html>

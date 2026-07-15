@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+darkMode: "class",
+theme: { extend: {
+"colors": {
+"background": "#071425", "surface": "#071425", "surface-dim": "#071425",
+"surface-bright": "#2e3a4c", "surface-container-lowest": "#030e1f",
+"surface-container-low": "#101c2d", "surface-container": "#142031",
+"surface-container-high": "#1f2a3c", "surface-container-highest": "#2a3548",
+"surface-variant": "#2a3548", "on-surface": "#d7e3fb", "on-surface-variant": "#c3c6d7",
+"primary": "#b4c5ff", "primary-container": "#0052d9", "on-primary": "#002a78",
+"on-primary-container": "#cbd6ff", "primary-fixed": "#dbe1ff", "primary-fixed-dim": "#b4c5ff",
+"secondary": "#a6e6ff", "secondary-container": "#14d1ff", "on-secondary": "#003543",
+"on-secondary-container": "#00566b", "secondary-fixed": "#b7eaff", "secondary-fixed-dim": "#4cd6ff",
+"tertiary": "#ffb59c", "tertiary-container": "#aa3500", "on-tertiary": "#5c1900",
+"on-tertiary-container": "#ffccbc", "error": "#ffb4ab", "error-container": "#93000a",
+"on-error": "#690005", "on-error-container": "#ffdad6",
+"outline": "#8d90a0", "outline-variant": "#434654",
+"on-background": "#d7e3fb", "inverse-surface": "#d7e3fb", "inverse-on-surface": "#253143",
+"inverse-primary": "#0353da",
+},
+"borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+"fontFamily": { "Inter": ["Inter"], "label-mono": ["JetBrains Mono"] },
+}},
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3fb; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #434654; border-radius: 10px; }
+.chat-scroll::-webkit-scrollbar { width: 4px; }
+.chat-scroll::-webkit-scrollbar-thumb { background: #434654; border-radius: 10px; }
+.message-bubble { max-width: 75%; padding: 10px 14px; border-radius: 16px; word-break: break-word; }
+.message-user { background: #0052d9; color: #cbd6ff; margin-left: auto; border-bottom-right-radius: 4px; }
+.message-agent { background: #1f2a3c; color: #d7e3fb; border-bottom-left-radius: 4px; }
+.skill-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 8px; border-radius: 8px; }
+@keyframes typing-dot { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
+.typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #8d90a0; animation: typing-dot 1.4s infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+</style>
+</head>
+<body class="bg-background text-on-background h-screen overflow-hidden">
+
+<aside></aside>
+
+<main class=" h-screen flex">
+  <!-- Left: Agent List -->
+  <div class="w-72 bg-surface-container/50 border-r border-outline-variant/20 flex flex-col">
+    <div class="p-4 border-b border-outline-variant/20">
+      <h1 class="text-lg font-bold text-primary">数字员工</h1>
+      <p class="text-xs text-on-surface-variant mt-0.5">选择员工开始对话</p>
+    </div>
+    <div class="relative p-3 border-b border-outline-variant/20">
+      <span class="material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-outline text-sm">search</span>
+      <input id="agentSearch" oninput="filterAgents()" type="text" placeholder="搜索员工..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:border-secondary-container transition-all"/>
+    </div>
+    <div id="agentList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+    </div>
+  </div>
+
+  <!-- Right: Chat Area -->
+  <div class="flex-1 flex flex-col">
+    <!-- Chat Header -->
+    <div id="chatHeader" class="px-6 py-3 border-b border-outline-variant/20 flex items-center gap-3 bg-surface-container/30">
+      <div id="headerAvatar" class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center">
+        <span class="material-symbols-outlined text-primary">smart_toy</span>
+      </div>
+      <div>
+        <h2 id="headerName" class="font-bold text-on-surface">选择一个数字员工</h2>
+        <p id="headerStatus" class="text-xs text-on-surface-variant">点击左侧列表开始对话</p>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="chatMessages" class="flex-1 overflow-y-auto chat-scroll px-6 py-4 space-y-4">
+      <div class="flex items-center justify-center h-full text-on-surface-variant">
+        <div class="text-center">
+          <span class="material-symbols-outlined text-4xl mb-2 block opacity-50">forum</span>
+          <p class="text-sm">选择左侧数字员工开始对话</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skill Calls Log -->
+    <div id="skillCallBar" class="hidden px-6 py-1 border-t border-outline-variant/20 bg-surface-container-low/30">
+    </div>
+
+    <!-- Input Area -->
+    <div class="px-6 py-4 border-t border-outline-variant/20 bg-surface-container/30">
+      <div class="flex items-end gap-2">
+        <div class="flex-1 relative">
+          <textarea id="chatInput" rows="1" placeholder="输入消息..." onkeydown="handleKeyDown(event)" oninput="autoResize(this)" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm focus:border-secondary-container transition-all resize-none custom-scrollbar" style="max-height: 120px;"></textarea>
+        </div>
+        <button id="sendBtn" onclick="sendMessage()" disabled class="bg-primary-container text-on-primary-container px-4 py-2.5 rounded-xl hover:opacity-80 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed">
+          <span class="material-symbols-outlined">send</span>
+        </button>
+        <button onclick="clearChat()" title="清空对话" class="bg-surface-container-high/50 text-on-surface-variant px-3 py-2.5 rounded-xl hover:opacity-80 transition-opacity">
+          <span class="material-symbols-outlined">restart_alt</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+let agentList = [];
+let currentAgent = null;
+let chatHistory = [];
+let isWaiting = false;
+
+async function loadAgents() {
+  try {
+    agentList = await apiGet('/api/de/list');
+    renderAgentList();
+  } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+function renderAgentList() {
+  const list = document.getElementById('agentList');
+  if (!agentList.length) {
+    list.innerHTML = '<div class="text-center py-8 text-on-surface-variant text-sm">暂无已发布的数字员工</div>';
+    return;
+  }
+  list.innerHTML = agentList.map(a => {
+    const avatar = a.avatar
+      ? `<img src="${escapeHtml(a.avatar)}" class="w-10 h-10 rounded-full object-cover"/>`
+      : `<div class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></div>`;
+    const isActive = currentAgent && currentAgent.id === a.id;
+    return `<div onclick="selectAgent(${a.id})" class="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
+      ${avatar}
+      <div class="flex-1 min-w-0">
+        <h3 class="text-sm font-medium text-on-surface truncate">${escapeHtml(a.name)}</h3>
+        <p class="text-[10px] text-on-surface-variant truncate">${escapeHtml(a.model_name || '未绑定模型')}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterAgents() {
+  const q = document.getElementById('agentSearch').value.toLowerCase();
+  const filtered = agentList.filter(a => a.name.toLowerCase().includes(q));
+  const list = document.getElementById('agentList');
+  if (!filtered.length) { list.innerHTML = '<div class="text-center py-8 text-on-surface-variant text-sm">无匹配结果</div>'; return; }
+  list.innerHTML = filtered.map(a => {
+    const avatar = a.avatar
+      ? `<img src="${escapeHtml(a.avatar)}" class="w-10 h-10 rounded-full object-cover"/>`
+      : `<div class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></div>`;
+    const isActive = currentAgent && currentAgent.id === a.id;
+    return `<div onclick="selectAgent(${a.id})" class="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
+      ${avatar}
+      <div class="flex-1 min-w-0"><h3 class="text-sm font-medium text-on-surface truncate">${escapeHtml(a.name)}</h3><p class="text-[10px] text-on-surface-variant truncate">${escapeHtml(a.model_name || '未绑定模型')}</p></div>
+    </div>`;
+  }).join('');
+}
+
+async function selectAgent(id) {
+  try {
+    currentAgent = await apiGet(`/api/de/${id}`);
+    chatHistory = [];
+    renderAgentList();
+    updateChatHeader();
+    renderMessages();
+    document.getElementById('sendBtn').disabled = false;
+    // 加载服务端对话历史
+    await loadHistory(id);
+  } catch(e) { showToast('加载详情失败', 'error'); }
+}
+
+async function loadHistory(agentId) {
+  try {
+    const history = await apiGet(`/api/de/${agentId}/history`);
+    if (history && history.length) {
+      document.getElementById('chatMessages').innerHTML = '';
+      chatHistory = [];
+      for (const msg of history) {
+        appendMessage(msg.role, msg.content);
+        chatHistory.push({ role: msg.role, content: msg.content });
+      }
+    } else {
+      appendMessage('agent', `你好！我是${currentAgent.name}。${currentAgent.description || '请问有什么可以帮助您的？'}`);
+    }
+  } catch(e) {
+    appendMessage('agent', `你好！我是${currentAgent.name}。${currentAgent.description || '请问有什么可以帮助您的？'}`);
+  }
+}
+
+function updateChatHeader() {
+  if (!currentAgent) return;
+  document.getElementById('headerName').textContent = currentAgent.name;
+  const skills = (currentAgent.skills || []).map(s => s.name).join(', ');
+  document.getElementById('headerStatus').textContent = skills ? `技能: ${skills}` : '无绑定技能';
+  const avatarEl = document.getElementById('headerAvatar');
+  if (currentAgent.avatar) {
+    avatarEl.innerHTML = `<img src="${escapeHtml(currentAgent.avatar)}" class="w-full h-full rounded-full object-cover"/>`;
+  } else {
+    avatarEl.innerHTML = '<span class="material-symbols-outlined text-primary">smart_toy</span>';
+  }
+}
+
+function appendMessage(role, content, skillCalls) {
+  const container = document.getElementById('chatMessages');
+  const isUser = role === 'user';
+  const bubble = document.createElement('div');
+  bubble.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+  bubble.innerHTML = `
+    <div class="message-bubble ${isUser ? 'message-user' : 'message-agent'}">
+      ${skillCalls && skillCalls.length ? `<div class="mb-2 flex flex-wrap gap-1">${skillCalls.map(sc => `<span class="skill-badge ${sc.success ? 'bg-secondary-container/20 text-secondary-container' : 'bg-error-container/20 text-error'}"><span class="material-symbols-outlined text-[10px]">${sc.success ? 'check_circle' : 'error'}</span>${escapeHtml(sc.skill)}</span>`).join('')}</div>` : ''}
+      <div class="text-sm whitespace-pre-wrap">${escapeHtml(content)}</div>
+      ${!isUser ? `<div class="text-[10px] text-on-surface-variant mt-1 text-right">${new Date().toLocaleTimeString('zh-CN', {hour12:false, hour:'2-digit', minute:'2-digit'})}</div>` : ''}
+    </div>`;
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+}
+
+function showTyping() {
+  const container = document.getElementById('chatMessages');
+  const typing = document.createElement('div');
+  typing.id = 'typingIndicator';
+  typing.className = 'flex justify-start';
+  typing.innerHTML = `<div class="message-bubble message-agent flex items-center gap-1"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>`;
+  container.appendChild(typing);
+  container.scrollTop = container.scrollHeight;
+}
+
+function hideTyping() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.remove();
+}
+
+async function sendMessage() {
+  if (!currentAgent || isWaiting) return;
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  appendMessage('user', text);
+  chatHistory.push({ role: 'user', content: text });
+  input.value = '';
+  autoResize(input);
+
+  isWaiting = true;
+  document.getElementById('sendBtn').disabled = true;
+  showTyping();
+
+  try {
+    const res = await apiPost('/api/de/chat', {
+      agent_id: currentAgent.id,
+      messages: chatHistory,
+    });
+    hideTyping();
+    appendMessage('agent', res.reply, res.skill_calls);
+
+    // Update skill call bar
+    if (res.skill_calls && res.skill_calls.length) {
+      const bar = document.getElementById('skillCallBar');
+      bar.classList.remove('hidden');
+      bar.innerHTML = `<span class="text-[10px] text-on-surface-variant">技能调用:</span> ` + res.skill_calls.map(sc =>
+        `<span class="skill-badge ${sc.success ? 'bg-secondary-container/20 text-secondary-container' : 'bg-error-container/20 text-error'}"><span class="material-symbols-outlined text-[10px]">${sc.success ? 'check_circle' : 'error'}</span>${escapeHtml(sc.skill)}</span>`
+      ).join(' ');
+    }
+
+    chatHistory.push({ role: 'assistant', content: res.reply });
+  } catch(e) {
+    hideTyping();
+    appendMessage('agent', '抱歉，服务暂时不可用，请稍后再试。');
+  } finally {
+    isWaiting = false;
+    document.getElementById('sendBtn').disabled = false;
+  }
+}
+
+function handleKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function clearChat() {
+  chatHistory = [];
+  renderMessages();
+  document.getElementById('skillCallBar').classList.add('hidden');
+  if (currentAgent) {
+    appendMessage('agent', `对话已重置。我是${currentAgent.name}，有什么可以帮助您的？`);
+  }
+}
+
+function renderMessages() {
+  document.getElementById('chatMessages').innerHTML = '';
+  document.getElementById('skillCallBar').classList.add('hidden');
+}
+
+if (requireAuth()) loadAgents();
+</script>
+</body>
+</html>

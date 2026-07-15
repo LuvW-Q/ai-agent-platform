@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>跳转中...</title>
+<script>
+// IM控制台已集成聊天功能，直接跳转
+// 支持通过URL参数指定打开的会话: /im/chat?peer=5 或 /im/chat?group=3
+const params = new URLSearchParams(location.search);
+const peer = params.get('peer');
+const group = params.get('group');
+if (peer) {
+  location.href = '/im?peer=' + peer;
+} else if (group) {
+  location.href = '/im?group=' + group;
+} else {
+  location.href = '/im';
+}
+</script>
+</head>
+<body style="background:#0b1326;color:#dae2fd;display:flex;align-items:center;justify-content:center;height:100vh;font-family:Inter,sans-serif;">
+<p>正在跳转到IM控制台...</p>
+</body>
+</html>

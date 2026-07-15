@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+darkMode: "class",
+theme: { extend: {
+"colors": {
+"background": "#071425", "surface": "#071425", "surface-dim": "#071425",
+"surface-bright": "#2e3a4c", "surface-container-lowest": "#030e1f",
+"surface-container-low": "#101c2d", "surface-container": "#142031",
+"surface-container-high": "#1f2a3c", "surface-container-highest": "#2a3548",
+"surface-variant": "#2a3548", "on-surface": "#d7e3fb", "on-surface-variant": "#c3c6d7",
+"primary": "#b4c5ff", "primary-container": "#0052d9", "on-primary": "#002a78",
+"on-primary-container": "#cbd6ff", "primary-fixed": "#dbe1ff", "primary-fixed-dim": "#b4c5ff",
+"secondary": "#a6e6ff", "secondary-container": "#14d1ff", "on-secondary": "#003543",
+"on-secondary-container": "#00566b", "secondary-fixed": "#b7eaff", "secondary-fixed-dim": "#4cd6ff",
+"tertiary": "#ffb59c", "tertiary-container": "#aa3500", "on-tertiary": "#5c1900",
+"on-tertiary-container": "#ffccbc", "error": "#ffb4ab", "error-container": "#93000a",
+"on-error": "#690005", "on-error-container": "#ffdad6",
+"outline": "#8d90a0", "outline-variant": "#434654",
+"on-background": "#d7e3fb", "inverse-surface": "#d7e3fb", "inverse-on-surface": "#253143",
+"inverse-primary": "#0353da",
+},
+"borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+"fontFamily": { "Inter": ["Inter"], "label-mono": ["JetBrains Mono"] },
+}},
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3fb; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #434654; border-radius: 10px; }
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+
+<aside></aside>
+
+<main class=" p-6 min-h-screen">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-primary">数字员工管理</h1>
+      <p class="text-sm text-on-surface-variant mt-1">创建数字员工、绑定模型与技能、发布下线管理</p>
+    </div>
+    <button onclick="openCreateModal()" class="flex items-center gap-2 bg-primary-container text-on-primary-container px-4 py-2 rounded-xl hover:opacity-80 transition-opacity">
+      <span class="material-symbols-outlined">add</span>
+      <span class="text-sm font-medium">创建数字员工</span>
+    </button>
+  </div>
+
+  <!-- Cards Grid -->
+  <div id="agentGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+  </div>
+</main>
+
+<!-- Create/Edit Modal -->
+<div id="agentModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+    <div class="flex items-center justify-between mb-4 sticky top-0 bg-surface-container pb-2">
+      <h2 id="modalTitle" class="text-lg font-bold text-primary">创建数字员工</h2>
+      <button onclick="closeModal()" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">名称</label>
+          <input id="aName" type="text" placeholder="如：金融数据分析师" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">头像（上传或填URL）</label>
+          <div class="flex gap-2 items-center">
+            <input id="aAvatar" type="text" placeholder="https://..." class="flex-1 bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+            <label class="cursor-pointer bg-primary-container/20 text-primary px-3 py-2 rounded-lg text-xs hover:bg-primary-container/30 transition-colors">
+              <span class="material-symbols-outlined text-sm">upload</span> 上传
+              <input type="file" accept="image/*" onchange="uploadAgentAvatar(this)" class="hidden"/>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">人设提示词 (Persona Prompt)</label>
+        <textarea id="aPersona" rows="4" placeholder="你是...，擅长..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"></textarea>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">描述</label>
+        <input id="aDesc" type="text" placeholder="简短描述" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">绑定模型</label>
+          <select id="aModel" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"></select>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">降级话术</label>
+          <input id="aFallback" type="text" value="系统繁忙，请稍后再试" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">绑定技能（可多选）</label>
+        <div id="skillCheckboxList" class="space-y-1 max-h-40 overflow-y-auto custom-scrollbar bg-surface-container-high/30 rounded-lg p-2">
+        </div>
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5 sticky bottom-0 bg-surface-container pt-2">
+      <button onclick="closeModal()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">取消</button>
+      <button onclick="saveAgent()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg hover:opacity-80 transition-opacity">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+let agents = [];
+let models = [];
+let skills = [];
+let editId = null;
+
+async function loadData() {
+  try {
+    [agents, models, skills] = await Promise.all([
+      apiGet('/api/agents'),
+      apiGet('/api/models'),
+      apiGet('/api/skills'),
+    ]);
+    renderGrid();
+  } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+function renderGrid() {
+  const grid = document.getElementById('agentGrid');
+  if (!agents.length) {
+    grid.innerHTML = '<div class="col-span-full text-center py-12 text-on-surface-variant">暂无数字员工</div>';
+    return;
+  }
+  grid.innerHTML = agents.map(a => {
+    const statusColor = a.status === 'published' ? 'text-secondary bg-secondary-container/10' : 'text-on-surface-variant bg-surface-container-high';
+    const statusLabel = { published: '已发布', draft: '草稿', testing: '测试中' }[a.status] || a.status;
+    const avatar = a.avatar
+      ? `<img src="${escapeHtml(a.avatar)}" class="w-12 h-12 rounded-full object-cover"/>`
+      : `<div class="w-12 h-12 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary">smart_toy</span></div>`;
+    const skillTags = (a.skill_names || []).map(n => `<span class="text-[10px] bg-secondary-container/10 text-secondary-container px-1.5 py-0.5 rounded">${escapeHtml(n)}</span>`).join('');
+    return `<div class="bg-surface-container/50 rounded-2xl border border-outline-variant/20 p-4 hover:border-secondary-container/30 transition-all">
+      <div class="flex items-start gap-3 mb-3">
+        ${avatar}
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <h3 class="font-bold text-on-surface truncate">${escapeHtml(a.name)}</h3>
+            <span class="text-[10px] ${statusColor} px-1.5 py-0.5 rounded">${statusLabel}</span>
+          </div>
+          <p class="text-xs text-on-surface-variant truncate">${escapeHtml(a.model_name || a.base_model || '未绑定模型')}</p>
+        </div>
+      </div>
+      <p class="text-xs text-on-surface-variant mb-2 line-clamp-2">${escapeHtml(a.description || '(无描述)')}</p>
+      <div class="flex flex-wrap gap-1 mb-3">${skillTags || '<span class="text-[10px] text-outline">无技能</span>'}</div>
+      <div class="flex items-center gap-1 border-t border-outline-variant/20 pt-2">
+        <button onclick="editAgent(${a.id})" title="编辑" class="p-1.5 rounded hover:bg-surface-variant/50 text-primary transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+        ${a.status === 'published'
+          ? `<button onclick="toggleStatus(${a.id}, 'draft')" title="下线" class="p-1.5 rounded hover:bg-surface-variant/50 text-tertiary transition-colors"><span class="material-symbols-outlined text-base">pause_circle</span></button>`
+          : `<button onclick="toggleStatus(${a.id}, 'published')" title="发布" class="p-1.5 rounded hover:bg-surface-variant/50 text-secondary-fixed-dim transition-colors"><span class="material-symbols-outlined text-base">rocket_launch</span></button>`
+        }
+        <button onclick="deleteAgent(${a.id})" title="删除" class="p-1.5 rounded hover:bg-surface-variant/50 text-error transition-colors"><span class="material-symbols-outlined text-base">delete</span></button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openCreateModal() {
+  editId = null;
+  document.getElementById('modalTitle').textContent = '创建数字员工';
+  ['aName','aAvatar','aPersona','aDesc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('aFallback').value = '系统繁忙，请稍后再试';
+  populateModelSelect();
+  populateSkillCheckboxes([]);
+  const modal = document.getElementById('agentModal');
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+
+function editAgent(id) {
+  const a = agents.find(x => x.id === id);
+  if (!a) return;
+  editId = id;
+  document.getElementById('modalTitle').textContent = '编辑数字员工';
+  document.getElementById('aName').value = a.name;
+  document.getElementById('aAvatar').value = a.avatar || '';
+  document.getElementById('aPersona').value = a.persona_prompt || '';
+  document.getElementById('aDesc').value = a.description || '';
+  document.getElementById('aFallback').value = a.fallback_message || '系统繁忙，请稍后再试';
+  populateModelSelect(a.model_id);
+  const selectedIds = a.skill_ids ? a.skill_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
+  populateSkillCheckboxes(selectedIds);
+  const modal = document.getElementById('agentModal');
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+
+function closeModal() {
+  const modal = document.getElementById('agentModal');
+  modal.classList.add('hidden'); modal.classList.remove('flex');
+}
+
+function populateModelSelect(selectedId) {
+  const sel = document.getElementById('aModel');
+  sel.innerHTML = '<option value="">未绑定</option>' + models.map(m =>
+    `<option value="${m.id}" ${selectedId === m.id ? 'selected' : ''}>${escapeHtml(m.name)} (${escapeHtml(m.model_name)})</option>`
+  ).join('');
+}
+
+function populateSkillCheckboxes(selectedIds) {
+  const list = document.getElementById('skillCheckboxList');
+  if (!skills.length) {
+    list.innerHTML = '<div class="text-xs text-on-surface-variant py-2">暂无技能，请先创建</div>';
+    return;
+  }
+  list.innerHTML = skills.map(s => {
+    const checked = selectedIds.includes(String(s.id));
+    const typeIcon = { function_call: 'code', mcp: 'hub', prompt: 'description' }[s.skill_type] || 'extension';
+    return `<label class="flex items-center gap-2 cursor-pointer hover:bg-surface-variant/30 rounded px-2 py-1 transition-colors">
+      <input type="checkbox" value="${s.id}" ${checked ? 'checked' : ''} class="skill-cb accent-secondary-container"/>
+      <span class="material-symbols-outlined text-sm text-on-surface-variant">${typeIcon}</span>
+      <span class="text-sm text-on-surface">${escapeHtml(s.name)}</span>
+      <span class="text-[10px] text-on-surface-variant ml-auto">${escapeHtml(s.skill_type)}</span>
+    </label>`;
+  }).join('');
+}
+
+async function uploadAgentAvatar(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/auth/avatar', {
+      method: 'POST',
+      body: fd,
+      headers: { 'Authorization': 'Bearer ' + Token.access }
+    });
+    if (res.ok) {
+      const d = await res.json();
+      document.getElementById('aAvatar').value = d.avatar;
+      showToast('头像上传成功', 'success');
+    } else {
+      showToast('上传失败', 'error');
+    }
+  } catch(e) { showToast('上传失败', 'error'); }
+}
+
+async function saveAgent() {
+  const name = document.getElementById('aName').value.trim();
+  if (!name) { showToast('请填写名称', 'error'); return; }
+  const modelId = document.getElementById('aModel').value;
+  const skillIds = Array.from(document.querySelectorAll('.skill-cb:checked')).map(cb => cb.value).join(',');
+  const model = models.find(m => m.id === parseInt(modelId));
+  const data = {
+    name,
+    avatar: document.getElementById('aAvatar').value.trim(),
+    base_model: model ? model.model_name : 'gpt-4o',
+    model_id: modelId ? parseInt(modelId) : null,
+    persona_prompt: document.getElementById('aPersona').value,
+    skill_ids: skillIds,
+    fallback_message: document.getElementById('aFallback').value || '系统繁忙，请稍后再试',
+    description: document.getElementById('aDesc').value.trim(),
+  };
+  try {
+    if (editId) {
+      await apiPut('/api/agents/' + editId, data);
+      showToast('更新成功', 'success');
+    } else {
+      await apiPost('/api/agents', data);
+      showToast('创建成功', 'success');
+    }
+    closeModal();
+    loadData();
+  } catch(e) { showToast('保存失败: ' + e.message, 'error'); }
+}
+
+async function toggleStatus(id, status) {
+  try {
+    await apiPut(`/api/agents/${id}`, { status });
+    showToast(status === 'published' ? '发布成功' : '已下线', 'success');
+    loadData();
+  } catch(e) { showToast('操作失败', 'error'); }
+}
+
+async function deleteAgent(id) {
+  if (!confirm('确认删除此数字员工？')) return;
+  try { await apiDelete(`/api/agents/${id}`); showToast('删除成功', 'success'); loadData(); }
+  catch(e) { showToast('删除失败', 'error'); }
+}
+
+if (requireAuth()) loadData();
+</script>
+</body>
+</html>

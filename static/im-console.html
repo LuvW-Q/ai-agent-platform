@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>控制台 — 智能数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "on-tertiary-container": "#ffccbc",
+        "on-background": "#d7e3fb",
+        "inverse-on-surface": "#253143",
+        "tertiary": "#ffb59c",
+        "surface-bright": "#2e3a4c",
+        "surface": "#071425",
+        "on-secondary": "#003543",
+        "error-container": "#93000a",
+        "surface-container-highest": "#2a3548",
+        "primary-fixed-dim": "#b4c5ff",
+        "on-primary-fixed": "#00174b",
+        "surface-container": "#142031",
+        "secondary-container": "#14d1ff",
+        "on-secondary-container": "#00566b",
+        "surface-tint": "#b4c5ff",
+        "on-tertiary": "#5c1900",
+        "primary-fixed": "#dbe1ff",
+        "surface-container-lowest": "#030e1f",
+        "on-primary": "#002a78",
+        "error": "#ffb4ab",
+        "outline": "#8d90a0",
+        "on-primary-fixed-variant": "#003ea8",
+        "surface-container-high": "#1f2a3c",
+        "on-error": "#690005",
+        "surface-dim": "#071425",
+        "primary-container": "#0052d9",
+        "inverse-surface": "#d7e3fb",
+        "primary": "#b4c5ff",
+        "surface-container-low": "#101c2d",
+        "tertiary-fixed-dim": "#ffb59c",
+        "tertiary-container": "#aa3500",
+        "on-surface-variant": "#c3c6d7",
+        "on-surface": "#d7e3fb",
+        "on-secondary-fixed-variant": "#004e60",
+        "background": "#071425",
+        "outline-variant": "#434654",
+        "on-error-container": "#ffdad6",
+        "tertiary-fixed": "#ffdbd0",
+        "secondary-fixed-dim": "#4cd6ff",
+        "on-primary-container": "#cbd6ff",
+        "on-tertiary-fixed-variant": "#832700",
+        "on-secondary-fixed": "#001f28",
+        "surface-variant": "#2a3548",
+        "secondary": "#a6e6ff",
+        "on-tertiary-fixed": "#390c00",
+        "secondary-fixed": "#b7eaff",
+        "inverse-primary": "#0353da",
+      },
+      borderRadius: {
+        DEFAULT: "0.125rem",
+        lg: "0.25rem",
+        xl: "0.5rem",
+        full: "0.75rem",
+      },
+      spacing: {
+        "2xl": "48px",
+        md: "16px",
+        "margin-desktop": "32px",
+        base: "4px",
+        "margin-mobile": "16px",
+        gutter: "16px",
+        xl: "32px",
+        lg: "24px",
+        xs: "4px",
+        sm: "8px",
+      },
+      fontFamily: {
+        "body-lg": ["Inter"],
+        "label-mono": ["JetBrains Mono"],
+        "headline-sm": ["Inter"],
+        "display-lg": ["Inter"],
+        "body-md": ["Inter"],
+        "headline-md": ["Inter"],
+        caption: ["Inter"],
+      },
+    },
+  },
+};
+</script>
+<style>
+  body {
+    background-color: #071425;
+    color: #d7e3fb;
+    font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+  }
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+  }
+  .fill-icon {
+    font-variation-settings: 'FILL' 1;
+  }
+  .glass-panel {
+    background: rgba(20, 32, 49, 0.6);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #071425; }
+  ::-webkit-scrollbar-thumb { background: #434654; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8d90a0; }
+  .kpi-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .risk-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .risk-dot.high { background: #ffb4ab; }
+  .risk-dot.medium { background: #ffb786; }
+  .risk-dot.low { background: #4edea3; }
+</style>
+</head>
+<body class="bg-background text-on-background">
+<!-- Sidebar placeholder (app.js will inject unified sidebar) -->
+<aside></aside>
+
+<!-- Main Content Area -->
+<main class="min-h-screen" style="margin-left: 0; padding-top: 0;">
+  <!-- Dashboard Content -->
+  <div class="p-margin-desktop" style="margin-top: 0;">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between mb-xl">
+      <div>
+        <h1 class="font-headline-md text-headline-md font-black text-on-surface tracking-tight">控制台</h1>
+        <p class="text-sm text-on-surface-variant mt-1">系统运行状态概览与核心指标监控</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="refresh-time" class="text-xs text-on-surface-variant"></span>
+        <button onclick="refreshDashboard()" class="flex items-center gap-1.5 bg-surface-container-high border border-outline-variant text-on-surface-variant px-3 py-1.5 rounded-lg text-sm hover:bg-surface-variant hover:text-on-surface transition-all">
+          <span class="material-symbols-outlined text-sm">refresh</span>
+          刷新
+        </button>
+      </div>
+    </div>
+
+    <!-- 6 KPI Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-gutter mb-xl">
+      <!-- 在线用户 -->
+      <div class="kpi-card glass-panel p-lg rounded-xl border-l-4 border-secondary">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">在线用户</span>
+          <span class="material-symbols-outlined text-secondary text-xl">people</span>
+        </div>
+        <div class="text-2xl font-bold text-on-surface" id="kpi-online-users">--</div>
+        <div class="text-xs text-on-surface-variant mt-1">活跃用户数</div>
+      </div>
+      <!-- 今日消息 -->
+      <div class="kpi-card glass-panel p-lg rounded-xl border-l-4 border-primary">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">今日消息</span>
+          <span class="material-symbols-outlined text-primary text-xl">forum</span>
+        </div>
+        <div class="text-2xl font-bold text-on-surface" id="kpi-today-msg">--</div>
+        <div class="text-xs text-on-surface-variant mt-1">自 00:00 累计</div>
+      </div>
+      <!-- 采集成功率 -->
+      <div class="kpi-card glass-panel p-lg rounded-xl border-l-4 border-secondary-fixed">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">采集成功率</span>
+          <span class="material-symbols-outlined text-secondary-fixed text-xl">check_circle</span>
+        </div>
+        <div class="text-2xl font-bold text-on-surface" id="kpi-success-rate">--</div>
+        <div class="text-xs text-on-surface-variant mt-1">数据源健康度</div>
+      </div>
+      <!-- 活跃数字员工 -->
+      <div class="kpi-card glass-panel p-lg rounded-xl border-l-4 border-tertiary">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">活跃数字员工</span>
+          <span class="material-symbols-outlined text-tertiary text-xl">smart_toy</span>
+        </div>
+        <div class="text-2xl font-bold text-on-surface" id="kpi-active-agents">--</div>
+        <div class="text-xs text-on-surface-variant mt-1">已发布状态</div>
+      </div>
+      <!-- 风险事件 -->
+      <div class="kpi-card glass-panel p-lg rounded-xl border-l-4 border-error">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">风险事件</span>
+          <span class="material-symbols-outlined text-error text-xl">gpp_maybe</span>
+        </div>
+        <div class="text-2xl font-bold text-on-surface" id="kpi-threats">--</div>
+        <div class="text-xs text-on-surface-variant mt-1">高风险 + 错误数据源</div>
+      </div>
+      <!-- 信任分 -->
+      <div class="kpi-card glass-panel p-lg rounded-xl border-l-4 border-[#14d1ff]">
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">信任评分</span>
+          <span class="material-symbols-outlined text-[#14d1ff] text-xl">verified</span>
+        </div>
+        <div class="text-2xl font-bold text-on-surface" id="kpi-trust-score">--</div>
+        <div class="text-xs text-on-surface-variant mt-1">安全态势指数</div>
+      </div>
+    </div>
+
+    <!-- Charts Row + Audit Logs -->
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-gutter mb-xl">
+      <!-- 情感倾向饼图 (left 1/3) -->
+      <section class="glass-panel rounded-xl overflow-hidden flex flex-col">
+        <div class="p-lg border-b border-outline-variant">
+          <h2 class="font-headline-sm text-headline-sm font-bold flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary">sentiment_satisfied</span>
+            情感倾向分布
+          </h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">基于审计日志的低风险占比</p>
+        </div>
+        <div class="flex-1 p-lg" style="min-height: 280px;">
+          <div id="sentiment-chart" style="width: 100%; height: 260px;"></div>
+        </div>
+      </section>
+
+      <!-- 审计风险柱状图 (middle 1/3) -->
+      <section class="glass-panel rounded-xl overflow-hidden flex flex-col">
+        <div class="p-lg border-b border-outline-variant">
+          <h2 class="font-headline-sm text-headline-sm font-bold flex items-center gap-2">
+            <span class="material-symbols-outlined text-tertiary">bar_chart</span>
+            审计风险分布
+          </h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">按风险等级统计数据量</p>
+        </div>
+        <div class="flex-1 p-lg" style="min-height: 280px;">
+          <div id="risk-chart" style="width: 100%; height: 260px;"></div>
+        </div>
+      </section>
+
+      <!-- 概览摘要 (right 1/3) -->
+      <section class="glass-panel rounded-xl overflow-hidden flex flex-col">
+        <div class="p-lg border-b border-outline-variant">
+          <h2 class="font-headline-sm text-headline-sm font-bold flex items-center gap-2">
+            <span class="material-symbols-outlined text-secondary">overview</span>
+            系统概览
+          </h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">核心数据一览</p>
+        </div>
+        <div class="flex-1 p-lg space-y-4">
+          <div class="flex items-center justify-between py-2 border-b border-outline-variant/30">
+            <span class="text-sm text-on-surface-variant">活跃管道</span>
+            <span class="text-lg font-bold text-on-surface" id="summary-pipelines">--</span>
+          </div>
+          <div class="flex items-center justify-between py-2 border-b border-outline-variant/30">
+            <span class="text-sm text-on-surface-variant">数据接入(24h)</span>
+            <span class="text-lg font-bold text-on-surface" id="summary-ingress">--</span>
+          </div>
+          <div class="flex items-center justify-between py-2 border-b border-outline-variant/30">
+            <span class="text-sm text-on-surface-variant">采集数据总量</span>
+            <span class="text-lg font-bold text-on-surface" id="summary-collected">--</span>
+          </div>
+          <div class="flex items-center justify-between py-2 border-b border-outline-variant/30">
+            <span class="text-sm text-on-surface-variant">乐观倾向</span>
+            <span class="text-lg font-bold text-secondary" id="summary-sentiment">--</span>
+          </div>
+          <div class="flex items-center justify-between py-2">
+            <span class="text-sm text-on-surface-variant">今日消息</span>
+            <span class="text-lg font-bold text-on-surface" id="summary-msg-total">--</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 最近审计日志 -->
+    <section class="glass-panel rounded-xl overflow-hidden">
+      <div class="p-lg border-b border-outline-variant flex items-center justify-between">
+        <div>
+          <h2 class="font-headline-sm text-headline-sm font-bold flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary">security</span>
+            最近审计日志
+          </h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">系统最近 8 条审计记录</p>
+        </div>
+        <a href="/audit" class="flex items-center gap-1 text-sm text-primary hover:underline">
+          查看全部
+          <span class="material-symbols-outlined text-sm">arrow_forward</span>
+        </a>
+      </div>
+      <div id="audit-log-list" class="divide-y divide-outline-variant/20">
+        <div class="text-center text-on-surface-variant text-sm py-8">加载中...</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+// ====== Dashboard State ======
+let sentimentChart = null;
+let riskChart = null;
+
+// ====== Format helpers ======
+function fmtTime(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+// ====== Initialize ECharts ======
+function initCharts() {
+  // Sentiment Pie
+  const sentimentDom = document.getElementById('sentiment-chart');
+  if (sentimentDom) {
+    sentimentChart = echarts.init(sentimentDom);
+    sentimentChart.setOption({
+      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      color: ['#4edea3', '#ffb786', '#ffb4ab'],
+      series: [{
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['50%', '50%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderRadius: 4, borderColor: '#071425', borderWidth: 2 },
+        label: { show: true, formatter: '{b}\n{d}%', color: '#c3c6d7', fontSize: 11 },
+        emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+        data: [
+          { name: '正向', value: 0 },
+          { name: '中性', value: 0 },
+          { name: '负向', value: 0 },
+        ],
+      }],
+    });
+  }
+
+  // Risk Bar Chart
+  const riskDom = document.getElementById('risk-chart');
+  if (riskDom) {
+    riskChart = echarts.init(riskDom);
+    riskChart.setOption({
+      tooltip: { trigger: 'axis' },
+      color: ['#ffb4ab', '#ffb786', '#4edea3'],
+      grid: { left: '10%', right: '5%', top: '10%', bottom: '15%' },
+      xAxis: {
+        type: 'category',
+        data: ['高风险', '中风险', '低风险'],
+        axisLabel: { color: '#c3c6d7', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#434654' } },
+      },
+      yAxis: {
+        type: 'value',
+        splitLine: { lineStyle: { color: '#434654', type: 'dashed' } },
+        axisLabel: { color: '#c3c6d7', fontSize: 10 },
+      },
+      series: [{
+        type: 'bar',
+        barWidth: '40%',
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        data: [0, 0, 0],
+      }],
+    });
+  }
+}
+
+// ====== Render Audit Logs ======
+function renderAuditLogs(logs) {
+  const container = document.getElementById('audit-log-list');
+  if (!logs || !logs.length) {
+    container.innerHTML = '<div class="text-center text-on-surface-variant text-sm py-8">暂无审计日志</div>';
+    return;
+  }
+
+  const levelMap = {
+    high: { bg: 'bg-error-container/30', color: 'text-error', dot: 'high', label: '高风险' },
+    medium: { bg: 'bg-tertiary-container/30', color: 'text-tertiary', dot: 'medium', label: '中风险' },
+    low: { bg: 'bg-secondary-container/10', color: 'text-secondary', dot: 'low', label: '低风险' },
+  };
+
+  container.innerHTML = logs.map(log => {
+    const lvl = levelMap[log.risk_level] || levelMap.low;
+    return `
+      <div class="flex items-center gap-4 px-lg py-3 hover:bg-surface-container-high/30 transition-colors">
+        <span class="risk-dot ${lvl.dot} flex-shrink-0"></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-on-surface truncate">${escapeHtml(log.event_type || '')}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded ${lvl.bg} ${lvl.color} font-medium">${lvl.label}</span>
+          </div>
+          <p class="text-xs text-on-surface-variant truncate mt-0.5">${escapeHtml(log.description || '')}</p>
+        </div>
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <span class="text-[11px] text-outline">${escapeHtml(log.operator || '')}</span>
+          <span class="text-[11px] text-outline">${fmtTime(log.created_at)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ====== Update Dashboard ======
+async function refreshDashboard() {
+  try {
+    const [metrics, auditLogs] = await Promise.all([
+      apiGet('/api/dashboard/metrics'),
+      apiGet('/api/audit/logs?limit=8'),
+    ]);
+
+    // Update KPI cards
+    document.getElementById('kpi-online-users').textContent = metrics.online_users ?? '--';
+    document.getElementById('kpi-today-msg').textContent = metrics.today_messages ?? '--';
+    document.getElementById('kpi-success-rate').textContent = (metrics.crawl_success_rate ?? '--') + '%';
+    document.getElementById('kpi-active-agents').textContent = metrics.active_agents ?? '--';
+    document.getElementById('kpi-threats').textContent = metrics.active_threats ?? '--';
+    document.getElementById('kpi-trust-score').textContent = metrics.trust_score ?? '--';
+
+    // Update summary
+    document.getElementById('summary-pipelines').textContent = metrics.active_pipelines ?? '--';
+    document.getElementById('summary-ingress').textContent = metrics.data_ingress_24h ?? '--';
+    document.getElementById('summary-collected').textContent = metrics.total_collected ?? '--';
+    document.getElementById('summary-sentiment').textContent = metrics.sentiment_positive ?? '--' + '%';
+    document.getElementById('summary-msg-total').textContent = metrics.today_messages ?? '--';
+
+    // Update sentiment pie chart
+    if (sentimentChart) {
+      // Derive positive/neutral/negative from audit risk levels
+      // low = positive, medium = neutral, high = negative
+      const total = (metrics.audit_high || 0) + (metrics.audit_medium || 0) + (metrics.audit_low || 0);
+      const pctHigh = total > 0 ? Math.round((metrics.audit_high || 0) / total * 100) : 0;
+      const pctMed = total > 0 ? Math.round((metrics.audit_medium || 0) / total * 100) : 0;
+      const pctLow = total > 0 ? Math.round((metrics.audit_low || 0) / total * 100) : 100;
+
+      sentimentChart.setOption({
+        series: [{
+          data: [
+            { name: '正向', value: pctLow },
+            { name: '中性', value: pctMed },
+            { name: '负向', value: pctHigh },
+          ],
+        }],
+      });
+    }
+
+    // Update risk bar chart
+    if (riskChart) {
+      riskChart.setOption({
+        series: [{
+          data: [
+            metrics.audit_high || 0,
+            metrics.audit_medium || 0,
+            metrics.audit_low || 0,
+          ],
+        }],
+      });
+    }
+
+    // Update audit logs
+    renderAuditLogs(auditLogs);
+
+    // Update refresh time
+    document.getElementById('refresh-time').textContent = '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
+  } catch (e) {
+    console.error('Dashboard refresh failed:', e);
+  }
+}
+
+// ====== Init ======
+function init() {
+  initCharts();
+  refreshDashboard();
+
+  // Auto-refresh every 30 seconds
+  setInterval(refreshDashboard, 30000);
+}
+
+init();
+</script>
+</body>
+</html>
