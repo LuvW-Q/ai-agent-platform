@@ -180,7 +180,14 @@ tailwind.config = {
     <h3 class="text-lg font-bold text-on-surface mb-md" id="role-modal-title">新增角色</h3>
     <input id="role-name" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary" placeholder="角色名称"/>
     <input id="role-code" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary" placeholder="角色代码"/>
-    <input id="role-desc" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-4 outline-none focus:border-primary" placeholder="描述"/>
+    <input id="role-desc" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary" placeholder="描述"/>
+    <div class="mb-4">
+      <label class="text-xs text-on-surface-variant block mb-1">状态</label>
+      <select id="role-active" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary">
+        <option value="true">启用</option>
+        <option value="false">停用</option>
+      </select>
+    </div>
     <div class="flex justify-end gap-2">
       <button class="px-4 py-2 border border-outline-variant text-sm rounded-xl hover:bg-surface-container-high transition-all" onclick="closeRoleModal()">取消</button>
       <button class="px-4 py-2 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110 transition-all" onclick="saveRole()">保存</button>
@@ -217,6 +224,7 @@ let editingMenuId = null;
 let searchTimer = null;
 
 function switchTab(tab) {
+  if (currentTab === tab) return;
   currentTab = tab;
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('text-primary', btn.dataset.tab === tab);
@@ -280,14 +288,18 @@ async function editUser(id) {
   const users = await apiGet('/api/permissions/users');
   const u = users.find(x => x.id === id);
   if (!u) return;
-  const nickname = prompt('昵称:', u.nickname || '');
-  if (nickname === null) return;
-  const email = prompt('邮箱:', u.email || '');
-  if (email === null) return;
-  const role = prompt('角色 (ROOT/AUDIT/OPS/USER/GUEST):', u.role || 'USER');
-  if (role === null) return;
+  const newNickname = prompt('昵称:', u.nickname || '');
+  if (newNickname === null) return;
+  const newEmail = prompt('邮箱:', u.email || '');
+  if (newEmail === null) return;
+  const newRole = prompt('角色 (ROOT/AUDIT/OPS/USER/GUEST):', u.role || 'USER');
+  if (newRole === null) return;
   try {
-    await apiPut('/api/permissions/users/' + id, {nickname, email, role});
+    const body = {};
+    if (newNickname && newNickname.trim()) body.nickname = newNickname.trim();
+    if (newEmail && newEmail.trim()) body.email = newEmail.trim();
+    if (newRole && newRole.trim()) body.role = newRole.trim();
+    await apiPut('/api/permissions/users/' + id, body);
     showToast('更新成功', 'success');
     loadUsers();
   } catch(e) { showToast('更新失败', 'error'); }
@@ -340,6 +352,7 @@ function openRoleModal() {
   document.getElementById('role-name').value = '';
   document.getElementById('role-code').value = '';
   document.getElementById('role-desc').value = '';
+  document.getElementById('role-active').value = 'true';
   document.getElementById('role-modal').classList.remove('hidden');
 }
 
@@ -357,6 +370,7 @@ async function editRole(id) {
     document.getElementById('role-name').value = r.name;
     document.getElementById('role-code').value = r.code;
     document.getElementById('role-desc').value = r.description || '';
+    document.getElementById('role-active').value = r.is_active ? 'true' : 'false';
     document.getElementById('role-modal').classList.remove('hidden');
   } catch(e) { showToast('加载失败', 'error'); }
 }
@@ -365,10 +379,11 @@ async function saveRole() {
   const name = document.getElementById('role-name').value.trim();
   const code = document.getElementById('role-code').value.trim();
   const desc = document.getElementById('role-desc').value.trim();
+  const is_active = document.getElementById('role-active').value === 'true';
   if (!name || !code) { showToast('名称和代码不能为空', 'error'); return; }
   try {
     if (editingRoleId) {
-      await apiPut('/api/permissions/roles/' + editingRoleId, {name, code, description: desc});
+      await apiPut('/api/permissions/roles/' + editingRoleId, {name, code, description: desc, is_active});
       showToast('更新成功', 'success');
     } else {
       await apiPost('/api/permissions/roles', {name, code, description: desc});
