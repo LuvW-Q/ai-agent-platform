@@ -225,3 +225,73 @@ def conversations(db: SessionLocal = Depends(get_db), user: User = Depends(get_c
                 "status": m.status,
             })
     return convos
+
+
+# ==================== 管理员会话管理 ====================
+# 敏感词库（与 smart_audit_controller 保持一致，用于会话列表风险标签）
+_HIGH_RISK_WORDS = {"密码", "身份证", "银行卡", "转账", "汇款", "裸聊", "赌博", "毒品", "fuck", "kill"}
+_MEDIUM_RISK_WORDS = {"私聊", "加微信", "QQ号", "手机号", "私下", "shit", "damn"}
+
+
+def _classify_risk(content: str) -> str:
+    """根据消息内容关键词返回风险等级 low/medium/high"""
+    if not content:
+        return "low"
+    c = content.lower()
+    for w in _HIGH_RISK_WORDS:
+        if w.lower() in c:
+            return "high"
+    for w in _MEDIUM_RISK_WORDS:
+        if w.lower() in c:
+            return "medium"
+    return "low"
+
+
+@im_router.get("/admin/conversations")
+def admin_conversations(
+    limit: int = Query(50, ge=1, le=500),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """管理员查看所有用户最近会话（按用户聚合，含风险标签）
+
+    返回最近活跃会话：按 sender_id 聚合取该用户最新一条消息，
+    根据该消息内容判断风险等级，前端按 risk_level=='high' 标红整行。
+    """
+    from sqlalchemy import func
+
+    # 子查询：每个 sender 最近一条消息时间
+    subq = (
+        db.query(
+            Message.sender_id.label("uid"),
+            func.max(Message.created_at).label("last_time"),
+        )
+        .filter(Message.sender_id.isnot(None))
+        .group_by(Message.sender_id)
+        .subquery()
+    )
+
+    # 用 join 取每个 sender 的最新一条消息
+    last_msgs = (
+        db.query(Message)
+        .join(subq, (Message.sender_id == subq.c.uid) & (Message.created_at == subq.c.last_time))
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    convs = []
+    for m in last_msgs:
+        sender = db.query(User).filter(User.id == m.sender_id).first() if m.sender_id else None
+        risk = _classify_risk(m.content)
+        convs.append({
+            "user_id": m.sender_id,
+            "username": (sender.nickname or sender.username) if sender else f"用户{m.sender_id}",
+            "peer_id": m.receiver_id,
+            "group_id": m.group_id,
+            "last_message": (m.content or "")[:100],
+            "last_time": m.created_at.isoformat() if m.created_at else None,
+            "risk_level": risk,
+            "is_sensitive": risk == "high",
+        })
+    return convs
