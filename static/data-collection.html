@@ -459,7 +459,24 @@ function renderWarehouseTab(el) {
           <input id="whSearch" type="text" placeholder="搜索标题或内容..." onkeydown="if(event.key==='Enter')searchWH()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg pl-8 pr-3 py-1.5 text-sm w-56"/>
         </div>
         <button onclick="searchWH()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs hover:text-primary transition-colors">搜索</button>
+        <button onclick="openBatchModal()" id="batchDeepBtn" class="bg-primary-container text-on-primary-container px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-80 transition-opacity flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">batch_prediction</span> 批量深度采集
+        </button>
       </div>
+    </div>
+    <div id="batchProgress" class="hidden bg-surface-container-high/50 rounded-xl p-4 mb-4 border border-outline-variant/20">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-bold flex items-center gap-1.5"><span class="material-symbols-outlined text-sm text-secondary">batch_prediction</span> 批量深度采集进度</span>
+        <span id="batchStatus" class="text-xs text-secondary">运行中...</span>
+      </div>
+      <div class="w-full bg-surface-container rounded-full h-2 mb-2">
+        <div id="batchBar" class="bg-secondary h-2 rounded-full transition-all" style="width:0%"></div>
+      </div>
+      <div class="flex items-center justify-between text-[10px] text-on-surface-variant mb-2">
+        <span id="batchCounts">0 / 0</span>
+        <button onclick="closeBatchProgress()" class="text-on-surface-variant hover:text-on-surface">关闭</button>
+      </div>
+      <pre id="batchLog" class="mt-2 text-[10px] text-on-surface-variant max-h-32 overflow-y-auto custom-scrollbar whitespace-pre-wrap"></pre>
     </div>
     <div id="whContent"><div class="text-center py-12 text-on-surface-variant text-sm"><span class="material-symbols-outlined animate-spin">progress_activity</span> 加载中...</div></div>
     <div id="whGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>`;
@@ -529,6 +546,109 @@ async function deleteWH(id) {
   if (!confirm('确认删除此仓库数据？')) return;
   try { await apiDelete('/api/dc/warehouse/' + id); } catch(e) {}
   await loadWarehouseData();
+}
+
+/* ============ Batch Deep Collect Modal + Progress ============ */
+let batchPollTimer = null;
+
+function openBatchModal() {
+  const existing = document.querySelector('.fixed.inset-0');
+  if (existing) existing.remove();
+
+  const html = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick="if(event.target===this)this.remove()">
+    <div class="bg-surface-container rounded-2xl p-6 w-full max-w-md">
+      <h3 class="text-lg font-bold text-primary mb-4 flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-sm">batch_prediction</span> 批量深度采集
+      </h3>
+      <div class="space-y-3">
+        <div><label class="text-xs text-on-surface-variant">关键词（留空表示不限）</label>
+          <input id="batchKw" type="text" placeholder="例如：人工智能、数据治理..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1 font-mono"/>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant mb-2 block">选择数据源（可多选，不选即不限）</label>
+          <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+            ${sources.length
+              ? sources.map(s => '<label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-container-high/50 border border-outline-variant/20 text-xs cursor-pointer hover:bg-surface-container-high transition-colors"><input type="checkbox" class="batch-src-cb" value="' + s.id + '"/> ' + escapeHtml(s.name) + '</label>').join('')
+              : '<span class="text-xs text-on-surface-variant">无数据源</span>'}
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-4">
+        <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface">取消</button>
+        <button onclick="startBatchDeepCollect()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg font-medium hover:opacity-90">开始</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function startBatchDeepCollect() {
+  const kw = (document.getElementById('batchKw')?.value || '').trim();
+  const sourceIds = [...document.querySelectorAll('.batch-src-cb:checked')].map(c => parseInt(c.value));
+  document.querySelector('.fixed.inset-0')?.remove();
+
+  // 显示进度条
+  const prog = document.getElementById('batchProgress');
+  if (prog) prog.classList.remove('hidden');
+  const bar = document.getElementById('batchBar');
+  const statusEl = document.getElementById('batchStatus');
+  const logEl = document.getElementById('batchLog');
+  const countsEl = document.getElementById('batchCounts');
+  if (bar) bar.style.width = '0%';
+  if (statusEl) statusEl.textContent = '提交中...';
+  if (logEl) logEl.textContent = '';
+  if (countsEl) countsEl.textContent = '0 / 0';
+
+  try {
+    const res = await apiPost('/api/dc/batch-deep-collect', { keyword: kw, source_ids: sourceIds });
+    showToast('批量任务已提交：task_id=' + res.task_id, 'success');
+    // 立即显示一次结果，再启动轮询
+    await pollBatchProgress(res.task_id);
+  } catch(e) {
+    showToast('批量深度采集失败: ' + (e.message || '未知错误'), 'error');
+    if (statusEl) statusEl.textContent = '失败';
+  }
+}
+
+async function pollBatchProgress(taskId) {
+  const bar = document.getElementById('batchBar');
+  const statusEl = document.getElementById('batchStatus');
+  const logEl = document.getElementById('batchLog');
+  const countsEl = document.getElementById('batchCounts');
+
+  if (batchPollTimer) { clearInterval(batchPollTimer); batchPollTimer = null; }
+
+  const update = async () => {
+    try {
+      const t = await apiGet('/api/dc/tasks/' + taskId);
+      const total = t.total_count || 0;
+      const done = t.completed_count || 0;
+      const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      if (bar) bar.style.width = pct + '%';
+      const statusMap = { running: '运行中...', completed: '已完成', failed: '部分失败', pending: '等待中...' };
+      if (statusEl) statusEl.textContent = statusMap[t.status] || t.status;
+      if (countsEl) countsEl.textContent = done + ' / ' + total + (t.status === 'failed' ? ' (失败部分)' : '');
+      if (logEl) logEl.textContent = t.log || '';
+      // 滚动到底部
+      if (logEl) logEl.scrollTop = logEl.scrollHeight;
+      if (t.status === 'completed' || t.status === 'failed') {
+        if (batchPollTimer) { clearInterval(batchPollTimer); batchPollTimer = null; }
+        loadWarehouseData();
+      }
+    } catch(e) {
+      if (batchPollTimer) { clearInterval(batchPollTimer); batchPollTimer = null; }
+      if (statusEl) statusEl.textContent = '查询失败';
+    }
+  };
+
+  await update();
+  batchPollTimer = setInterval(update, 2000);
+}
+
+function closeBatchProgress() {
+  const prog = document.getElementById('batchProgress');
+  if (prog) prog.classList.add('hidden');
+  if (batchPollTimer) { clearInterval(batchPollTimer); batchPollTimer = null; }
 }
 </script>
 </body></html>

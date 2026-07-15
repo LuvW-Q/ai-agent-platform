@@ -38,6 +38,7 @@ from models.de_message import DEMessage
 from models.knowledge_base import KnowledgeBase, KBDocument
 from models.workflow import Workflow, WorkflowNode, WorkflowEdge
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
+from models.collection_task import CollectionTask
 from models.menu import Menu
 from models.setting import Setting
 

@@ -12,6 +12,7 @@ from dao.model_dao import get_default_model
 from core.openai_client import OpenAIClient
 from models.user import User
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
+from models.collection_task import CollectionTask
 from pydantic import BaseModel
 import httpx
 from bs4 import BeautifulSoup
@@ -281,6 +282,116 @@ def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: Use
     db.query(CollectedData).filter(CollectedData.id == data_id).delete()
     db.commit()
     return {"deleted": True}
+
+
+# ============ 批量深度采集 + 任务进度日志 ============
+@dc_router.post("/batch-deep-collect")
+async def batch_deep_collect(body: CrawlIn, db: SessionLocal = Depends(get_db),
+                              user: User = Depends(get_current_user)):
+    """批量深度采集：创建任务，对仓库中已保存且未深度采集的数据执行深度采集"""
+    source_ids_str = ",".join(str(s) for s in body.source_ids) if body.source_ids else ""
+    task = CollectionTask(
+        keyword=body.keyword,
+        source_ids=source_ids_str,
+        status="running",
+        total_count=0,
+        completed_count=0,
+        log=f"开始批量深度采集: keyword={body.keyword}, source_ids={source_ids_str or 'all'}\n",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # 选取需要深度采集的目标：仓库中已保存且未深度采集
+    q = db.query(CollectedData).filter(
+        CollectedData.saved == True,
+        CollectedData.deep_collected == False,
+    )
+    if body.keyword:
+        q = q.filter(CollectedData.keyword == body.keyword)
+    if body.source_ids:
+        q = q.filter(CollectedData.source_id.in_(body.source_ids))
+
+    items_to_collect = q.all()
+    task.total_count = len(items_to_collect)
+    task.log += f"待采集条数: {task.total_count}\n"
+    db.commit()
+
+    completed = 0
+    failed = 0
+    for item in items_to_collect:
+        try:
+            if not item.url:
+                raise ValueError("该数据无来源URL")
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(item.url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+                full_text = resp.text
+            soup = BeautifulSoup(full_text, "html.parser")
+            for tag in soup(["script", "style", "nav", "footer", "header"]):
+                tag.decompose()
+            body_text = soup.get_text(separator="\n", strip=True)[:8000]
+            item.content = body_text
+            item.deep_collected = True
+            completed += 1
+            task.completed_count = completed
+            task.log += f"[OK] {item.title or (item.url[:50] if item.url else '未知条目')}... 深度采集完成\n"
+        except Exception as e:
+            failed += 1
+            task.log += f"[FAIL] {item.title or (item.url[:50] if item.url else '未知条目')}... 错误: {str(e)}\n"
+        db.commit()
+
+    task.status = "completed" if failed == 0 and task.total_count > 0 else ("completed" if task.total_count == 0 else "failed")
+    if task.total_count == 0:
+        task.status = "completed"
+        task.log += "无可深度采集的数据，任务直接结束\n"
+    else:
+        task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
+    db.commit()
+    return {
+        "task_id": task.id,
+        "status": task.status,
+        "completed": completed,
+        "total": task.total_count,
+    }
+
+
+@dc_router.get("/tasks")
+def list_tasks(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出最近的采集任务（最多20条，按创建时间倒序）"""
+    tasks = db.query(CollectionTask).order_by(CollectionTask.created_at.desc()).limit(20).all()
+    return [
+        {
+            "id": t.id,
+            "keyword": t.keyword,
+            "source_ids": t.source_ids,
+            "total_count": t.total_count,
+            "completed_count": t.completed_count,
+            "status": t.status,
+            "log": t.log,
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+            "updated_at": t.updated_at.isoformat() if t.updated_at else "",
+        }
+        for t in tasks
+    ]
+
+
+@dc_router.get("/tasks/{task_id}")
+def get_task(task_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+    """查询单个采集任务详情"""
+    task = db.query(CollectionTask).filter(CollectionTask.id == task_id).first()
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    return {
+        "id": task.id,
+        "keyword": task.keyword,
+        "source_ids": task.source_ids,
+        "total_count": task.total_count,
+        "completed_count": task.completed_count,
+        "status": task.status,
+        "log": task.log,
+        "created_at": task.created_at.isoformat() if task.created_at else "",
+        "updated_at": task.updated_at.isoformat() if task.updated_at else "",
+    }
 
 
 # ============ 辅助函数 ============
