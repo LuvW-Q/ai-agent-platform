@@ -58,7 +58,7 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
             "skill_names": skill_names,
             "fallback_message": a.fallback_message or "系统繁忙，请稍后再试",
             "status": a.status, "description": a.description or "",
-            "agent_type": a.agent_type or "model",
+            "agent_type": a.agent_type or ("api" if a.skill_bindings and a.skill_bindings.startswith("api_") else "model"),
             "api_id": a.api_id,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
