@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>工作流编排 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","on-primary":"#002a78","secondary":"#a6e6ff","secondary-container":"#14d1ff","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"],"label-mono":["JetBrains Mono"]}}}}</script>
+<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.node-card{cursor:grab;user-select:none;border-left:3px solid #0052d9}.node-card:hover{background:#1f2a3c}.canvas-dot{width:10px;height:10px;border-radius:50%;background:#14d1ff;position:absolute;bottom:-5px;right:-5px;cursor:crosshair;z-index:10;border:2px solid #071425}</style></head>
+<body class="bg-background text-on-background min-h-screen overflow-hidden">
+<aside></aside>
+<main class="flex h-screen">
+  <!-- WF List -->
+  <div class="w-56 bg-surface-container border-r border-outline-variant flex flex-col flex-shrink-0">
+    <div class="p-3 border-b border-outline-variant flex items-center justify-between">
+      <h3 class="text-sm font-bold text-primary">工作流列表</h3>
+    </div>
+    <div class="p-2">
+      <button onclick="newWorkflow()" class="w-full text-xs bg-primary-container text-on-primary-container px-3 py-2 rounded-lg hover:opacity-80 flex items-center justify-center gap-1">
+        <span class="material-symbols-outlined text-sm">add</span> 新建工作流
+      </button>
+    </div>
+    <div id="wfList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="flex-1 flex flex-col">
+    <div class="h-12 border-b border-outline-variant flex items-center px-4 justify-between bg-surface-container/50">
+      <div class="flex items-center gap-3">
+        <h2 id="wfTitle" class="font-bold text-on-surface text-sm">未选择工作流</h2>
+        <span id="wfStatus" class="text-xs px-2 py-0.5 rounded-full" style="display:none"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-on-surface-variant">节点:</span>
+        <div id="nodePalette" class="flex gap-1"></div>
+        <div class="h-5 w-px bg-outline-variant mx-2"></div>
+        <button onclick="validateWF()" class="px-3 py-1.5 text-xs bg-surface-container-high rounded-lg hover:bg-surface-container transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-sm">checklist</span>校验</button>
+        <button onclick="runWF()" class="px-3 py-1.5 text-xs bg-secondary-container/20 text-secondary rounded-lg hover:bg-secondary-container/30 transition-colors flex items-center gap-1"><span class="material-symbols-outlined text-sm">play_arrow</span>运行</button>
+        <button onclick="saveWF()" class="px-3 py-1.5 text-xs bg-primary-container text-on-primary-container rounded-lg hover:opacity-80 transition-opacity flex items-center gap-1"><span class="material-symbols-outlined text-sm">save</span>保存</button>
+      </div>
+    </div>
+    <div id="canvas" class="flex-1 relative overflow-auto bg-surface-container-lowest" style="background-image:radial-gradient(circle,#434654 1px,transparent 1px);background-size:20px 20px" ondragover="event.preventDefault()" ondrop="dropNode(event)">
+      <svg id="edgesSvg" class="absolute inset-0 pointer-events-none" style="width:100%;height:100%"></svg>
+      <div id="canvas-empty" class="absolute inset-0 flex items-center justify-center text-on-surface-variant pointer-events-none">
+        <div class="text-center"><span class="material-symbols-outlined text-5xl mb-2 block opacity-30">account_tree</span><p class="text-sm">点击左侧"新建工作流"开始</p><p class="text-xs mt-1 opacity-60">或从上方拖动节点类型到画布</p></div>
+      </div>
+    </div>
+    <div class="h-8 border-t border-outline-variant flex items-center px-4 gap-4 bg-surface-container/50">
+      <span id="hintText" class="text-xs text-on-surface-variant">拖拽节点到画布 · 点击节点右下角蓝色圆点连线 · 双击节点配置</span>
+      <span id="validationText" class="text-xs ml-auto"></span>
+    </div>
+  </div>
+</main>
+
+<!-- Config/Result Modal -->
+<div id="cfgModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" style="display:none">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" id="cfgContent"></div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+var currentWF = null, wfNodes = [], wfEdges = [], nodeTypes = {}, connectFrom = null, nextNodeId = 100;
+var NODE_COLORS = {start:'#4edea3',end:'#ffb4ab',llm:'#adc6ff',skill:'#ffb786',condition:'#ffb786',kb_search:'#4edea3',http:'#a6e6ff',code:'#a6e6ff'};
+
+// ===== Init =====
+(async function init(){
+  try { nodeTypes = await apiGet('/api/workflows/node-types'); } catch(e) { console.error(e); }
+  // Render node palette as draggable chips in top bar
+  var palette = document.getElementById('nodePalette');
+  palette.innerHTML = Object.entries(nodeTypes).filter(function(e){return e[0]!=='start'&&e[0]!=='end';}).map(function(e){
+    return '<div class="node-card px-2 py-1 rounded text-xs cursor-grab whitespace-nowrap" draggable="true" ondragstart="dragStart(event,\''+e[0]+'\')" style="border-left-color:'+(NODE_COLORS[e[0]]||'#666')+'">'+e[1].label+'</div>';
+  }).join('');
+  loadWFList();
+})();
+
+// ===== WF List =====
+async function loadWFList() {
+  try {
+    var wfs = await apiGet('/api/workflows');
+    var el = document.getElementById('wfList');
+    el.innerHTML = wfs.length ? wfs.map(function(w){
+      var active = currentWF && currentWF.id === w.id;
+      return '<div class="flex items-center justify-between p-2 rounded-lg cursor-pointer '+(active?'bg-secondary-container/10 border border-secondary-container/20':'hover:bg-surface-container-high')+'" onclick="loadWF('+w.id+')">'+
+        '<div class="min-w-0"><div class="text-sm truncate">'+escapeHtml(w.name)+'</div><div class="text-xs text-on-surface-variant">'+w.node_count+'节点 · '+w.status+'</div></div>'+
+        '<button onclick="event.stopPropagation();deleteWF('+w.id+')" class="text-on-surface-variant hover:text-error text-xs flex-shrink-0">&times;</button>'+
+      '</div>';
+    }).join('') : '<div class="text-xs text-on-surface-variant text-center py-8">暂无工作流<br>点击上方按钮创建</div>';
+  } catch(e) {}
+}
+
+// ===== CRUD =====
+async function newWorkflow() {
+  var name = prompt('工作流名称:', '新工作流');
+  if (!name) return;
+  try {
+    var wf = await apiPost('/api/workflows', {name: name});
+    showToast('创建成功', 'success');
+    await loadWF(wf.id);
+  } catch(e) { showToast('创建失败: '+e.message, 'error'); }
+}
+
+async function loadWF(id) {
+  try {
+    currentWF = await apiGet('/api/workflows/'+id);
+    wfNodes = currentWF.nodes || [];
+    wfEdges = currentWF.edges || [];
+    nextNodeId = Math.max(100, wfNodes.length ? Math.max.apply(null, wfNodes.map(function(n){return n.id;})) : 99) + 1;
+    document.getElementById('wfTitle').textContent = currentWF.name;
+    document.getElementById('wfStatus').style.display = 'inline-block';
+    document.getElementById('wfStatus').textContent = currentWF.status || 'draft';
+    document.getElementById('canvas-empty').style.display = 'none';
+    renderCanvas();
+    loadWFList();
+  } catch(e) { showToast('加载失败', 'error'); }
+}
+
+async function saveWF() {
+  if (!currentWF) { showToast('请先新建或选择工作流', 'error'); return; }
+  try {
+    await apiPut('/api/workflows/'+currentWF.id, {name: currentWF.name, nodes: wfNodes, edges: wfEdges});
+    showToast('保存成功', 'success');
+    loadWFList();
+  } catch(e) { showToast('保存失败', 'error'); }
+}
+
+async function deleteWF(id) {
+  if (!confirm('确认删除此工作流？')) return;
+  await apiDelete('/api/workflows/'+id);
+  if (currentWF && currentWF.id === id) {
+    currentWF = null; wfNodes = []; wfEdges = [];
+    document.getElementById('wfTitle').textContent = '未选择工作流';
+    document.getElementById('wfStatus').style.display = 'none';
+    document.getElementById('canvas-empty').style.display = 'flex';
+    renderCanvas();
+  }
+  loadWFList();
+}
+
+// ===== Validate & Run =====
+async function validateWF() {
+  if (!currentWF) { showToast('请先选择工作流', 'error'); return; }
+  await saveWF();
+  var res = await apiPost('/api/workflows/'+currentWF.id+'/validate');
+  document.getElementById('validationText').innerHTML = res.valid
+    ? '<span class="text-secondary">校验通过</span>'+(res.warnings.length?' ('+res.warnings.length+'个警告)':'')
+    : '<span class="text-error">'+res.errors.join('; ')+'</span>';
+  if (!res.valid) showToast(res.errors[0]||'校验失败', 'error');
+  else if (res.warnings.length) showToast(res.warnings.join('\n'), 'error');
+}
+
+async function runWF() {
+  if (!currentWF) { showToast('请先选择工作流', 'error'); return; }
+  await saveWF();
+  var inputStr = prompt('输入数据 (JSON格式, 可为空):', '{"text":"hello world"}');
+  var inputData = {};
+  try { inputData = JSON.parse(inputStr || '{}'); } catch(e) {}
+  try {
+    var res = await apiPost('/api/workflows/'+currentWF.id+'/run', inputData);
+    document.getElementById('cfgContent').innerHTML =
+      '<div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold text-primary">运行结果</h3><button onclick="closeCfg()" class="text-on-surface-variant"><span class="material-symbols-outlined">close</span></button></div>'+
+      '<div class="bg-surface-container-high/50 rounded-lg p-3 mb-3"><span class="text-xs text-secondary font-bold">输出:</span><pre class="text-xs mt-1 whitespace-pre-wrap">'+escapeHtml(typeof res.output==='object'?JSON.stringify(res.output,null,2):String(res.output||''))+'</pre></div>'+
+      (res.steps||[]).map(function(s){
+        return '<div class="flex items-center gap-2 text-xs p-2 rounded mb-1 '+(s.error?'bg-error-container/10 text-error':'bg-surface-container-high/50')+'">'+
+          '<span class="px-1.5 py-0.5 rounded text-xs font-bold" style="background:'+(NODE_COLORS[s.type]||'#333')+'20;color:'+(NODE_COLORS[s.type]||'#ccc')+'">'+s.type+'</span>'+
+          '<span>'+escapeHtml(s.label||'')+'</span>'+
+          (s.error?'<span class="text-error ml-auto">'+escapeHtml(s.error)+'</span>':'<span class="text-on-surface-variant ml-auto truncate" style="max-width:200px">'+escapeHtml(String(s.result||''))+'</span>')+
+        '</div>';
+      }).join('');
+    document.getElementById('cfgModal').style.display = 'flex';
+  } catch(e) { showToast('运行失败: '+e.message, 'error'); }
+}
+
+function closeCfg() { document.getElementById('cfgModal').style.display = 'none'; }
+document.getElementById('cfgModal').addEventListener('click', function(e){ if (e.target === this) closeCfg(); });
+
+// ===== Canvas Rendering =====
+function renderCanvas() {
+  var canvas = document.getElementById('canvas');
+  canvas.querySelectorAll('.wf-node').forEach(function(el){ el.remove(); });
+  wfNodes.forEach(function(n){
+    var el = document.createElement('div');
+    el.className = 'wf-node absolute bg-surface-container border-2 rounded-xl p-3 shadow-lg z-20';
+    el.id = 'node-'+n.id;
+    el.style.left = (n.x||100)+'px';
+    el.style.top = (n.y||200)+'px';
+    el.style.minWidth = '130px';
+    el.style.borderColor = NODE_COLORS[n.type]||'#434654';
+    el.innerHTML =
+      '<div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold" style="color:'+(NODE_COLORS[n.type]||'#ccc')+'">'+(nodeTypes[n.type]||{}).label||n.type+'</span></div>'+
+      '<div class="text-xs text-on-surface">'+escapeHtml(n.label||'')+'</div>'+
+      '<div class="canvas-dot" title="点击下一节点完成连线" onmousedown="startConnect(event,'+n.id+')"></div>';
+    el.draggable = true;
+    el.addEventListener('dragstart', function(e){ e.dataTransfer.setData('text/plain', String(n.id)); });
+    el.addEventListener('dragend', function(e){
+      var rect = canvas.getBoundingClientRect();
+      n.x = e.clientX - rect.left + canvas.scrollLeft - 65;
+      n.y = e.clientY - rect.top + canvas.scrollTop - 15;
+      renderCanvas();
+    });
+    el.addEventListener('dblclick', function(){ editNodeConfig(n); });
+    canvas.appendChild(el);
+  });
+  drawEdges();
+}
+
+function drawEdges() {
+  var svg = document.getElementById('edgesSvg');
+  var html = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#434654"/></marker></defs>';
+  wfEdges.forEach(function(e){
+    var src = wfNodes.find(function(n){return n.id===e.source;});
+    var tgt = wfNodes.find(function(n){return n.id===e.target;});
+    if (src && tgt) {
+      var x1=src.x+65, y1=src.y+40, x2=tgt.x+65, y2=tgt.y+10;
+      html += '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#434654" stroke-width="2" marker-end="url(#arrow)"/>';
+      if (e.label) html += '<text x="'+(x1+x2)/2+'" y="'+(y1+y2)/2-6+'" text-anchor="middle" class="text-xs fill-outline">'+escapeHtml(e.label)+'</text>';
+    }
+  });
+  svg.innerHTML = html;
+}
+
+// ===== Drag & Drop =====
+function dragStart(e, type) { e.dataTransfer.setData('type', type); }
+
+function dropNode(e) {
+  e.preventDefault();
+  if (!currentWF) { showToast('请先新建或选择工作流', 'error'); return; }
+  var type = e.dataTransfer.getData('type');
+  if (!type) return;
+  var canvas = document.getElementById('canvas');
+  var rect = canvas.getBoundingClientRect();
+  var x = e.clientX - rect.left + canvas.scrollLeft - 65;
+  var y = e.clientY - rect.top + canvas.scrollTop - 15;
+  var node = {id: nextNodeId++, type: type, label: (nodeTypes[type]||{}).label||type, config: {}, x: x, y: y};
+  wfNodes.push(node);
+  renderCanvas();
+  editNodeConfig(node);
+}
+
+// ===== Connect =====
+function startConnect(e, nodeId) { e.stopPropagation(); connectFrom = nodeId; document.getElementById('hintText').innerHTML = '<span class="text-secondary">点击目标节点完成连线 (Esc取消)</span>'; }
+document.addEventListener('keydown', function(e){ if (e.key==='Escape'){ connectFrom=null; document.getElementById('hintText').textContent='拖拽节点到画布 · 点击节点右下角蓝色圆点连线 · 双击节点配置'; } });
+document.getElementById('canvas').addEventListener('click', function(e){
+  if (!connectFrom) return;
+  var targetEl = e.target.closest('.wf-node');
+  if (targetEl) {
+    var targetId = parseInt(targetEl.id.replace('node-',''));
+    if (targetId !== connectFrom && !wfEdges.some(function(ed){return ed.source===connectFrom&&ed.target===targetId;})) {
+      wfEdges.push({source: connectFrom, target: targetId, label: '', condition: ''});
+      renderCanvas();
+    }
+  }
+  connectFrom = null;
+  document.getElementById('hintText').textContent = '拖拽节点到画布 · 点击节点右下角蓝色圆点连线 · 双击节点配置';
+});
+
+// ===== Node Config =====
+function editNodeConfig(node) {
+  var cfgFields = (nodeTypes[node.type]||{}).config||[];
+  var cur = node.config||{};
+  var html = '<div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold text-primary">配置: '+(nodeTypes[node.type]||{}).label||node.type+'</h3><button onclick="closeCfg()" class="text-on-surface-variant"><span class="material-symbols-outlined">close</span></button></div>'+
+    '<div class="mb-3"><label class="text-xs">节点标签</label><input id="cfg_label" value="'+escapeHtml(node.label||'')+'" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm mt-1"/></div>';
+  cfgFields.forEach(function(c){
+    var v = cur[c.key] || c.default || '';
+    if (c.type==='textarea'||c.type==='code') html += '<div class="mb-3"><label class="text-xs">'+c.label+'</label><textarea id="cfg_'+c.key+'" rows="4" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm mt-1 font-mono">'+escapeHtml(v)+'</textarea></div>';
+    else if (c.type==='model_select') html += '<div class="mb-3"><label class="text-xs">'+c.label+'</label><select id="cfg_'+c.key+'" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm mt-1"><option value="">选择模型</option></select></div>';
+    else if (c.type==='skill_select') html += '<div class="mb-3"><label class="text-xs">'+c.label+'</label><select id="cfg_'+c.key+'" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm mt-1"><option value="">选择技能</option></select></div>';
+    else html += '<div class="mb-3"><label class="text-xs">'+c.label+'</label><input id="cfg_'+c.key+'" value="'+escapeHtml(v)+'" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-sm mt-1"/></div>';
+  });
+  html += '<div class="flex justify-end gap-3 mt-4"><button onclick="deleteNode('+node.id+')" class="px-4 py-2 text-sm text-error hover:bg-error-container/10 rounded-lg">删除节点</button><button onclick="saveNodeConfig('+node.id+')" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg hover:opacity-80">保存配置</button></div>';
+  document.getElementById('cfgContent').innerHTML = html;
+  document.getElementById('cfgModal').style.display = 'flex';
+
+  // Load model/skill options
+  setTimeout(async function(){
+    try {
+      var models = await apiGet('/api/models');
+      var skills = await apiGet('/api/skills');
+      document.querySelectorAll('[id^="cfg_model_id"]').forEach(function(s){
+        s.innerHTML = '<option value="">选择模型</option>'+models.filter(function(m){return m.model_type==='chat'&&m.is_active;}).map(function(m){return '<option value="'+m.id+'"'+(cur.model_id==m.id?' selected':'')+'>'+escapeHtml(m.name)+'</option>';}).join('');
+      });
+      document.querySelectorAll('[id^="cfg_skill_id"]').forEach(function(s){
+        s.innerHTML = '<option value="">选择技能</option>'+skills.filter(function(sk){return sk.status==='active';}).map(function(sk){return '<option value="'+sk.id+'"'+(cur.skill_id==sk.id?' selected':'')+'>'+escapeHtml(sk.name)+'</option>';}).join('');
+      });
+    } catch(e) {}
+  }, 150);
+}
+
+function saveNodeConfig(id) {
+  var node = wfNodes.find(function(n){return n.id===id;});
+  if (!node) return;
+  node.label = document.getElementById('cfg_label')?.value||'';
+  var cfg = {};
+  document.querySelectorAll('[id^="cfg_"]').forEach(function(el){ if (el.id!=='cfg_label') cfg[el.id.replace('cfg_','')]=el.value; });
+  node.config = cfg;
+  renderCanvas();
+  closeCfg();
+}
+
+function deleteNode(id) {
+  wfNodes = wfNodes.filter(function(n){return n.id!==id;});
+  wfEdges = wfEdges.filter(function(e){return e.source!==id&&e.target!==id;});
+  renderCanvas();
+  closeCfg();
+}
+</script>
+</body></html>

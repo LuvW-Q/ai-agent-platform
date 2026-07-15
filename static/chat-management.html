@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>聊天管理 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","secondary":"#a6e6ff","secondary-container":"#14d1ff","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"]}}}}</script>
+<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.tab-active{border-bottom:2px solid #b4c5ff;color:#b4c5ff}</style></head>
+<body class="bg-background text-on-background min-h-screen">
+<aside></aside>
+<main class="p-6 min-h-screen">
+  <div class="flex items-center justify-between mb-4">
+    <div><h1 class="text-2xl font-bold text-primary">聊天管理</h1><p class="text-sm text-on-surface-variant mt-1">群管理 · 聊天记录 · 群文件管理</p></div>
+  </div>
+  <div class="flex gap-4 mb-4 border-b border-outline-variant/20 pb-2">
+    <button class="tab-btn tab-active pb-2 px-1 text-sm font-medium" data-tab="groups">群管理</button>
+    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface" data-tab="records">聊天记录</button>
+    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface" data-tab="files">群文件</button>
+  </div>
+  <div id="tabContent"></div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+let tab='groups';
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('tab-active'));b.classList.add('tab-active');loadTab();}));
+
+async function loadTab() {
+  const el = document.getElementById('tabContent');
+  if (tab==='groups') {
+    const groups = await apiGet('/api/groups');
+    el.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${groups.map(g=>`
+      <div class="bg-surface-container/50 rounded-xl p-4 border border-outline-variant/20">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">groups</span><span class="font-bold">${escapeHtml(g.name)}</span><span class="text-[10px] bg-surface-container-high px-2 py-0.5 rounded">ID:${g.id}</span></div>
+          <button onclick="deleteGroup(${g.id})" class="text-on-surface-variant hover:text-error"><span class="material-symbols-outlined text-sm">delete</span></button>
+        </div>
+        <div class="text-xs text-on-surface-variant">群主ID: ${g.owner_id} · 创建: ${new Date(g.created_at).toLocaleDateString()}</div>
+        <div class="mt-2"><button onclick="loadGroupMembers(${g.id})" class="text-[10px] px-2 py-1 bg-primary-container/20 text-primary rounded hover:opacity-80">查看成员</button></div>
+      </div>`).join('')||'<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无群聊</div>'}</div>`;
+  } else if (tab==='records') {
+    const convs = await apiGet('/api/messages/conversations');
+    el.innerHTML = `<div class="mb-4 flex gap-3">
+      <input id="recSearch" type="text" placeholder="搜索聊天记录..." class="flex-1 bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-4 py-2 text-sm" onkeydown="if(event.key==='Enter')searchRecords()"/>
+      <button onclick="searchRecords()" class="bg-primary-container text-on-primary-container px-4 py-2 rounded-xl text-sm">搜索</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="recResults"><div class="col-span-full text-center text-on-surface-variant text-sm py-8">输入用户名或关键词搜索聊天记录</div></div>`;
+  } else {
+    // 群文件 = 显示所有上传的文件消息
+    try {
+      const res = await fetch('/api/messages/history?limit=200', {headers:{'Authorization':'Bearer '+Token.access}});
+      const msgs = await res.json();
+      const files = msgs.filter(m=>m.file_url||m.file_name);
+      el.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-3">${files.length?files.map(m=>`
+        <div class="bg-surface-container/50 rounded-xl p-4 border border-outline-variant/20">
+          <div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-primary">${m.msg_type==='image'?'image':'description'}</span><span class="text-sm font-medium truncate">${escapeHtml(m.file_name||'文件')}</span></div>
+          <div class="text-[10px] text-on-surface-variant">${m.file_size?Math.round(m.file_size/1024)+'KB':''} · ${escapeHtml(m.sender_name||'')}</div>
+          ${m.file_url?`<a href="${escapeHtml(m.file_url)}" target="_blank" class="text-[10px] text-secondary hover:underline mt-1 block">下载</a>`:''}
+        </div>`).join(''):'<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无群文件</div>'}</div>`;
+    } catch(e) { el.innerHTML = '<div class="text-center py-12 text-on-surface-variant text-sm">加载失败</div>'; }
+  }
+}
+
+async function deleteGroup(id) { if(!confirm('确认删除该群？'))return; await apiDelete('/api/groups/'+id); loadTab(); }
+async function loadGroupMembers(gid) {
+  const members = await apiGet('/api/groups/'+gid+'/members');
+  const names = members.map(m=>`<div class="flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">person</span>用户ID:${m.user_id} · 角色:${m.role}</div>`).join('');
+  const modal = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick="this.remove()"><div class="bg-surface-container rounded-2xl p-6 w-full max-w-sm" onclick="event.stopPropagation()"><h3 class="text-lg font-bold text-primary mb-3">群成员</h3>${names||'无成员'}<button onclick="this.closest('.fixed').remove()" class="mt-4 w-full py-2 bg-surface-container-high rounded-lg text-sm">关闭</button></div></div>`;
+  document.body.insertAdjacentHTML('beforeend', modal);
+}
+
+async function searchRecords() {
+  const q = document.getElementById('recSearch').value.trim(); if(!q)return;
+  const el = document.getElementById('recResults');
+  try {
+    // Search via audit messages endpoint for simplicity
+    const msgs = await apiGet('/api/smart-audit/messages?limit=50');
+    const filtered = msgs.filter(m=>m.content.toLowerCase().includes(q.toLowerCase()));
+    el.innerHTML = filtered.length ? filtered.map(m=>`
+      <div class="bg-surface-container/50 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-1"><span class="text-xs font-bold">${escapeHtml(m.sender_name||'用户'+m.sender_id)}</span><span class="text-[10px] text-on-surface-variant">${new Date(m.created_at).toLocaleString()}</span></div>
+        <div class="text-xs text-on-surface-variant">${escapeHtml(m.content.substring(0,200))}</div>
+        <span class="text-[10px] px-2 py-0.5 rounded ${m.risk_level==='high'?'bg-error-container/20 text-error':m.risk_level==='medium'?'bg-tertiary-container/20 text-tertiary':'bg-secondary-container/20 text-secondary'}">${m.risk_level}</span>
+      </div>`).join('') : '<div class="col-span-full text-center py-8 text-on-surface-variant text-sm">无匹配结果</div>';
+  } catch(e) { el.innerHTML = '<div class="col-span-full text-center py-8 text-on-surface-variant text-sm">搜索失败</div>'; }
+}
+
+if (requireAuth()) loadTab();
+</script>
+</body></html>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+darkMode: "class",
+theme: { extend: {
+"colors": {
+"background": "#071425", "surface": "#071425", "surface-dim": "#071425",
+"surface-bright": "#2e3a4c", "surface-container-lowest": "#030e1f",
+"surface-container-low": "#101c2d", "surface-container": "#142031",
+"surface-container-high": "#1f2a3c", "surface-container-highest": "#2a3548",
+"surface-variant": "#2a3548", "on-surface": "#d7e3fb", "on-surface-variant": "#c3c6d7",
+"primary": "#b4c5ff", "primary-container": "#0052d9", "on-primary": "#002a78",
+"on-primary-container": "#cbd6ff", "primary-fixed": "#dbe1ff", "primary-fixed-dim": "#b4c5ff",
+"secondary": "#a6e6ff", "secondary-container": "#14d1ff", "on-secondary": "#003543",
+"on-secondary-container": "#00566b", "secondary-fixed": "#b7eaff", "secondary-fixed-dim": "#4cd6ff",
+"tertiary": "#ffb59c", "tertiary-container": "#aa3500", "on-tertiary": "#5c1900",
+"on-tertiary-container": "#ffccbc", "error": "#ffb4ab", "error-container": "#93000a",
+"on-error": "#690005", "on-error-container": "#ffdad6",
+"outline": "#8d90a0", "outline-variant": "#434654",
+"on-background": "#d7e3fb", "inverse-surface": "#d7e3fb", "inverse-on-surface": "#253143",
+"inverse-primary": "#0353da",
+},
+"borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+"fontFamily": { "Inter": ["Inter"], "label-mono": ["JetBrains Mono"] },
+}},
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3fb; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #434654; border-radius: 10px; }
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+
+<aside></aside>
+
+<main class=" p-6 min-h-screen">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-primary">模型管理</h1>
+      <p class="text-sm text-on-surface-variant mt-1">管理 OpenAI 协议兼容的大语言模型</p>
+    </div>
+    <button onclick="openCreateModal()" class="flex items-center gap-2 bg-primary-container text-on-primary-container px-4 py-2 rounded-xl hover:opacity-80 transition-opacity">
+      <span class="material-symbols-outlined">add</span>
+      <span class="text-sm font-medium">添加模型</span>
+    </button>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="flex items-center gap-3 mb-4">
+    <div class="relative flex-1 max-w-md">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm">search</span>
+      <input id="searchInput" oninput="filterModels()" type="text" placeholder="搜索模型名称..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-secondary-container focus:ring-1 focus:ring-secondary-container/30 transition-all"/>
+    </div>
+    <select id="typeFilter" onchange="filterModels()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm focus:border-secondary-container transition-all">
+      <option value="">全部类型</option>
+      <option value="chat">对话</option>
+      <option value="embedding">嵌入</option>
+      <option value="rerank">重排序</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-surface-container/50 rounded-2xl border border-outline-variant/20 overflow-hidden">
+    <table class="w-full">
+      <thead>
+        <tr class="border-b border-outline-variant/20 text-left">
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">名称</th>
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">提供商</th>
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">模型ID</th>
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">类型</th>
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">上下文</th>
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">状态</th>
+          <th class="px-4 py-3 text-xs font-label-mono text-on-surface-variant uppercase tracking-wider">操作</th>
+        </tr>
+      </thead>
+      <tbody id="modelTableBody">
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Create/Edit Modal -->
+<div id="modelModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 id="modalTitle" class="text-lg font-bold text-primary">添加模型</h2>
+      <button onclick="closeModal()" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">名称</label>
+        <input id="mName" type="text" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">提供商</label>
+          <input id="mProvider" type="text" placeholder="OpenAI/DeepSeek/Anthropic" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">模型ID</label>
+          <input id="mModelName" type="text" placeholder="gpt-4o" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">API Key</label>
+          <input id="mApiKey" type="password" placeholder="sk-..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">Endpoint</label>
+          <input id="mEndpoint" type="text" placeholder="https://api.openai.com/v1" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">类型</label>
+          <select id="mType" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm">
+            <option value="chat">对话</option>
+            <option value="embedding">嵌入</option>
+            <option value="rerank">重排序</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">上下文长度</label>
+          <input id="mContext" type="number" value="4096" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">Max Tokens</label>
+          <input id="mMaxTokens" type="number" value="2048" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">Temperature</label>
+        <input id="mTemp" type="text" value="0.7" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5">
+      <button onclick="closeModal()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">取消</button>
+      <button id="saveBtn" onclick="saveModel()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg hover:opacity-80 transition-opacity">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Test Result Modal -->
+<div id="testModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-primary">模型测试</h2>
+      <button onclick="document.getElementById('testModal').classList.add('hidden')" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div id="testContent" class="text-sm">
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+let models = [];
+let editId = null;
+
+async function loadModels() {
+  try {
+    models = await apiGet('/api/models');
+    renderTable();
+  } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+function renderTable() {
+  const tbody = document.getElementById('modelTableBody');
+  tbody.innerHTML = models.map(m => {
+    const typeLabel = { chat: '对话', embedding: '嵌入', rerank: '重排序' }[m.model_type] || m.model_type;
+    const typeColor = { chat: 'text-secondary-container', embedding: 'text-tertiary', rerank: 'text-primary-fixed-dim' }[m.model_type] || '';
+    return `<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30 transition-colors">
+      <td class="px-4 py-3">
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-on-surface">${escapeHtml(m.name)}</span>
+          ${m.is_default ? '<span class="text-[10px] bg-secondary-container/20 text-secondary-container px-1.5 py-0.5 rounded border border-secondary-container/30">默认</span>' : ''}
+        </div>
+      </td>
+      <td class="px-4 py-3 text-sm text-on-surface-variant">${escapeHtml(m.provider)}</td>
+      <td class="px-4 py-3 text-sm text-on-surface-variant font-label-mono">${escapeHtml(m.model_name)}</td>
+      <td class="px-4 py-3"><span class="text-sm ${typeColor}">${typeLabel}</span></td>
+      <td class="px-4 py-3 text-sm text-on-surface-variant">${m.context_length.toLocaleString()}</td>
+      <td class="px-4 py-3">
+        ${m.is_active
+          ? '<span class="text-xs text-secondary bg-secondary-container/10 px-2 py-0.5 rounded">活跃</span>'
+          : '<span class="text-xs text-outline bg-surface-container-high px-2 py-0.5 rounded">停用</span>'}
+      </td>
+      <td class="px-4 py-3">
+        <div class="flex items-center gap-1">
+          <button onclick="testModel(${m.id})" title="测试" class="p-1.5 rounded hover:bg-surface-variant/50 text-secondary-fixed-dim transition-colors"><span class="material-symbols-outlined text-base">play_circle</span></button>
+          <button onclick="editModel(${m.id})" title="编辑" class="p-1.5 rounded hover:bg-surface-variant/50 text-primary transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+          ${!m.is_default ? `<button onclick="setDefault(${m.id})" title="设为默认" class="p-1.5 rounded hover:bg-surface-variant/50 text-tertiary transition-colors"><span class="material-symbols-outlined text-base">star</span></button>` : ''}
+          <button onclick="deleteModel(${m.id})" title="删除" class="p-1.5 rounded hover:bg-surface-variant/50 text-error transition-colors"><span class="material-symbols-outlined text-base">delete</span></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterModels() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const t = document.getElementById('typeFilter').value;
+  const filtered = models.filter(m =>
+    (m.name.toLowerCase().includes(q) || m.model_name.toLowerCase().includes(q)) &&
+    (!t || m.model_type === t)
+  );
+  const tbody = document.getElementById('modelTableBody');
+  tbody.innerHTML = filtered.length ? filtered.map(m => {
+    const typeLabel = { chat: '对话', embedding: '嵌入', rerank: '重排序' }[m.model_type] || m.model_type;
+    const typeColor = { chat: 'text-secondary-container', embedding: 'text-tertiary', rerank: 'text-primary-fixed-dim' }[m.model_type] || '';
+    return `<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30 transition-colors">
+      <td class="px-4 py-3"><div class="flex items-center gap-2"><span class="font-medium text-on-surface">${escapeHtml(m.name)}</span>${m.is_default ? '<span class="text-[10px] bg-secondary-container/20 text-secondary-container px-1.5 py-0.5 rounded">默认</span>' : ''}</div></td>
+      <td class="px-4 py-3 text-sm text-on-surface-variant">${escapeHtml(m.provider)}</td>
+      <td class="px-4 py-3 text-sm font-label-mono text-on-surface-variant">${escapeHtml(m.model_name)}</td>
+      <td class="px-4 py-3"><span class="text-sm ${typeColor}">${typeLabel}</span></td>
+      <td class="px-4 py-3 text-sm text-on-surface-variant">${m.context_length.toLocaleString()}</td>
+      <td class="px-4 py-3">${m.is_active ? '<span class="text-xs text-secondary bg-secondary-container/10 px-2 py-0.5 rounded">活跃</span>' : '<span class="text-xs text-outline bg-surface-container-high px-2 py-0.5 rounded">停用</span>'}</td>
+      <td class="px-4 py-3"><div class="flex items-center gap-1">
+        <button onclick="testModel(${m.id})" title="测试" class="p-1.5 rounded hover:bg-surface-variant/50 text-secondary-fixed-dim"><span class="material-symbols-outlined text-base">play_circle</span></button>
+        <button onclick="editModel(${m.id})" title="编辑" class="p-1.5 rounded hover:bg-surface-variant/50 text-primary"><span class="material-symbols-outlined text-base">edit</span></button>
+        ${!m.is_default ? `<button onclick="setDefault(${m.id})" title="设为默认" class="p-1.5 rounded hover:bg-surface-variant/50 text-tertiary"><span class="material-symbols-outlined text-base">star</span></button>` : ''}
+        <button onclick="deleteModel(${m.id})" title="删除" class="p-1.5 rounded hover:bg-surface-variant/50 text-error"><span class="material-symbols-outlined text-base">delete</span></button>
+      </div></td></tr>`;
+  }).join('') : '<tr><td colspan="7" class="text-center py-8 text-on-surface-variant">无匹配结果</td></tr>';
+}
+
+function openCreateModal() {
+  editId = null;
+  document.getElementById('modalTitle').textContent = '添加模型';
+  ['mName','mProvider','mModelName','mApiKey','mEndpoint'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('mType').value = 'chat';
+  document.getElementById('mContext').value = '4096';
+  document.getElementById('mMaxTokens').value = '2048';
+  document.getElementById('mTemp').value = '0.7';
+  const modal = document.getElementById('modelModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function editModel(id) {
+  const m = models.find(x => x.id === id);
+  if (!m) return;
+  editId = id;
+  document.getElementById('modalTitle').textContent = '编辑模型';
+  document.getElementById('mName').value = m.name;
+  document.getElementById('mProvider').value = m.provider;
+  document.getElementById('mModelName').value = m.model_name;
+  document.getElementById('mApiKey').value = m.api_key || '';
+  document.getElementById('mApiKey').placeholder = '留空则不修改';
+  document.getElementById('mEndpoint').value = m.endpoint;
+  document.getElementById('mType').value = m.model_type;
+  document.getElementById('mContext').value = m.context_length;
+  document.getElementById('mMaxTokens').value = m.max_tokens;
+  document.getElementById('mTemp').value = m.temperature;
+  const modal = document.getElementById('modelModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+}
+
+function closeModal() {
+  const modal = document.getElementById('modelModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+async function saveModel() {
+  const data = {
+    name: document.getElementById('mName').value.trim(),
+    provider: document.getElementById('mProvider').value.trim() || 'openai',
+    api_key: document.getElementById('mApiKey').value.trim() || 'sk-placeholder',
+    model_name: document.getElementById('mModelName').value.trim(),
+    endpoint: document.getElementById('mEndpoint').value.trim() || 'https://api.openai.com/v1',
+    context_length: parseInt(document.getElementById('mContext').value) || 4096,
+    model_type: document.getElementById('mType').value,
+    temperature: document.getElementById('mTemp').value || '0.7',
+    max_tokens: parseInt(document.getElementById('mMaxTokens').value) || 2048,
+  };
+  if (!data.name || !data.model_name) { showToast('请填写名称和模型ID', 'error'); return; }
+  try {
+    if (editId) {
+      await apiPut(`/api/models/${editId}`, data);
+      showToast('更新成功', 'success');
+    } else {
+      await apiPost('/api/models', data);
+      showToast('创建成功', 'success');
+    }
+    closeModal();
+    loadModels();
+  } catch(e) { showToast('保存失败: ' + e.message, 'error'); }
+}
+
+async function setDefault(id) {
+  try {
+    await apiPost(`/api/models/${id}/default`);
+    showToast('已设为默认', 'success');
+    loadModels();
+  } catch(e) { showToast('设置失败', 'error'); }
+}
+
+async function deleteModel(id) {
+  if (!confirm('确认删除此模型？')) return;
+  try {
+    await apiDelete(`/api/models/${id}`);
+    showToast('删除成功', 'success');
+    loadModels();
+  } catch(e) { showToast('删除失败', 'error'); }
+}
+
+async function testModel(id) {
+  const modal = document.getElementById('testModal');
+  document.getElementById('testContent').innerHTML = '<div class="flex items-center gap-2 text-on-surface-variant"><span class="material-symbols-outlined animate-spin">progress_activity</span>正在测试...</div>';
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  try {
+    const res = await apiPost(`/api/models/${id}/test`);
+    if (res.success) {
+      document.getElementById('testContent').innerHTML = `
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 text-secondary"><span class="material-symbols-outlined">check_circle</span><span class="font-medium">测试成功</span></div>
+          <div class="bg-surface-container-high/50 rounded-lg p-3 text-on-surface-variant">${escapeHtml(res.response || '(空回复)')}</div>
+        </div>`;
+    } else {
+      document.getElementById('testContent').innerHTML = `
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 text-error"><span class="material-symbols-outlined">error</span><span class="font-medium">测试失败</span></div>
+          <div class="bg-error-container/20 rounded-lg p-3 text-error">${escapeHtml(res.error || '未知错误')}</div>
+        </div>`;
+    }
+  } catch(e) {
+    document.getElementById('testContent').innerHTML = `<div class="text-error">请求失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+if (requireAuth()) loadModels();
+</script>
+</body>
+</html>

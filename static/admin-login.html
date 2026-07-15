@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>管理端登录 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","on-primary":"#002a78","secondary":"#a6e6ff","secondary-container":"#14d1ff","error":"#ffb4ab","outline":"#8d90a0","outline-variant":"#434654"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"],"label-mono":["JetBrains Mono"]}}}}</script>
+<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb;overflow:hidden}.glass{background:rgba(20,32,49,0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.05)}</style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center relative overflow-hidden">
+<div class="absolute inset-0 opacity-20" style="background:radial-gradient(circle at 50% 50%,#0052d9 0%,transparent 70%)"></div>
+<div class="absolute top-10 left-10 w-32 h-32 rounded-full bg-primary/10 blur-3xl"></div>
+<div class="absolute bottom-20 right-20 w-48 h-48 rounded-full bg-secondary/10 blur-3xl"></div>
+
+<div class="glass rounded-2xl p-8 w-full max-w-md relative z-10 space-y-6">
+  <div class="text-center">
+    <div class="w-16 h-16 mx-auto bg-primary-container/30 rounded-full flex items-center justify-center mb-4">
+      <span class="material-symbols-outlined text-3xl text-primary">shield_person</span>
+    </div>
+    <h1 class="text-2xl font-bold text-primary">管理端登录</h1>
+    <p class="text-sm text-on-surface-variant mt-1">企业级数据瞭望系统</p>
+  </div>
+  <div class="space-y-4">
+    <div class="relative">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">person</span>
+      <input id="username" type="text" placeholder="管理员账号" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all"/>
+    </div>
+    <div class="relative">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">lock</span>
+      <input id="password" type="password" placeholder="密码" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <p id="errorMsg" class="text-xs text-error hidden"></p>
+    <button onclick="doLogin()" id="loginBtn" class="w-full bg-primary-container text-on-primary-container py-3 rounded-xl font-bold text-sm hover:opacity-80 active:scale-95 transition-all flex items-center justify-center gap-2">
+      <span class="material-symbols-outlined text-sm">login</span> 管理员登录
+    </button>
+    <div class="text-center">
+      <a href="/login" class="text-xs text-on-surface-variant hover:text-primary transition-colors">← 普通用户登录</a>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+async function doLogin() {
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value;
+  if (!u || !p) { document.getElementById('errorMsg').classList.remove('hidden'); document.getElementById('errorMsg').textContent='请输入账号密码'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">progress_activity</span> 验证中...';
+  try {
+    const res = await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const data = await res.json();
+    if (res.ok) {
+      Token.set(data);
+      const profile = await fetch('/api/auth/profile',{headers:{'Authorization':'Bearer '+Token.access}}).then(r=>r.json());
+      const adminRoles = ['ROOT','AUDIT','OPS'];
+      if (!adminRoles.includes(profile.role)) {
+        Token.clear();
+        document.getElementById('errorMsg').classList.remove('hidden');
+        document.getElementById('errorMsg').textContent = '该账号无管理权限，请使用管理员账号';
+        btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined text-sm">login</span> 管理员登录';
+        return;
+      }
+      window.location.href = '/dashboard';
+    } else {
+      document.getElementById('errorMsg').classList.remove('hidden');
+      document.getElementById('errorMsg').textContent = data.detail || '登录失败';
+      btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined text-sm">login</span> 管理员登录';
+    }
+  } catch(e) {
+    document.getElementById('errorMsg').classList.remove('hidden');
+    document.getElementById('errorMsg').textContent = '网络错误';
+    btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined text-sm">login</span> 管理员登录';
+  }
+}
+// Token exists and is admin → redirect
+if (Token.exists()) {
+  fetch('/api/auth/profile',{headers:{'Authorization':'Bearer '+Token.access}}).then(r=>r.json()).then(p=>{
+    if (['ROOT','AUDIT','OPS'].includes(p.role)) window.location.href='/dashboard';
+  }).catch(()=>{});
+}
+</script>
+</body></html>

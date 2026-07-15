@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+darkMode: "class",
+theme: { extend: {
+"colors": {
+"background": "#071425", "surface": "#071425", "surface-dim": "#071425",
+"surface-bright": "#2e3a4c", "surface-container-lowest": "#030e1f",
+"surface-container-low": "#101c2d", "surface-container": "#142031",
+"surface-container-high": "#1f2a3c", "surface-container-highest": "#2a3548",
+"surface-variant": "#2a3548", "on-surface": "#d7e3fb", "on-surface-variant": "#c3c6d7",
+"primary": "#b4c5ff", "primary-container": "#0052d9", "on-primary": "#002a78",
+"on-primary-container": "#cbd6ff", "primary-fixed": "#dbe1ff", "primary-fixed-dim": "#b4c5ff",
+"secondary": "#a6e6ff", "secondary-container": "#14d1ff", "on-secondary": "#003543",
+"on-secondary-container": "#00566b", "secondary-fixed": "#b7eaff", "secondary-fixed-dim": "#4cd6ff",
+"tertiary": "#ffb59c", "tertiary-container": "#aa3500", "on-tertiary": "#5c1900",
+"on-tertiary-container": "#ffccbc", "error": "#ffb4ab", "error-container": "#93000a",
+"on-error": "#690005", "on-error-container": "#ffdad6",
+"outline": "#8d90a0", "outline-variant": "#434654",
+"on-background": "#d7e3fb", "inverse-surface": "#d7e3fb", "inverse-on-surface": "#253143",
+"inverse-primary": "#0353da",
+},
+"borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+"fontFamily": { "Inter": ["Inter"], "label-mono": ["JetBrains Mono"] },
+}},
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3fb; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #434654; border-radius: 10px; }
+.code-block { font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+
+<aside></aside>
+
+<main class=" p-6 min-h-screen">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-primary">技能管理</h1>
+      <p class="text-sm text-on-surface-variant mt-1">管理函数调用、MCP、提示词三类技能</p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="openAICreateModal()" class="flex items-center gap-2 bg-tertiary-container/30 text-tertiary border border-tertiary/30 px-4 py-2 rounded-xl hover:opacity-80 transition-opacity">
+        <span class="material-symbols-outlined">auto_awesome</span>
+        <span class="text-sm font-medium">AI创建</span>
+      </button>
+      <button onclick="openCreateModal()" class="flex items-center gap-2 bg-primary-container text-on-primary-container px-4 py-2 rounded-xl hover:opacity-80 transition-opacity">
+        <span class="material-symbols-outlined">add</span>
+        <span class="text-sm font-medium">添加技能</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="flex items-center gap-3 mb-4">
+    <div class="relative flex-1 max-w-md">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm">search</span>
+      <input id="searchInput" oninput="filterSkills()" type="text" placeholder="搜索技能名称..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-secondary-container transition-all"/>
+    </div>
+    <select id="typeFilter" onchange="filterSkills()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm">
+      <option value="">全部类型</option>
+      <option value="function_call">函数调用</option>
+      <option value="mcp">MCP</option>
+      <option value="prompt">提示词</option>
+    </select>
+  </div>
+
+  <!-- Cards Grid -->
+  <div id="skillGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+  </div>
+</main>
+
+<!-- Create/Edit Modal -->
+<div id="skillModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+    <div class="flex items-center justify-between mb-4 sticky top-0 bg-surface-container pb-2">
+      <h2 id="modalTitle" class="text-lg font-bold text-primary">添加技能</h2>
+      <button onclick="closeModal()" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">名称</label>
+          <input id="sName" type="text" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+        </div>
+        <div>
+          <label class="text-xs text-on-surface-variant block mb-1">类型</label>
+          <select id="sType" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm" onchange="toggleConfigPlaceholder()">
+            <option value="function_call">函数调用</option>
+            <option value="mcp">MCP</option>
+            <option value="prompt">提示词</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">描述</label>
+        <input id="sDesc" type="text" placeholder="技能功能描述" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">配置内容</label>
+        <textarea id="sConfig" rows="8" placeholder="根据类型填写：Python代码 / JSON配置 / 提示词模板" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm code-block focus:border-secondary-container transition-all"></textarea>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">参数Schema (JSON数组)</label>
+        <textarea id="sParams" rows="3" placeholder='[{"name":"query","type":"string","description":"查询内容","required":true}]' class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm code-block focus:border-secondary-container transition-all"></textarea>
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5">
+      <button onclick="closeModal()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">取消</button>
+      <button onclick="saveSkill()" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg hover:opacity-80 transition-opacity">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Create Modal -->
+<div id="aiCreateModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-tertiary">AI创建技能</h2>
+      <button onclick="document.getElementById('aiCreateModal').classList.add('hidden'); document.getElementById('aiCreateModal').classList.remove('flex')" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">使用模型</label>
+        <select id="aiModelSelect" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"></select>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">技能类型</label>
+        <select id="aiSkillType" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm">
+          <option value="function_call">函数调用</option>
+          <option value="mcp">MCP</option>
+          <option value="prompt">提示词</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">需求描述</label>
+        <textarea id="aiDesc" rows="4" placeholder="描述你需要的技能功能，如：查询股票实时价格" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"></textarea>
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5">
+      <button onclick="document.getElementById('aiCreateModal').classList.add('hidden'); document.getElementById('aiCreateModal').classList.remove('flex')" class="px-4 py-2 text-sm text-on-surface-variant">取消</button>
+      <button onclick="aiCreateSkill()" class="px-4 py-2 text-sm bg-tertiary text-on-tertiary rounded-lg hover:opacity-80 transition-opacity flex items-center gap-2">
+        <span class="material-symbols-outlined text-base">auto_awesome</span>生成
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Test Modal -->
+<div id="testModal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-primary">技能测试</h2>
+      <button onclick="document.getElementById('testModal').classList.add('hidden'); document.getElementById('testModal').classList.remove('flex')" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div id="testContent" class="text-sm"></div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+let skills = [];
+let models = [];
+let editId = null;
+
+async function loadSkills() {
+  try {
+    skills = await apiGet('/api/skills');
+    renderGrid();
+  } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+async function loadModels() {
+  try {
+    models = await apiGet('/api/models');
+  } catch(e) { console.error('Models load failed:', e); }
+}
+
+function renderGrid() {
+  const grid = document.getElementById('skillGrid');
+  if (!skills.length) {
+    grid.innerHTML = '<div class="col-span-full text-center py-12 text-on-surface-variant">暂无技能，点击右上角添加</div>';
+    return;
+  }
+  grid.innerHTML = skills.map(s => {
+    const typeIcon = { function_call: 'code', mcp: 'hub', prompt: 'description' }[s.skill_type] || 'extension';
+    const typeLabel = { function_call: '函数调用', mcp: 'MCP', prompt: '提示词' }[s.skill_type] || s.skill_type;
+    const typeColor = { function_call: 'text-secondary-container', mcp: 'text-primary-fixed-dim', prompt: 'text-tertiary' }[s.skill_type] || '';
+    const statusColor = s.status === 'active' ? 'text-secondary bg-secondary-container/10' : 'text-error bg-error-container/10';
+    const statusLabel = s.status === 'active' ? '活跃' : '禁用';
+    return `<div class="bg-surface-container/50 rounded-2xl border border-outline-variant/20 p-4 hover:border-secondary-container/30 transition-all">
+      <div class="flex items-start justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined ${typeColor}">${typeIcon}</span>
+          <div>
+            <h3 class="font-bold text-on-surface">${escapeHtml(s.name)}</h3>
+            <span class="text-[10px] ${typeColor}">${typeLabel}</span>
+          </div>
+        </div>
+        <span class="text-[10px] ${statusColor} px-1.5 py-0.5 rounded">${statusLabel}</span>
+      </div>
+      <p class="text-xs text-on-surface-variant mb-3 line-clamp-2">${escapeHtml(s.description || '(无描述)')}</p>
+      <div class="flex items-center gap-1 mt-2 border-t border-outline-variant/20 pt-2">
+        <button onclick="testSkill(${s.id})" title="测试" class="p-1.5 rounded hover:bg-surface-variant/50 text-secondary-fixed-dim transition-colors"><span class="material-symbols-outlined text-base">play_circle</span></button>
+        <button onclick="editSkill(${s.id})" title="编辑" class="p-1.5 rounded hover:bg-surface-variant/50 text-primary transition-colors"><span class="material-symbols-outlined text-base">edit</span></button>
+        <button onclick="deleteSkill(${s.id})" title="删除" class="p-1.5 rounded hover:bg-surface-variant/50 text-error transition-colors"><span class="material-symbols-outlined text-base">delete</span></button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterSkills() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const t = document.getElementById('typeFilter').value;
+  const filtered = skills.filter(s =>
+    s.name.toLowerCase().includes(q) &&
+    (!t || s.skill_type === t)
+  );
+  const grid = document.getElementById('skillGrid');
+  if (!filtered.length) { grid.innerHTML = '<div class="col-span-full text-center py-12 text-on-surface-variant">无匹配结果</div>'; return; }
+  grid.innerHTML = filtered.map(s => {
+    const typeIcon = { function_call: 'code', mcp: 'hub', prompt: 'description' }[s.skill_type] || 'extension';
+    const typeLabel = { function_call: '函数调用', mcp: 'MCP', prompt: '提示词' }[s.skill_type] || s.skill_type;
+    const typeColor = { function_call: 'text-secondary-container', mcp: 'text-primary-fixed-dim', prompt: 'text-tertiary' }[s.skill_type] || '';
+    const statusColor = s.status === 'active' ? 'text-secondary bg-secondary-container/10' : 'text-error bg-error-container/10';
+    const statusLabel = s.status === 'active' ? '活跃' : '禁用';
+    return `<div class="bg-surface-container/50 rounded-2xl border border-outline-variant/20 p-4 hover:border-secondary-container/30 transition-all">
+      <div class="flex items-start justify-between mb-3">
+        <div class="flex items-center gap-2"><span class="material-symbols-outlined ${typeColor}">${typeIcon}</span><div><h3 class="font-bold text-on-surface">${escapeHtml(s.name)}</h3><span class="text-[10px] ${typeColor}">${typeLabel}</span></div></div>
+        <span class="text-[10px] ${statusColor} px-1.5 py-0.5 rounded">${statusLabel}</span>
+      </div>
+      <p class="text-xs text-on-surface-variant mb-3 line-clamp-2">${escapeHtml(s.description || '(无描述)')}</p>
+      <div class="flex items-center gap-1 mt-2 border-t border-outline-variant/20 pt-2">
+        <button onclick="testSkill(${s.id})" class="p-1.5 rounded hover:bg-surface-variant/50 text-secondary-fixed-dim"><span class="material-symbols-outlined text-base">play_circle</span></button>
+        <button onclick="editSkill(${s.id})" class="p-1.5 rounded hover:bg-surface-variant/50 text-primary"><span class="material-symbols-outlined text-base">edit</span></button>
+        <button onclick="deleteSkill(${s.id})" class="p-1.5 rounded hover:bg-surface-variant/50 text-error"><span class="material-symbols-outlined text-base">delete</span></button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openCreateModal() {
+  editId = null;
+  document.getElementById('modalTitle').textContent = '添加技能';
+  ['sName','sDesc','sConfig','sParams'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('sType').value = 'function_call';
+  const modal = document.getElementById('skillModal');
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+
+function editSkill(id) {
+  const s = skills.find(x => x.id === id);
+  if (!s) return;
+  editId = id;
+  document.getElementById('modalTitle').textContent = '编辑技能';
+  document.getElementById('sName').value = s.name;
+  document.getElementById('sType').value = s.skill_type;
+  document.getElementById('sDesc').value = s.description || '';
+  document.getElementById('sConfig').value = s.config || '';
+  document.getElementById('sParams').value = s.parameters || '[]';
+  const modal = document.getElementById('skillModal');
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+
+function closeModal() {
+  const modal = document.getElementById('skillModal');
+  modal.classList.add('hidden'); modal.classList.remove('flex');
+}
+
+function toggleConfigPlaceholder() {
+  const t = document.getElementById('sType').value;
+  const ta = document.getElementById('sConfig');
+  if (t === 'function_call') ta.placeholder = 'def execute(args):\n    # args 是参数dict\n    return {"result": "..."}';
+  else if (t === 'mcp') ta.placeholder = '{"server_url": "https://...", "tool_name": "..."}';
+  else ta.placeholder = '你是一个...{variable}...';
+}
+
+async function saveSkill() {
+  const data = {
+    name: document.getElementById('sName').value.trim(),
+    skill_type: document.getElementById('sType').value,
+    description: document.getElementById('sDesc').value.trim(),
+    config: document.getElementById('sConfig').value,
+    parameters: document.getElementById('sParams').value || '[]',
+  };
+  if (!data.name) { showToast('请填写名称', 'error'); return; }
+  try {
+    if (editId) {
+      await apiPut(`/api/skills/${editId}`, data);
+      showToast('更新成功', 'success');
+    } else {
+      await apiPost('/api/skills', data);
+      showToast('创建成功', 'success');
+    }
+    closeModal();
+    loadSkills();
+  } catch(e) { showToast('保存失败', 'error'); }
+}
+
+async function deleteSkill(id) {
+  if (!confirm('确认删除此技能？')) return;
+  try { await apiDelete(`/api/skills/${id}`); showToast('删除成功', 'success'); loadSkills(); }
+  catch(e) { showToast('删除失败', 'error'); }
+}
+
+function openAICreateModal() {
+  const select = document.getElementById('aiModelSelect');
+  select.innerHTML = models.map(m => `<option value="${m.id}">${escapeHtml(m.name)} (${escapeHtml(m.model_name)})</option>`).join('');
+  document.getElementById('aiDesc').value = '';
+  const modal = document.getElementById('aiCreateModal');
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+}
+
+async function aiCreateSkill() {
+  const model_id = parseInt(document.getElementById('aiModelSelect').value);
+  const skill_type = document.getElementById('aiSkillType').value;
+  const description = document.getElementById('aiDesc').value.trim();
+  if (!description) { showToast('请填写需求描述', 'error'); return; }
+  const btn = event.target.closest('button');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span>生成中...';
+  try {
+    const res = await apiPost('/api/skills/ai-create', { model_id, skill_type, description });
+    if (res.success) {
+      const d = res.data;
+      document.getElementById('aiCreateModal').classList.add('hidden');
+      document.getElementById('aiCreateModal').classList.remove('flex');
+      // 预填创建表单
+      openCreateModal();
+      document.getElementById('sName').value = d.name || '';
+      document.getElementById('sType').value = skill_type;
+      document.getElementById('sDesc').value = d.description || '';
+      document.getElementById('sConfig').value = d.config || '';
+      document.getElementById('sParams').value = d.parameters || '[]';
+      showToast('AI生成完成，请检查后保存', 'success');
+    } else {
+      showToast('AI创建失败: ' + (res.error || '未知错误'), 'error');
+    }
+  } catch(e) { showToast('请求失败: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-outlined text-base">auto_awesome</span>生成'; }
+}
+
+async function testSkill(id) {
+  const modal = document.getElementById('testModal');
+  document.getElementById('testContent').innerHTML = '<div class="flex items-center gap-2 text-on-surface-variant"><span class="material-symbols-outlined animate-spin">progress_activity</span>正在测试...</div>';
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+  try {
+    const res = await apiPost(`/api/skills/${id}/test`);
+    if (res.success) {
+      document.getElementById('testContent').innerHTML = `
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 text-secondary"><span class="material-symbols-outlined">check_circle</span><span class="font-medium">测试成功</span></div>
+          <div class="bg-surface-container-high/50 rounded-lg p-3 text-on-surface-variant break-all">${escapeHtml(typeof res.result === 'object' ? JSON.stringify(res.result, null, 2) : res.result)}</div>
+          ${res.stdout ? `<div class="bg-surface-container-high/30 rounded-lg p-3 text-xs text-on-surface-variant"><strong>stdout:</strong><br>${escapeHtml(res.stdout)}</div>` : ''}
+        </div>`;
+    } else {
+      document.getElementById('testContent').innerHTML = `
+        <div class="space-y-3">
+          <div class="flex items-center gap-2 text-error"><span class="material-symbols-outlined">error</span><span class="font-medium">测试失败</span></div>
+          <div class="bg-error-container/20 rounded-lg p-3 text-error">${escapeHtml(res.error || '未知错误')}</div>
+        </div>`;
+    }
+  } catch(e) {
+    document.getElementById('testContent').innerHTML = `<div class="text-error">请求失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+if (requireAuth()) { loadSkills(); loadModels(); }
+</script>
+</body>
+</html>

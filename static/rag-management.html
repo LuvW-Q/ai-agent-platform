@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RAG知识库管理 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-dim":"#071425","surface-bright":"#2e3a4c","surface-container-lowest":"#030e1f","surface-container-low":"#101c2d","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","on-primary":"#002a78","on-primary-container":"#cbd6ff","secondary":"#a6e6ff","secondary-container":"#14d1ff","on-secondary":"#003543","on-secondary-container":"#00566b","error":"#ffb4ab","error-container":"#93000a","on-error":"#690005","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb","inverse-surface":"#d7e3fb","inverse-on-surface":"#253143","inverse-primary":"#0353da"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"],"label-mono":["JetBrains Mono"]}}}}
+</script>
+<style>
+body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}
+.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}
+.custom-scrollbar::-webkit-scrollbar{width:4px}
+.custom-scrollbar::-webkit-scrollbar-thumb{background:#434654;border-radius:10px}
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<aside></aside>
+<main class="p-6 min-h-screen">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-primary">RAG 知识库管理</h1>
+      <p class="text-sm text-on-surface-variant mt-1">基于向量数据库的知识库 — 文档上传、切片、嵌入、检索问答</p>
+    </div>
+    <button id="btn-create-kb" class="flex items-center gap-2 bg-primary-container text-on-primary-container px-4 py-2 rounded-xl hover:opacity-80 transition-opacity">
+      <span class="material-symbols-outlined">add</span>
+      <span class="text-sm font-medium">创建知识库</span>
+    </button>
+  </div>
+
+  <div id="kbGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+</main>
+
+<!-- KB Create/Edit Modal -->
+<div id="kbModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" style="display:none">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h2 id="kbModalTitle" class="text-lg font-bold text-primary">创建知识库</h2>
+      <button id="btn-close-kb-modal" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="space-y-3">
+      <div><label class="text-xs text-on-surface-variant block mb-1">名称 <span class="text-error">*</span></label><input id="kbName" type="text" placeholder="知识库名称" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:border-secondary-container transition-all"/></div>
+      <div><label class="text-xs text-on-surface-variant block mb-1">描述</label><textarea id="kbDesc" rows="2" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm" placeholder="可选描述"></textarea></div>
+      <div><label class="text-xs text-on-surface-variant block mb-1">嵌入模型 <span class="text-error">*</span></label><select id="kbEmbModel" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"><option value="">选择嵌入模型</option></select><p class="text-[10px] text-on-surface-variant mt-0.5">需先在模型管理中添加 embedding 类型的模型</p></div>
+      <div><label class="text-xs text-on-surface-variant block mb-1">重排序模型（可选）</label><select id="kbRerankModel" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"><option value="">不使用</option></select></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-xs text-on-surface-variant block mb-1">切片大小</label><input id="kbChunkSize" type="number" value="500" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/></div>
+        <div><label class="text-xs text-on-surface-variant block mb-1">重叠长度</label><input id="kbChunkOverlap" type="number" value="50" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/></div>
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5">
+      <button id="btn-cancel-kb" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface transition-colors">取消</button>
+      <button id="btn-save-kb" class="px-4 py-2 text-sm bg-primary text-on-primary rounded-lg hover:opacity-80 transition-opacity">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Doc Upload / Search Modal -->
+<div id="docModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" style="display:none">
+  <div class="bg-surface-container rounded-2xl border border-outline-variant/30 p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto" id="docModalContent"></div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+/* ========== State ========== */
+var kbList = [];
+var editKbId = null;
+var currentKb = null;
+var allModels = [];
+
+/* ========== Init ========== */
+(function init() {
+  // Wire buttons via event listeners (NOT onclick attributes - more robust)
+  document.getElementById('btn-create-kb').addEventListener('click', openKBCreate);
+  document.getElementById('btn-close-kb-modal').addEventListener('click', closeKBModal);
+  document.getElementById('btn-cancel-kb').addEventListener('click', closeKBModal);
+  document.getElementById('btn-save-kb').addEventListener('click', saveKB);
+  loadData();
+})();
+
+/* ========== Data Loading ========== */
+async function loadData() {
+  try {
+    var results = await Promise.all([apiGet('/api/kb'), apiGet('/api/models')]);
+    kbList = results[0] || [];
+    allModels = results[1] || [];
+    renderGrid();
+    fillModelSelects();
+  } catch(e) {
+    showToast('加载失败: ' + (e.message || '网络错误'), 'error');
+  }
+}
+
+function fillModelSelects() {
+  var embSel = document.getElementById('kbEmbModel');
+  var rerankSel = document.getElementById('kbRerankModel');
+  if (embSel) {
+    var embModels = allModels.filter(function(m) { return m.model_type === 'embedding' && m.is_active; });
+    embSel.innerHTML = '<option value="">选择嵌入模型</option>' +
+      embModels.map(function(m) { return '<option value="' + m.id + '">' + escapeHtml(m.name) + ' (' + escapeHtml(m.model_name) + ')</option>'; }).join('');
+  }
+  if (rerankSel) {
+    var rerankModels = allModels.filter(function(m) { return m.model_type === 'rerank' && m.is_active; });
+    rerankSel.innerHTML = '<option value="">不使用</option>' +
+      rerankModels.map(function(m) { return '<option value="' + m.id + '">' + escapeHtml(m.name) + '</option>'; }).join('');
+  }
+}
+
+/* ========== Grid ========== */
+function renderGrid() {
+  var grid = document.getElementById('kbGrid');
+  if (!kbList.length) {
+    grid.innerHTML = '<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无知识库，点击上方按钮创建</div>';
+    return;
+  }
+  grid.innerHTML = kbList.map(function(kb) {
+    return '<div class="bg-surface-container/50 rounded-2xl border border-outline-variant/20 p-5 hover:border-secondary-container/30 transition-all cursor-pointer" data-kb-id="' + kb.id + '">' +
+      '<div class="flex items-start justify-between mb-3">' +
+        '<div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">book_4</span><h3 class="font-bold text-on-surface">' + escapeHtml(kb.name) + '</h3></div>' +
+        '<button class="btn-delete-kb text-on-surface-variant hover:text-error" data-kb-id="' + kb.id + '"><span class="material-symbols-outlined text-sm">delete</span></button>' +
+      '</div>' +
+      '<p class="text-xs text-on-surface-variant mb-3">' + escapeHtml(kb.description || '无描述') + '</p>' +
+      '<div class="flex items-center gap-4 text-xs text-on-surface-variant">' +
+        '<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">description</span>' + (kb.doc_count || 0) + ' 个文档</span>' +
+        '<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">memory</span>' + escapeHtml(kb.embedding_model_name || '未配置') + '</span>' +
+        '<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">sort</span>' + kb.chunk_size + '/' + kb.chunk_overlap + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  // Wire grid click events
+  grid.querySelectorAll('[data-kb-id]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      // Don't open if clicking delete button
+      if (e.target.closest('.btn-delete-kb')) return;
+      openKB(parseInt(el.getAttribute('data-kb-id')));
+    });
+  });
+  grid.querySelectorAll('.btn-delete-kb').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      deleteKB(parseInt(btn.getAttribute('data-kb-id')));
+    });
+  });
+}
+
+/* ========== KB CRUD ========== */
+function openKBCreate() {
+  editKbId = null;
+  document.getElementById('kbModalTitle').textContent = '创建知识库';
+  document.getElementById('kbName').value = '';
+  document.getElementById('kbDesc').value = '';
+  document.getElementById('kbChunkSize').value = '500';
+  document.getElementById('kbChunkOverlap').value = '50';
+  fillModelSelects();
+  document.getElementById('kbModal').style.display = 'flex';
+}
+
+function closeKBModal() {
+  document.getElementById('kbModal').style.display = 'none';
+}
+
+async function saveKB() {
+  var nameVal = document.getElementById('kbName').value.trim();
+  if (!nameVal) { showToast('请填写名称', 'error'); return; }
+
+  var embVal = document.getElementById('kbEmbModel').value;
+  var rerankVal = document.getElementById('kbRerankModel').value;
+  var data = {
+    name: nameVal,
+    description: document.getElementById('kbDesc').value.trim(),
+    embedding_model_id: embVal ? parseInt(embVal) : null,
+    rerank_model_id: rerankVal ? parseInt(rerankVal) : null,
+    chunk_size: parseInt(document.getElementById('kbChunkSize').value) || 500,
+    chunk_overlap: parseInt(document.getElementById('kbChunkOverlap').value) || 50
+  };
+  try {
+    if (editKbId) {
+      await apiPut('/api/kb/' + editKbId, data);
+      showToast('更新成功', 'success');
+    } else {
+      await apiPost('/api/kb', data);
+      showToast('创建成功', 'success');
+    }
+    closeKBModal();
+    loadData();
+  } catch(e) {
+    showToast('保存失败: ' + (e.message || '未知错误'), 'error');
+  }
+}
+
+async function deleteKB(id) {
+  if (!confirm('删除知识库将清除所有数据，确认？')) return;
+  try {
+    await apiDelete('/api/kb/' + id);
+    showToast('已删除', 'success');
+    loadData();
+  } catch(e) { showToast('删除失败', 'error'); }
+}
+
+/* ========== Document Management ========== */
+async function openKB(id) {
+  var found = kbList.find(function(k) { return k.id === id; });
+  if (!found) return;
+  currentKb = found;
+  try {
+    var docs = await apiGet('/api/kb/' + id + '/docs');
+    var content = document.getElementById('docModalContent');
+    content.innerHTML =
+      '<div class="flex items-center justify-between mb-4">' +
+        '<h2 class="text-lg font-bold text-primary">' + escapeHtml(currentKb.name) + ' - 文档管理</h2>' +
+        '<button id="btn-close-doc" class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>' +
+      '</div>' +
+      '<div class="flex gap-3 mb-4">' +
+        '<label class="cursor-pointer bg-primary-container/20 text-primary px-4 py-2 rounded-xl text-sm hover:bg-primary-container/30 transition-colors flex items-center gap-2">' +
+          '<span class="material-symbols-outlined text-sm">upload</span>上传文档' +
+          '<input type="file" accept=".txt,.md,.pdf,.docx,.csv,.json,.html" id="fileInput" class="hidden"/>' +
+        '</label>' +
+        '<div class="flex-1 relative">' +
+          '<input id="kbSearchInput" type="text" placeholder="输入问题检索知识库..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl pl-4 pr-10 py-2 text-sm"/>' +
+          '<button id="btn-search-kb" class="absolute right-2 top-1/2 -translate-y-1/2 text-primary"><span class="material-symbols-outlined">search</span></button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="kbSearchResult" class="mb-4" style="display:none"></div>' +
+      '<div class="text-xs text-on-surface-variant mb-2">已有文档 (' + docs.length + ')</div>' +
+      '<div id="docList" class="space-y-2">' +
+        (docs.length ? docs.map(function(d) {
+          var icon = d.status === 'done' ? 'check_circle' : d.status === 'error' ? 'error' : 'hourglass_top';
+          var color = d.status === 'done' ? 'text-secondary' : d.status === 'error' ? 'text-error' : 'text-on-surface-variant';
+          return '<div class="flex items-center justify-between bg-surface-container-high/50 rounded-lg px-3 py-2">' +
+            '<div class="flex items-center gap-2">' +
+              '<span class="material-symbols-outlined text-sm ' + color + '">' + icon + '</span>' +
+              '<span class="text-sm">' + escapeHtml(d.filename) + '</span>' +
+              '<span class="text-xs text-on-surface-variant">' + (d.chunk_count||0) + '块</span>' +
+            '</div>' +
+            '<button class="btn-del-doc text-on-surface-variant hover:text-error" data-doc-id="' + d.id + '"><span class="material-symbols-outlined text-sm">delete</span></button>' +
+          '</div>';
+        }).join('') : '<div class="text-xs text-on-surface-variant text-center py-4">暂无文档</div>') +
+      '</div>';
+    document.getElementById('docModal').style.display = 'flex';
+
+    // Wire events
+    document.getElementById('btn-close-doc').addEventListener('click', closeDocModal);
+    document.getElementById('fileInput').addEventListener('change', function() { uploadDoc(id, this); });
+    document.getElementById('btn-search-kb').addEventListener('click', function() { searchKB(id); });
+    document.getElementById('kbSearchInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') searchKB(id); });
+    content.querySelectorAll('.btn-del-doc').forEach(function(btn) {
+      btn.addEventListener('click', function() { deleteDoc(id, parseInt(btn.getAttribute('data-doc-id'))); });
+    });
+  } catch(e) { showToast('加载文档失败', 'error'); }
+}
+
+function closeDocModal() {
+  document.getElementById('docModal').style.display = 'none';
+  currentKb = null;
+}
+
+async function uploadDoc(kbId, input) {
+  var file = input.files[0];
+  if (!file) return;
+  var fd = new FormData();
+  fd.append('file', file);
+  try {
+    var res = await fetch('/api/kb/' + kbId + '/upload', {
+      method: 'POST', body: fd,
+      headers: { 'Authorization': 'Bearer ' + Token.access }
+    });
+    if (res.ok) {
+      showToast('上传成功，正在处理...', 'success');
+      setTimeout(function() { openKB(kbId); }, 1500);
+    } else {
+      var d = await res.json();
+      showToast(d.detail || '上传失败', 'error');
+    }
+  } catch(e) { showToast('上传失败', 'error'); }
+}
+
+async function deleteDoc(kbId, docId) {
+  if (!confirm('确认删除此文档及其向量数据？')) return;
+  try {
+    await apiDelete('/api/kb/' + kbId + '/docs/' + docId);
+    showToast('已删除', 'success');
+    openKB(kbId);
+  } catch(e) { showToast('删除失败', 'error'); }
+}
+
+async function searchKB(id) {
+  var q = document.getElementById('kbSearchInput').value.trim();
+  if (!q) return;
+  var resultEl = document.getElementById('kbSearchResult');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<div class="text-xs text-on-surface-variant">检索中...</div>';
+  try {
+    var res = await apiPost('/api/kb/chat', { kb_id: id, question: q, top_k: 5, use_rerank: false });
+    var chunks = res.chunks || [];
+    resultEl.innerHTML =
+      '<div class="bg-surface-container-high/50 rounded-xl p-4 border border-secondary-container/20">' +
+        '<div class="text-sm font-bold text-secondary mb-2">回答</div>' +
+        '<div class="text-sm whitespace-pre-wrap">' + escapeHtml(res.answer || '无结果') + '</div>' +
+        (chunks.length ? '<div class="mt-3 pt-3 border-t border-outline-variant/20">' +
+          '<div class="text-xs text-on-surface-variant mb-1">参考片段:</div>' +
+          chunks.map(function(c) {
+            return '<div class="text-xs bg-surface-container-low rounded p-2 mb-1"><span class="text-secondary">[' + ((c.score||0)*100).toFixed(0) + '%]</span> ' + escapeHtml((c.text||'').substring(0, 200)) + '</div>';
+          }).join('') +
+        '</div>' : '') +
+      '</div>';
+  } catch(e) {
+    resultEl.innerHTML = '<div class="text-xs text-error">检索失败: ' + (e.message || '') + '</div>';
+  }
+}
+</script>
+</body></html>

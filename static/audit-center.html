@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>审计管理 - 智能数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+  darkMode: "class",
+  theme: { extend: {
+    "colors": {
+      "surface": "#071425", "surface-container": "#142031",
+      "surface-container-high": "#1f2a3c", "surface-container-low": "#101c2d",
+      "primary": "#b4c5ff", "on-surface": "#d7e3fb",
+      "on-surface-variant": "#c3c6d7", "outline": "#8d90a0",
+      "outline-variant": "#434654", "secondary": "#a6e6ff",
+      "tertiary": "#ffb59c", "error": "#ffb4ab", "error-container": "#93000a",
+      "primary-container": "#0052d9", "secondary-container": "#14d1ff",
+    },
+    "fontFamily": { "body-md": ["Inter"], "headline-md": ["Inter"], "label-mono": ["JetBrains Mono"] }
+  }}
+}
+</script>
+<style>
+body { background-color: #071425; color: #d7e3fb; font-family: 'Inter', sans-serif; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+.glass-panel { background: rgba(20,32,49,0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.05); }
+</style>
+</head>
+<body class="font-body-md text-body-md min-h-screen">
+<main class="p-8">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-8">
+    <div>
+      <h1 class="text-2xl font-bold text-primary mb-1">审计管理</h1>
+      <p class="text-sm text-on-surface-variant">安全审计日志与风险事件追踪</p>
+    </div>
+    <div class="flex items-center gap-4">
+      <button onclick="loadAuditLogs()" class="flex items-center gap-2 px-4 py-2 bg-surface-container-high hover:bg-surface-container rounded-lg text-on-surface transition-colors">
+        <span class="material-symbols-outlined text-lg">refresh</span>
+        <span class="text-sm">刷新</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="grid grid-cols-4 gap-4 mb-8">
+    <div class="glass-panel p-6 rounded-xl" style="border-left:4px solid #b4c5ff">
+      <p class="text-on-surface-variant text-sm mb-2">日志总数</p>
+      <h2 id="stat-total" class="text-3xl font-bold text-primary">--</h2>
+    </div>
+    <div class="glass-panel p-6 rounded-xl" style="border-left:4px solid #ffb4ab">
+      <p class="text-on-surface-variant text-sm mb-2">高风险事件</p>
+      <h2 id="stat-high" class="text-3xl font-bold text-error">--</h2>
+    </div>
+    <div class="glass-panel p-6 rounded-xl" style="border-left:4px solid #ffb59c">
+      <p class="text-on-surface-variant text-sm mb-2">中风险事件</p>
+      <h2 id="stat-medium" class="text-3xl font-bold text-tertiary">--</h2>
+    </div>
+    <div class="glass-panel p-6 rounded-xl" style="border-left:4px solid #a6e6ff">
+      <p class="text-on-surface-variant text-sm mb-2">低风险事件</p>
+      <h2 id="stat-low" class="text-3xl font-bold text-secondary">--</h2>
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="glass-panel p-4 rounded-xl mb-6">
+    <div class="flex items-center gap-4 flex-wrap">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-on-surface-variant">filter_list</span>
+        <span class="text-sm text-on-surface-variant">筛选</span>
+      </div>
+      <select id="filter-risk" onchange="loadAuditLogs()" class="bg-surface-container-high text-on-surface border border-outline-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary">
+        <option value="">全部风险等级</option>
+        <option value="high">高风险</option>
+        <option value="medium">中风险</option>
+        <option value="low">低风险</option>
+      </select>
+      <input id="filter-event" type="text" placeholder="搜索事件类型..." onkeyup="if(event.key==='Enter')loadAuditLogs()" class="bg-surface-container-high text-on-surface border border-outline-variant rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary flex-1 max-w-xs"/>
+      <button onclick="loadAuditLogs()" class="px-4 py-2 bg-primary-container hover:opacity-80 text-on-surface rounded-lg text-sm transition-opacity">查询</button>
+      <button onclick="clearFilters()" class="px-4 py-2 bg-surface-container-high hover:bg-surface-container text-on-surface-variant rounded-lg text-sm transition-colors">重置</button>
+    </div>
+  </div>
+
+  <!-- Audit Log Table -->
+  <div class="glass-panel rounded-xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-surface-container-high text-on-surface-variant">
+            <th class="px-4 py-3 text-left font-medium">ID</th>
+            <th class="px-4 py-3 text-left font-medium">事件类型</th>
+            <th class="px-4 py-3 text-left font-medium">风险等级</th>
+            <th class="px-4 py-3 text-left font-medium">描述</th>
+            <th class="px-4 py-3 text-left font-medium">操作人</th>
+            <th class="px-4 py-3 text-left font-medium">时间</th>
+          </tr>
+        </thead>
+        <tbody id="audit-table-body">
+          <tr><td colspan="6" class="px-4 py-12 text-center text-on-surface-variant">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="audit-empty" class="hidden px-4 py-12 text-center text-on-surface-variant">
+      <span class="material-symbols-outlined text-4xl mb-2 block opacity-50">search_off</span>
+      <p>没有匹配的审计日志</p>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+const riskStyles = {
+  high:   { color: 'text-error',   bg: 'bg-error/10',   dot: 'bg-error',   label: '高风险' },
+  medium: { color: 'text-tertiary', bg: 'bg-tertiary/10', dot: 'bg-tertiary', label: '中风险' },
+  low:    { color: 'text-secondary', bg: 'bg-secondary/10', dot: 'bg-secondary', label: '低风险' },
+};
+
+async function loadAuditLogs() {
+  const risk = document.getElementById('filter-risk').value;
+  const event = document.getElementById('filter-event').value.trim();
+  const params = new URLSearchParams();
+  if (risk) params.set('risk_level', risk);
+  if (event) params.set('event_type', event);
+  params.set('limit', '200');
+
+  try {
+    const logs = await apiGet('/api/audit/logs?' + params.toString());
+    const tbody = document.getElementById('audit-table-body');
+    const empty = document.getElementById('audit-empty');
+
+    if (!logs || logs.length === 0) {
+      tbody.innerHTML = '';
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+      tbody.innerHTML = logs.map(log => {
+        const rs = riskStyles[log.risk_level] || riskStyles.low;
+        return `<tr class="border-t border-outline-variant/20 hover:bg-surface-container/50 transition-colors">
+          <td class="px-4 py-3 text-on-surface-variant font-label-mono">${log.id}</td>
+          <td class="px-4 py-3"><span class="font-label-mono text-on-surface">${escapeHtml(log.event_type)}</span></td>
+          <td class="px-4 py-3">
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full ${rs.bg} ${rs.color} text-xs font-medium">
+              <span class="w-1.5 h-1.5 rounded-full ${rs.dot}"></span>${rs.label}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-on-surface max-w-md truncate" title="${escapeHtml(log.description)}">${escapeHtml(log.description)}</td>
+          <td class="px-4 py-3 text-on-surface-variant font-label-mono">${escapeHtml(log.operator)}</td>
+          <td class="px-4 py-3 text-on-surface-variant text-xs font-label-mono">${fmtTime(log.created_at)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Update stats from unfiltered count
+    loadStats();
+  } catch (e) {
+    showToast('加载审计日志失败', 'error');
+  }
+}
+
+async function loadStats() {
+  try {
+    const all = await apiGet('/api/audit/logs?limit=500');
+    const total = all.length;
+    const high = all.filter(l => l.risk_level === 'high').length;
+    const medium = all.filter(l => l.risk_level === 'medium').length;
+    const low = all.filter(l => l.risk_level === 'low').length;
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-high').textContent = high;
+    document.getElementById('stat-medium').textContent = medium;
+    document.getElementById('stat-low').textContent = low;
+  } catch {}
+}
+
+function clearFilters() {
+  document.getElementById('filter-risk').value = '';
+  document.getElementById('filter-event').value = '';
+  loadAuditLogs();
+}
+
+loadAuditLogs();
+</script>
+</body>
+</html>

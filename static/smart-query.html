@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>智能问数 - 数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script>tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-dim":"#071425","surface-bright":"#2e3a4c","surface-container-lowest":"#030e1f","surface-container-low":"#101c2d","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","on-primary":"#002a78","on-primary-container":"#cbd6ff","secondary":"#a6e6ff","secondary-container":"#14d1ff","on-secondary":"#003543","on-secondary-container":"#00566b","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","on-error":"#690005","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb","inverse-surface":"#d7e3fb","inverse-on-surface":"#253143","inverse-primary":"#0353da"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"],"label-mono":["JetBrains Mono"]}}}}</script>
+<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.glass{background:rgba(20,32,49,0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.05)}</style></head>
+<body class="bg-background text-on-background min-h-screen">
+<aside></aside>
+<main class="p-6 min-h-screen">
+  <div class="max-w-5xl mx-auto">
+    <div class="flex items-center justify-between mb-4">
+      <div><h1 class="text-2xl font-bold text-primary">智能问数中心</h1><p class="text-xs text-on-surface-variant mt-1">自然语言查询数据库 → AI 生成图表</p></div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-on-surface-variant">对话模型:</span>
+        <select id="model-select" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs"><option value="">自动(默认)</option></select>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="glass rounded-2xl p-5 mb-4">
+      <div class="flex items-end gap-3">
+        <div class="flex-1">
+          <textarea id="nl-input" rows="2" placeholder="输入自然语言，例如：有多少用户、最近10条消息、消息类型分布、审计高风险日志..." class="w-full bg-transparent border border-outline-variant/20 rounded-xl px-4 py-3 text-sm focus:border-primary outline-none resize-none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();doQuery();}"></textarea>
+        </div>
+        <button id="btn-query" class="bg-primary text-on-primary px-6 py-3 rounded-xl text-sm font-bold hover:opacity-80 active:scale-95 transition-all flex items-center gap-2"><span class="material-symbols-outlined">send</span>查询</button>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <span onclick="quickQuery('有多少数据源')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 数据源数量</span>
+        <span onclick="quickQuery('用户列表')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 用户列表</span>
+        <span onclick="quickQuery('消息类型分布')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 消息类型分布</span>
+        <span onclick="quickQuery('最近消息')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 最近消息</span>
+        <span onclick="quickQuery('审计日志')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 审计日志</span>
+        <span onclick="quickQuery('知识库')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 知识库</span>
+        <span onclick="quickQuery('情感分布')" class="px-3 py-1 bg-surface-container-high rounded-full text-xs cursor-pointer hover:border-primary border border-outline-variant/20 transition-colors"># 情感分布</span>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="result-area" class="glass rounded-2xl p-5 mb-4" style="display:none">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-on-surface">查询结果</h3>
+        <span id="result-tag" class="text-xs px-2 py-0.5 rounded bg-secondary-container/20 text-secondary">table</span>
+      </div>
+      <div id="result-sql" class="mb-3 bg-surface-container-high/50 rounded-lg p-3 text-xs font-mono text-on-surface-variant overflow-x-auto" style="display:none"></div>
+      <div id="result-table" class="overflow-x-auto mb-3" style="display:none"></div>
+      <div id="result-chart" style="width:100%;height:350px;display:none"></div>
+
+      <!-- Stats bar -->
+      <div class="flex gap-6 mt-4 pt-3 border-t border-outline-variant/20">
+        <div><span class="text-xs text-outline">查询周期</span><div class="text-sm font-bold" id="stat-period">--</div></div>
+        <div><span class="text-xs text-outline">数据总量</span><div class="text-sm font-bold" id="stat-total">--</div></div>
+        <div><span class="text-xs text-outline">查询耗时</span><div class="text-sm font-bold" id="stat-time">--</div></div>
+        <div><span class="text-xs text-outline">返回条数</span><div class="text-sm font-bold" id="stat-rows">--</div></div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="glass rounded-2xl p-5">
+      <h3 class="text-sm font-bold text-on-surface mb-2">分析历史</h3>
+      <div id="history-list" class="text-xs text-on-surface-variant space-y-1">
+        <div class="text-center py-4">暂无分析记录</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+var queryHistory = [];
+var chartInstance = null;
+
+// Init
+(function(){
+  document.getElementById('btn-query').addEventListener('click', doQuery);
+  loadModels();
+})();
+
+async function loadModels(){
+  try{
+    var models = await apiGet('/api/query/models');
+    var sel = document.getElementById('model-select');
+    if (sel) sel.innerHTML = '<option value="">自动(默认)</option>' +
+      models.map(function(m){return '<option value="'+m.id+'"'+(m.is_default?' selected':'')+'>'+escapeHtml(m.name)+'</option>';}).join('');
+  }catch(e){}
+}
+
+function quickQuery(q){
+  document.getElementById('nl-input').value = q;
+  doQuery();
+}
+
+async function doQuery(){
+  var q = document.getElementById('nl-input').value.trim();
+  if (!q) return;
+
+  var area = document.getElementById('result-area');
+  area.style.display = 'block';
+  document.getElementById('result-sql').style.display = 'none';
+  document.getElementById('result-table').style.display = 'none';
+  document.getElementById('result-chart').style.display = 'none';
+  document.getElementById('result-tag').textContent = '查询中...';
+  ['stat-period','stat-total','stat-time','stat-rows'].forEach(function(id){ document.getElementById(id).textContent = '...'; });
+
+  var t0 = performance.now();
+  try {
+    var modelId = document.getElementById('model-select').value;
+    var data = await apiPost('/api/query/nl2sql', { question: q, model_id: modelId ? parseInt(modelId) : null });
+    var elapsed = Math.round(performance.now() - t0);
+
+    if (!data) { area.style.display='none'; showToast('查询失败','error'); return; }
+
+    var rows = data.rows || [];
+    var hasRows = rows.length > 0;
+
+    // Update stats
+    document.getElementById('stat-period').textContent = '实时';
+    document.getElementById('stat-total').textContent = (hasRows ? rows.length : 0) + ' 条';
+    document.getElementById('stat-time').textContent = elapsed + ' ms';
+    document.getElementById('stat-rows').textContent = '返回 ' + (hasRows ? rows.length : 0) + ' 行';
+    document.getElementById('result-tag').textContent = data.chart_type || 'table';
+
+    // SQL display
+    if (data.sql) {
+      document.getElementById('result-sql').style.display = 'block';
+      document.getElementById('result-sql').innerHTML = '<span class="text-secondary">SQL:</span> ' + escapeHtml(data.sql);
+    }
+
+    // Explanation
+    if (data.explanation) {
+      document.getElementById('result-tag').textContent = data.explanation.substring(0, 60);
+    }
+
+    // Table
+    if (hasRows) {
+      document.getElementById('result-table').style.display = 'block';
+      var cols = Object.keys(rows[0]);
+      document.getElementById('result-table').innerHTML =
+        '<table class="w-full text-xs"><thead><tr class="border-b border-outline-variant/20">' +
+        cols.map(function(k){return '<th class="px-3 py-2 text-left text-on-surface-variant font-medium">'+escapeHtml(k)+'</th>';}).join('') +
+        '</tr></thead><tbody>' +
+        rows.slice(0, 50).map(function(r){return '<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30">'+cols.map(function(k){return '<td class="px-3 py-2">'+escapeHtml(String(r[k]||''))+'</td>';}).join('')+'</tr>';}).join('') +
+        '</tbody></table>' +
+        (rows.length > 50 ? '<div class="text-xs text-on-surface-variant mt-2 text-center">显示前50条，共'+rows.length+'条</div>' : '');
+    } else {
+      document.getElementById('result-table').style.display = 'none';
+    }
+
+    // Chart (ECharts)
+    if (data.chart_data && hasRows) {
+      document.getElementById('result-chart').style.display = 'block';
+      setTimeout(function(){ renderEChart(data.chart_data, data.chart_type, data.chart_title); }, 200);
+    } else if (hasRows && cols.length >= 2) {
+      // Auto-build chart from table data
+      document.getElementById('result-chart').style.display = 'block';
+      setTimeout(function(){ renderEChartFromRows(rows, cols, data.chart_type); }, 200);
+    } else {
+      disposeChart();
+      document.getElementById('result-chart').style.display = 'none';
+    }
+
+    // Save to history
+    queryHistory.unshift({ q: q, rows: rows.length, time: elapsed, ts: new Date().toLocaleString() });
+    if (queryHistory.length > 20) queryHistory.pop();
+    renderHistory();
+
+  } catch(e) {
+    area.style.display = 'none';
+    showToast('查询失败: ' + e.message, 'error');
+  }
+}
+
+function renderEChart(chartData, chartType, title) {
+  var dom = document.getElementById('result-chart');
+  if (!dom) return;
+  disposeChart();
+  chartInstance = echarts.init(dom, 'dark');
+
+  var opt = {
+    title: { text: title||'', textStyle:{color:'#d7e3fb',fontSize:13}, left:'center' },
+    tooltip: {},
+    legend: { textStyle:{color:'#c3c6d7'}, top:28 },
+    grid: { top:55, left:'3%', right:'4%', bottom:'3%', containLabel:true },
+    xAxis: { type:'category', data:chartData.labels||[], axisLabel:{color:'#c3c6d7',rotate:chartData.labels&&chartData.labels.length>6?30:0} },
+    yAxis: { type:'value', axisLabel:{color:'#c3c6d7'} },
+    series: (chartData.series||[]).map(function(s){ return { name:s.name, type:chartType||'bar', data:s.data, smooth:chartType==='line' }; })
+  };
+
+  if (chartType === 'pie') {
+    delete opt.xAxis; delete opt.yAxis;
+    opt.series = [{ type:'pie', radius:['30%','65%'], center:['50%','55%'],
+      data: (chartData.series||[])[0]?.data || [],
+      label:{color:'#c3c6d7',fontSize:11} }];
+  }
+
+  chartInstance.setOption(opt);
+  window.addEventListener('resize', function(){ chartInstance && chartInstance.resize(); });
+}
+
+function renderEChartFromRows(rows, cols, chartType) {
+  var labelCol = cols[0];
+  var numCol = null;
+  for (var i = 0; i < cols.length; i++) {
+    for (var j = 0; j < Math.min(rows.length, 20); j++) {
+      var v = rows[j][cols[i]];
+      if (typeof v === 'number' || (!isNaN(parseFloat(v)) && isFinite(v))) {
+        numCol = cols[i]; break;
+      }
+    }
+    if (numCol) break;
+  }
+  if (!numCol) { document.getElementById('result-chart').style.display = 'none'; return; }
+
+  var labels = rows.slice(0,20).map(function(r){return String(r[labelCol]||'').substring(0,20);});
+  var values = rows.slice(0,20).map(function(r){return parseFloat(r[numCol])||0;});
+  var ct = chartType || 'bar';
+
+  var chartData = { labels: labels, series: [{ name: numCol, data: values }] };
+  renderEChart(chartData, ct, '');
+}
+
+function disposeChart() {
+  if (chartInstance) { chartInstance.dispose(); chartInstance = null; }
+}
+
+function renderHistory() {
+  var el = document.getElementById('history-list');
+  if (!queryHistory.length) { el.innerHTML = '<div class="text-center py-4">暂无分析记录</div>'; return; }
+  el.innerHTML = queryHistory.map(function(h,i){
+    return '<div class="flex items-center justify-between py-1.5 px-3 rounded hover:bg-surface-container-high/30 cursor-pointer" onclick="replayQuery('+i+')">' +
+      '<span class="truncate flex-1">'+escapeHtml(h.q)+'</span>' +
+      '<span class="text-on-surface-variant ml-3 flex-shrink-0">'+h.rows+'条 · '+h.time+'ms · '+h.ts+'</span>' +
+    '</div>';
+  }).join('');
+}
+
+function replayQuery(i) {
+  var h = queryHistory[i];
+  if (h) { document.getElementById('nl-input').value = h.q; doQuery(); }
+}
+</script>
+</body></html>

@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>数据治理工作台 - 智能数据瞭望系统</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-container": "#ffccbc",
+                        "on-background": "#d7e3fb",
+                        "inverse-on-surface": "#253143",
+                        "tertiary": "#ffb59c",
+                        "surface-bright": "#2e3a4c",
+                        "surface": "#071425",
+                        "on-secondary": "#003543",
+                        "error-container": "#93000a",
+                        "surface-container-highest": "#2a3548",
+                        "primary-fixed-dim": "#b4c5ff",
+                        "on-primary-fixed": "#00174b",
+                        "surface-container": "#142031",
+                        "secondary-container": "#14d1ff",
+                        "on-secondary-container": "#00566b",
+                        "surface-tint": "#b4c5ff",
+                        "on-tertiary": "#5c1900",
+                        "primary-fixed": "#dbe1ff",
+                        "surface-container-lowest": "#030e1f",
+                        "on-primary": "#002a78",
+                        "error": "#ffb4ab",
+                        "outline": "#8d90a0",
+                        "on-primary-fixed-variant": "#003ea8",
+                        "surface-container-high": "#1f2a3c",
+                        "on-error": "#690005",
+                        "surface-dim": "#071425",
+                        "primary-container": "#0052d9",
+                        "inverse-surface": "#d7e3fb",
+                        "primary": "#b4c5ff",
+                        "surface-container-low": "#101c2d",
+                        "tertiary-fixed-dim": "#ffb59c",
+                        "tertiary-container": "#aa3500",
+                        "on-surface-variant": "#c3c6d7",
+                        "on-surface": "#d7e3fb",
+                        "on-secondary-fixed-variant": "#004e60",
+                        "background": "#071425",
+                        "outline-variant": "#434654",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdbd0",
+                        "secondary-fixed-dim": "#4cd6ff",
+                        "on-primary-container": "#cbd6ff",
+                        "on-tertiary-fixed-variant": "#832700",
+                        "on-secondary-fixed": "#001f28",
+                        "surface-variant": "#2a3548",
+                        "secondary": "#a6e6ff",
+                        "on-tertiary-fixed": "#390c00",
+                        "secondary-fixed": "#b7eaff",
+                        "inverse-primary": "#0353da"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "2xl": "48px",
+                        "md": "16px",
+                        "margin-desktop": "32px",
+                        "base": "4px",
+                        "margin-mobile": "16px",
+                        "gutter": "16px",
+                        "xl": "32px",
+                        "lg": "24px",
+                        "xs": "4px",
+                        "sm": "8px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "caption": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #071425;
+            color: #d7e3fb;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(20, 32, 49, 0.6);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .status-glow {
+            box-shadow: 0 0 8px currentColor;
+        }
+        .code-editor {
+            font-family: 'JetBrains Mono', monospace;
+            background: #030e1f;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #071425;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #434654;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8d90a0;
+        }
+        .pipeline-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background">
+<!-- Side Navigation Bar -->
+<aside class="fixed left-0 top-0 h-full w-[240px] border-r border-outline-variant bg-surface-container-low shadow-md flex flex-col py-lg z-50">
+<div class="px-lg mb-xl">
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">数据瞭望系统</h1>
+<p class="text-xs text-on-surface-variant mt-1">企业级管理后台</p>
+</div>
+<nav class="flex-1 px-sm space-y-1">
+<a class="flex items-center px-md py-sm rounded-lg text-secondary-fixed bg-secondary-container/10 border-r-2 border-secondary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="database">database</span>
+<span class="font-body-md text-body-md">数据治理</span>
+</a>
+<a class="flex items-center px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="admin_panel_settings">admin_panel_settings</span>
+<span class="font-body-md text-body-md">权限管理</span>
+</a>
+<a class="flex items-center px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="precision_manufacturing">precision_manufacturing</span>
+<span class="font-body-md text-body-md">员工编排</span>
+</a>
+<a class="flex items-center px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="security">security</span>
+<span class="font-body-md text-body-md">审计管理</span>
+</a>
+<a class="flex items-center px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="monitoring">monitoring</span>
+<span class="font-body-md text-body-md">数字大屏</span>
+</a>
+</nav>
+<div class="px-lg mt-auto border-t border-outline-variant pt-lg flex items-center space-x-3">
+<img class="w-10 h-10 rounded-full border border-outline" data-alt="A professional profile headshot of a data engineer in a high-tech control center environment. The lighting is cold with blue and teal highlights, matching a dark enterprise UI theme. The person wears a sleek, modern corporate uniform, conveying authority and technical expertise. The background is softly blurred with server racks and holographic interfaces." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMR2yyTfnQ7kvBCDbhpoSxOg0nYZ_rSSQYmMlmwckCrvQVt7lPZZUJOgPHurWsq9ZpDWhGE2ykyAt36eIGOTN0KQ3ETBoGfgQN95FmTdcjTG0MXm--jhuRcfA0eXM0SfFs95hZlVvB02aKQTmCZvr3YjS5xxUvEL_SG6iyQYTTUjmVnWAwDkr6I5_IgUmYt4By371A3nV_mZ5jfeBtDcGMPc_8jIOFBTTLhlGXMcw3Tbq4GjaHYlH226Edonncm9cP1S59wZJJTKiU"/>
+<div>
+<p class="text-sm font-bold">Admin_Core</p>
+<p class="text-[10px] text-on-surface-variant">System Lead</p>
+</div>
+</div>
+</aside>
+<!-- Top Navigation Bar -->
+<header class="fixed top-0 left-[240px] right-0 h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant flex justify-between items-center px-margin-desktop z-40">
+<div class="flex items-center space-x-xl">
+<span class="font-headline-md text-headline-md font-black text-primary tracking-tight">智能数据瞭望系统</span>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-secondary-fixed" data-icon="search">search</span>
+<input class="bg-surface-container-lowest border border-outline-variant rounded-full pl-10 pr-4 py-1.5 text-sm w-64 focus:ring-1 focus:ring-secondary-fixed focus:outline-none transition-all" placeholder="搜索资源、任务或规则..." type="text"/>
+</div>
+</div>
+<div class="flex items-center space-x-lg">
+<button class="relative hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+</button>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<span class="font-label-mono text-label-mono text-secondary-fixed bg-secondary-container/20 px-2 py-1 rounded">V2.4.8-STABLE</span>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class=" pt-24 p-margin-desktop min-h-screen">
+<!-- Dashboard Header Stats -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-gutter mb-xl">
+<div class="glass-panel p-lg rounded-xl border-l-4 border-primary">
+<div class="flex justify-between items-start mb-2">
+<span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">Active Pipelines</span>
+<span class="material-symbols-outlined text-primary text-xl" data-icon="hub">hub</span>
+</div>
+<div class="text-3xl font-bold text-on-surface" id="stat-pipelines">1,284</div>
+<div class="text-xs text-secondary mt-1 flex items-center">
+<span class="material-symbols-outlined text-xs mr-1" data-icon="trending_up">trending_up</span>
+                    +12% from last cycle
+                </div>
+</div>
+<div class="glass-panel p-lg rounded-xl border-l-4 border-secondary-fixed">
+<div class="flex justify-between items-start mb-2">
+<span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">Crawl Success Rate</span>
+<span class="material-symbols-outlined text-secondary-fixed text-xl" data-icon="check_circle">check_circle</span>
+</div>
+<div class="text-3xl font-bold text-on-surface" id="stat-success-rate">99.2%</div>
+<div class="text-xs text-on-surface-variant mt-1">Target: &gt;98.5%</div>
+</div>
+<div class="glass-panel p-lg rounded-xl border-l-4 border-tertiary">
+<div class="flex justify-between items-start mb-2">
+<span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">Data Ingress (24h)</span>
+<span class="material-symbols-outlined text-tertiary text-xl" data-icon="cloud_download">cloud_download</span>
+</div>
+<div class="text-3xl font-bold text-on-surface" id="stat-ingress">4.2 TB</div>
+<div class="text-xs text-error mt-1 flex items-center">
+<span class="material-symbols-outlined text-xs mr-1" data-icon="warning">warning</span>
+                    Latency high in Node-7
+                </div>
+</div>
+<div class="glass-panel p-lg rounded-xl border-l-4 border-error">
+<div class="flex justify-between items-start mb-2">
+<span class="text-on-surface-variant font-label-mono text-xs uppercase tracking-wider">Active Threats</span>
+<span class="material-symbols-outlined text-error text-xl" data-icon="gpp_maybe">gpp_maybe</span>
+</div>
+<div class="text-3xl font-bold text-on-surface" id="stat-threats">02</div>
+<div class="text-xs text-on-surface-variant mt-1">Isolated in Sandbox</div>
+</div>
+</div>
+<!-- Bento Layout for Workspace -->
+<div class="grid grid-cols-12 gap-gutter h-auto">
+<!-- Data Sources Management (Column 0-7) -->
+<section class="col-span-12 lg:col-span-7 glass-panel rounded-xl overflow-hidden flex flex-col h-[600px]">
+<div class="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+<div>
+<h2 class="font-headline-sm text-headline-sm font-bold flex items-center">
+<span class="material-symbols-outlined mr-2 text-primary" data-icon="source">source</span>
+                            数据源管理列表
+                        </h2>
+<p class="text-xs text-on-surface-variant mt-0.5">实时资源映射与协议控制</p>
+</div>
+<button class="bg-primary text-on-primary px-4 py-1.5 rounded-lg text-sm font-medium flex items-center hover:opacity-90 transition-all" id="btn-add-source" onclick="showAddSourceDialog()">
+<span class="material-symbols-outlined mr-1 text-sm" data-icon="add">add</span>
+                        新增数据源
+                    </button>
+</div>
+<div class="flex-1 overflow-auto">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 bg-surface-container text-label-mono text-on-surface-variant border-b border-outline-variant">
+<tr>
+<th class="px-lg py-3 font-medium uppercase tracking-tighter">Resource ID</th>
+<th class="px-lg py-3 font-medium uppercase tracking-tighter">Status</th>
+<th class="px-lg py-3 font-medium uppercase tracking-tighter">Frequency</th>
+<th class="px-lg py-3 font-medium uppercase tracking-tighter">Last Sync</th>
+<th class="px-lg py-3 font-medium uppercase tracking-tighter text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/30 text-body-md" id="ds-table-body">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-high transition-colors group">
+<td class="px-lg py-4">
+<div class="flex items-center">
+<div class="w-8 h-8 rounded bg-primary-container/20 flex items-center justify-center mr-3">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="language">language</span>
+</div>
+<div>
+<p class="font-bold">FinNews_Crawler_01</p>
+<p class="text-xs text-on-surface-variant font-label-mono">api.market-intel.v3</p>
+</div>
+</div>
+</td>
+<td class="px-lg py-4">
+<span class="flex items-center text-secondary-fixed text-xs font-bold uppercase tracking-widest">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed mr-2 pipeline-dot status-glow"></span>
+                                        ACTIVE
+                                    </span>
+</td>
+<td class="px-lg py-4 font-label-mono text-xs">5s / request</td>
+<td class="px-lg py-4 text-xs text-on-surface-variant">2m ago</td>
+<td class="px-lg py-4 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-xl" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-high transition-colors group">
+<td class="px-lg py-4">
+<div class="flex items-center">
+<div class="w-8 h-8 rounded bg-secondary-container/20 flex items-center justify-center mr-3">
+<span class="material-symbols-outlined text-secondary-fixed text-sm" data-icon="storage">storage</span>
+</div>
+<div>
+<p class="font-bold">Global_Stock_DB</p>
+<p class="text-xs text-on-surface-variant font-label-mono">psql://primary-01</p>
+</div>
+</div>
+</td>
+<td class="px-lg py-4">
+<span class="flex items-center text-secondary-fixed text-xs font-bold uppercase tracking-widest">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed mr-2 pipeline-dot status-glow"></span>
+                                        SYNCING
+                                    </span>
+</td>
+<td class="px-lg py-4 font-label-mono text-xs">Real-time</td>
+<td class="px-lg py-4 text-xs text-on-surface-variant">Now</td>
+<td class="px-lg py-4 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-xl" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-high transition-colors group">
+<td class="px-lg py-4">
+<div class="flex items-center">
+<div class="w-8 h-8 rounded bg-tertiary-container/20 flex items-center justify-center mr-3">
+<span class="material-symbols-outlined text-tertiary text-sm" data-icon="webhook">webhook</span>
+</div>
+<div>
+<p class="font-bold">Logistics_Feed_v2</p>
+<p class="text-xs text-on-surface-variant font-label-mono">webhook://external-7</p>
+</div>
+</div>
+</td>
+<td class="px-lg py-4">
+<span class="flex items-center text-on-surface-variant text-xs font-bold uppercase tracking-widest opacity-50">
+<span class="w-2 h-2 rounded-full bg-on-surface-variant mr-2"></span>
+                                        IDLE
+                                    </span>
+</td>
+<td class="px-lg py-4 font-label-mono text-xs">Event-driven</td>
+<td class="px-lg py-4 text-xs text-on-surface-variant">15h ago</td>
+<td class="px-lg py-4 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-xl" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface-container-high transition-colors group">
+<td class="px-lg py-4">
+<div class="flex items-center">
+<div class="w-8 h-8 rounded bg-error-container/20 flex items-center justify-center mr-3">
+<span class="material-symbols-outlined text-error text-sm" data-icon="sync_problem">sync_problem</span>
+</div>
+<div>
+<p class="font-bold">Alpha_Sentiment_Proxy</p>
+<p class="text-xs text-on-surface-variant font-label-mono">tls://10.0.42.11</p>
+</div>
+</div>
+</td>
+<td class="px-lg py-4">
+<span class="flex items-center text-error text-xs font-bold uppercase tracking-widest">
+<span class="w-2 h-2 rounded-full bg-error mr-2 status-glow"></span>
+                                        ERROR
+                                    </span>
+</td>
+<td class="px-lg py-4 font-label-mono text-xs">10m / poll</td>
+<td class="px-lg py-4 text-xs text-on-surface-variant">Failed (502)</td>
+<td class="px-lg py-4 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-xl" data-icon="more_vert">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Crawl4AI Task Monitoring (Column 8-12) -->
+<section class="col-span-12 lg:col-span-5 glass-panel rounded-xl flex flex-col h-[600px]">
+<div class="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+<div>
+<h2 class="font-headline-sm text-headline-sm font-bold flex items-center">
+<span class="material-symbols-outlined mr-2 text-secondary-fixed" data-icon="insights">insights</span>
+                            Crawl4AI 任务监控
+                        </h2>
+<p class="text-xs text-on-surface-variant mt-0.5">任务成功率与性能深度分析</p>
+</div>
+<span class="text-xs font-label-mono text-secondary-fixed">LIVE REFRESHING</span>
+</div>
+<div class="p-lg space-y-lg overflow-y-auto">
+<!-- Progress Stats -->
+<div class="space-y-md">
+<div class="flex justify-between text-xs font-label-mono mb-2">
+<span class="text-on-surface-variant">GLOBAL SUCCESS RATE</span>
+<span class="text-secondary-fixed">98.42%</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-secondary-fixed status-glow w-[98.42%] transition-all duration-1000"></div>
+</div>
+<div class="grid grid-cols-2 gap-md pt-4">
+<div class="bg-surface-container-lowest/50 p-md rounded border border-outline-variant/30">
+<p class="text-[10px] text-on-surface-variant font-label-mono uppercase">Max Crawl Depth</p>
+<p class="text-xl font-bold text-on-surface">12 <span class="text-xs font-normal text-on-surface-variant">levels</span></p>
+</div>
+<div class="bg-surface-container-lowest/50 p-md rounded border border-outline-variant/30">
+<p class="text-[10px] text-on-surface-variant font-label-mono uppercase">Avg Execution Time</p>
+<p class="text-xl font-bold text-on-surface">420 <span class="text-xs font-normal text-on-surface-variant">ms</span></p>
+</div>
+</div>
+</div>
+<!-- Task List Mini -->
+<div class="space-y-md pt-4 border-t border-outline-variant/20">
+<h3 class="text-xs font-label-mono text-on-surface-variant uppercase">Recent Tasks</h3>
+<div class="space-y-sm">
+<!-- Task Item -->
+<div class="flex items-center justify-between p-sm bg-surface-container-high/40 rounded border border-white/5">
+<div class="flex items-center">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary-fixed mr-3"></div>
+<span class="text-xs font-bold font-label-mono">T-4921-X</span>
+</div>
+<div class="flex items-center space-x-4">
+<span class="text-[10px] font-label-mono text-on-surface-variant">DEPTH: 4</span>
+<span class="text-[10px] font-label-mono text-secondary-fixed">SUCCESS</span>
+</div>
+</div>
+<!-- Task Item -->
+<div class="flex items-center justify-between p-sm bg-surface-container-high/40 rounded border border-white/5">
+<div class="flex items-center">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary-fixed mr-3"></div>
+<span class="text-xs font-bold font-label-mono">T-4922-Y</span>
+</div>
+<div class="flex items-center space-x-4">
+<span class="text-[10px] font-label-mono text-on-surface-variant">DEPTH: 8</span>
+<span class="text-[10px] font-label-mono text-secondary-fixed">SUCCESS</span>
+</div>
+</div>
+<!-- Task Item -->
+<div class="flex items-center justify-between p-sm bg-surface-container-high/40 rounded border border-white/5 border-error/20">
+<div class="flex items-center">
+<div class="w-1.5 h-1.5 rounded-full bg-error mr-3"></div>
+<span class="text-xs font-bold font-label-mono">T-4923-Z</span>
+</div>
+<div class="flex items-center space-x-4">
+<span class="text-[10px] font-label-mono text-on-surface-variant">DEPTH: 2</span>
+<span class="text-[10px] font-label-mono text-error">TIMEOUT</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Atmospheric Map Indicator -->
+<div class="pt-4 h-48 relative rounded overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent z-10"></div>
+<div class="absolute inset-0 grayscale opacity-40 mix-blend-screen" data-alt="A stylized technical satellite map of a global network mesh with glowing city nodes connected by thin cyan and white data lines. The aesthetic is dark and minimalist, fitting a security monitoring software interface. The colors are predominantly deep charcoal, midnight blue, and vibrant neon cyan accents. High-tech, cinematic grid pattern overlay." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA6vmf0SI7o8w7ThGtDlqotafZCUfOgAunmJyydLlz-RJEcPT3E4O3VoqDytqgmMOfVI5iLXZvZQNhg-Pga8wYjuMuG0xXZliQEs0qhkGmwgjHXF9_2LbxNTBC8qlvxEaizy9Bnivmk8Rh6M49s-510fuewXCsmJaFz1gl6x1J8fKtvnBUqbI5htu7lk6czK2gObW6_ue15WRaOO6Az4m2FTk4Q_VCZ8il5y2xSY-UUhnSs6QT0rt7KJ0msYivkl3mS0KU3x1wnf27v')">
+</div>
+<div class="absolute bottom-4 left-4 z-20">
+<p class="text-[10px] font-label-mono text-secondary-fixed">NODE DEPLOYMENT: GLOBAL</p>
+<p class="text-xs font-bold">Active Nodes: 24/24</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Data Cleaning Rules Editor (Full Width) -->
+<section class="col-span-12 glass-panel rounded-xl overflow-hidden flex flex-col h-[700px] mt-gutter">
+<div class="p-lg border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+<div class="flex items-center">
+<h2 class="font-headline-sm text-headline-sm font-bold flex items-center mr-8">
+<span class="material-symbols-outlined mr-2 text-tertiary" data-icon="auto_fix_high">auto_fix_high</span>
+                            清洗规则编辑器
+                        </h2>
+<div class="flex bg-surface-container-highest rounded-lg p-1">
+<button class="px-4 py-1 text-xs font-bold rounded bg-primary text-on-primary">可视化视图</button>
+<button class="px-4 py-1 text-xs font-bold rounded text-on-surface-variant hover:text-on-surface">代码模式</button>
+</div>
+</div>
+<div class="flex space-x-md">
+<button class="flex items-center px-4 py-1.5 text-sm font-medium border border-outline-variant rounded-lg hover:bg-surface-container-high">
+<span class="material-symbols-outlined mr-1 text-sm" data-icon="history">history</span>
+                            历史版本
+                        </button>
+<button class="bg-secondary-fixed text-on-secondary-fixed px-6 py-1.5 rounded-lg text-sm font-bold hover:opacity-90">
+                            发布生产环境
+                        </button>
+</div>
+</div>
+<div class="flex-1 flex overflow-hidden">
+<!-- Left: Flowchart / Rule Builder -->
+<div class="flex-1 border-r border-outline-variant bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:20px_20px] relative">
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+<span class="text-on-surface-variant font-black text-8xl uppercase tracking-[2rem]">PIPELINE</span>
+</div>
+<!-- Visual Rule Blocks -->
+<div class="relative w-full h-full p-2xl">
+<!-- Block 1 -->
+<div class="absolute top-10 left-10 w-64 bg-surface-container-highest border border-primary/50 p-lg rounded-xl shadow-2xl">
+<div class="flex items-center mb-2">
+<span class="w-3 h-3 rounded-full bg-primary mr-2"></span>
+<span class="text-xs font-bold uppercase tracking-widest text-primary">Ingress Source</span>
+</div>
+<p class="text-sm font-medium">FinNews_JSON_Feed</p>
+<div class="mt-4 pt-4 border-t border-outline-variant flex justify-between">
+<span class="text-[10px] font-label-mono text-on-surface-variant">OUT: schema_raw</span>
+<span class="material-symbols-outlined text-sm" data-icon="link">link</span>
+</div>
+</div>
+<!-- Connection Line -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none">
+<path d="M 296 85 L 450 85 Q 500 85 500 150 L 500 210" fill="none" stroke="#b4c5ff" stroke-dasharray="8,4" stroke-width="2"></path>
+</svg>
+<!-- Block 2 -->
+<div class="absolute top-52 left-[380px] w-80 bg-surface-container-highest border border-secondary-fixed/50 p-lg rounded-xl shadow-2xl z-20">
+<div class="flex items-center mb-2">
+<span class="w-3 h-3 rounded-full bg-secondary-fixed mr-2"></span>
+<span class="text-xs font-bold uppercase tracking-widest text-secondary-fixed">Regex Filter</span>
+</div>
+<div class="space-y-md">
+<div class="flex justify-between items-center text-xs">
+<span class="text-on-surface-variant">Pattern:</span>
+<code class="bg-surface-container px-2 py-0.5 rounded text-secondary-fixed">/[A-Z0-9_-]{8}/</code>
+</div>
+<div class="flex justify-between items-center text-xs">
+<span class="text-on-surface-variant">Target:</span>
+<span class="font-medium">uuid_field</span>
+</div>
+</div>
+<div class="mt-4 pt-4 border-t border-outline-variant flex justify-between">
+<span class="text-[10px] font-label-mono text-on-surface-variant">IN: schema_raw</span>
+<span class="text-[10px] font-label-mono text-on-surface-variant">OUT: uuid_validated</span>
+</div>
+</div>
+<!-- Block 3 -->
+<div class="absolute bottom-20 right-10 w-64 bg-surface-container-highest border border-tertiary/50 p-lg rounded-xl shadow-2xl">
+<div class="flex items-center mb-2">
+<span class="w-3 h-3 rounded-full bg-tertiary mr-2"></span>
+<span class="text-xs font-bold uppercase tracking-widest text-tertiary">Schema Sync</span>
+</div>
+<p class="text-sm font-medium">AWS_S3_Storage_v4</p>
+<div class="mt-4 pt-4 border-t border-outline-variant flex justify-between">
+<span class="text-[10px] font-label-mono text-on-surface-variant">SYNC_STATUS: OK</span>
+<span class="material-symbols-outlined text-sm" data-icon="cloud_done">cloud_done</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Live Code Preview -->
+<div class="w-96 flex flex-col code-editor">
+<div class="px-lg py-3 border-b border-outline-variant flex justify-between items-center bg-surface-container">
+<span class="text-xs font-label-mono text-on-surface-variant uppercase">Generated Python (Crawl4AI)</span>
+<span class="material-symbols-outlined text-sm text-on-surface-variant cursor-pointer" data-icon="content_copy">content_copy</span>
+</div>
+<div class="p-lg flex-1 overflow-auto">
+<pre class="text-xs font-label-mono leading-relaxed text-on-surface-variant"><span class="text-secondary-fixed">import</span> asyncio
+<span class="text-secondary-fixed">from</span> crawl4ai <span class="text-secondary-fixed">import</span> AsyncWebCrawler
+
+<span class="text-tertiary">async def</span> <span class="text-primary">process_data</span>():
+    <span class="text-on-surface-variant"># 1. Initialize ingress</span>
+    crawler = <span class="text-primary">AsyncWebCrawler</span>()
+    
+    <span class="text-tertiary">async with</span> crawler:
+        result = <span class="text-tertiary">await</span> crawler.arun(
+            url=<span class="text-secondary">"https://fin-intel.api"</span>,
+            depth=<span class="text-primary">4</span>,
+            bypass_cache=<span class="text-primary">True</span>
+        )
+        
+        <span class="text-on-surface-variant"># 2. Applied Cleaning Rule: Regex Filter</span>
+        cleaned_data = []
+        <span class="text-tertiary">for</span> item <span class="text-tertiary">in</span> result.raw_data:
+            <span class="text-tertiary">if</span> re.match(<span class="text-secondary">r'[A-Z0-9_-]{8}'</span>, item.uuid):
+                cleaned_data.append(item)
+                
+        <span class="text-on-surface-variant"># 3. Sink to Warehouse</span>
+        <span class="text-tertiary">await</span> s3_sync(cleaned_data)
+
+<span class="text-on-surface-variant"># Monitoring Hook Enabled</span>
+<span class="text-primary">asyncio.run</span>(process_data())
+                            </pre>
+</div>
+<div class="p-lg bg-surface-container-low border-t border-outline-variant">
+<div class="flex items-center text-xs mb-2">
+<span class="material-symbols-outlined text-secondary-fixed text-sm mr-2" data-icon="terminal">terminal</span>
+<span class="font-label-mono text-on-surface">Compiler Output</span>
+</div>
+<div class="text-[10px] font-label-mono text-secondary-fixed/70">
+                                [INFO] Rule "Regex Filter" successfully compiled...<br/>
+                                [OK] Pipeline deployment validation passed.
+                            </div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- System Activity Footer -->
+<footer class="mt-xl py-lg border-t border-outline-variant flex justify-between items-center opacity-50 hover:opacity-100 transition-opacity">
+<div class="flex items-center space-x-xl">
+<div class="flex items-center text-xs">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed mr-2"></span>
+<span class="font-label-mono uppercase">System Pulse: 240ms</span>
+</div>
+<div class="flex items-center text-xs">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed mr-2"></span>
+<span class="font-label-mono uppercase">Nodes Online: 142</span>
+</div>
+</div>
+<p class="text-[10px] font-label-mono">© 2024 INTELLIGENT DATA OBSERVATORY SYSTEMS - ALL RIGHTS RESERVED</p>
+</footer>
+</main>
+<!-- Floating Action Button (FAB) - Contextual -->
+<button class="fixed bottom-xl right-xl w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center group hover:scale-110 active:scale-95 transition-all z-50">
+<span class="material-symbols-outlined text-2xl group-hover:rotate-90 transition-transform" data-icon="bolt">bolt</span>
+</button>
+<script src="/static/js/app.js"></script>
+<script>
+        // 路由守卫
+        if (!requireAuth()) throw new Error('redirecting');
+
+        // 加载仪表盘指标
+        async function loadMetrics() {
+            try {
+                const m = await apiGet('/api/dashboard/metrics');
+                document.getElementById('stat-pipelines').textContent = fmtNum(m.active_pipelines);
+                document.getElementById('stat-success-rate').textContent = m.crawl_success_rate + '%';
+                document.getElementById('stat-ingress').textContent = m.data_ingress_24h;
+                document.getElementById('stat-threats').textContent = String(m.active_threats).padStart(2, '0');
+            } catch (e) { console.error('metrics:', e); }
+        }
+
+        // 状态映射
+        const statusMap = {
+            active:  { color: 'text-secondary-fixed', dot: 'bg-secondary-fixed', label: 'ACTIVE' },
+            syncing: { color: 'text-secondary-fixed', dot: 'bg-secondary-fixed', label: 'SYNCING' },
+            idle:    { color: 'text-on-surface-variant opacity-50', dot: 'bg-on-surface-variant', label: 'IDLE' },
+            error:   { color: 'text-error', dot: 'bg-error', label: 'ERROR' },
+        };
+        const protocolIcons = { http: 'language', psql: 'storage', webhook: 'webhook', tls: 'sync_problem', ws: 'stream' };
+
+        // 加载数据源列表
+        async function loadDataSources() {
+            const tbody = document.getElementById('ds-table-body');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-on-surface-variant">加载中...</td></tr>';
+            try {
+                const list = await apiGet('/api/data-sources');
+                if (!list || list.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-on-surface-variant">暂无数据源</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map(ds => {
+                    const st = statusMap[ds.status] || statusMap.idle;
+                    const icon = protocolIcons[ds.protocol] || 'database';
+                    return `
+                    <tr class="hover:bg-surface-container-high transition-colors group">
+                        <td class="px-lg py-4">
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 rounded bg-${ds.status === 'error' ? 'error' : ds.protocol === 'psql' ? 'secondary' : 'primary'}-container/20 flex items-center justify-center mr-3">
+                                    <span class="material-symbols-outlined text-${ds.status === 'error' ? 'error' : 'primary'} text-sm">${icon}</span>
+                                </div>
+                                <div>
+                                    <p class="font-bold">${escapeHtml(ds.name)}</p>
+                                    <p class="text-xs text-on-surface-variant font-label-mono">${escapeHtml(ds.endpoint || ds.resource_id)}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-lg py-4">
+                            <span class="flex items-center ${st.color} text-xs font-bold uppercase tracking-widest">
+                                <span class="w-2 h-2 rounded-full ${st.dot} mr-2 pipeline-dot ${ds.status === 'active' || ds.status === 'error' ? 'status-glow' : ''}"></span>
+                                ${st.label}
+                            </span>
+                        </td>
+                        <td class="px-lg py-4 font-label-mono text-xs">${escapeHtml(ds.frequency || '--')}</td>
+                        <td class="px-lg py-4 text-xs text-on-surface-variant">${escapeHtml(timeAgo(ds.updated_at))}</td>
+                        <td class="px-lg py-4 text-right">
+                            <button class="text-on-surface-variant hover:text-error transition-all" onclick="deleteSource(${ds.id})">
+                                <span class="material-symbols-outlined text-xl">delete</span>
+                            </button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-error">加载失败</td></tr>';
+            }
+        }
+
+        // 删除数据源
+        async function deleteSource(id) {
+            if (!confirm('确定删除此数据源？')) return;
+            try {
+                await apiDelete('/api/data-sources/' + id);
+                showToast('删除成功', 'success');
+                loadDataSources();
+            } catch (e) { showToast('删除失败', 'error'); }
+        }
+
+        // 新增数据源弹窗
+        function showAddSourceDialog() {
+            const name = prompt('数据源名称：');
+            if (!name) return;
+            const resourceId = prompt('Resource ID（如 FinNews_01）：');
+            if (!resourceId) return;
+            const endpoint = prompt('Endpoint（可留空）：', '') || '';
+            const frequency = prompt('采集频率（可留空）：', '') || '';
+            const protocol = prompt('协议（http/psql/webhook/tls/ws，默认http）：', 'http') || 'http';
+            createSource({ resource_id: resourceId, name, endpoint, frequency, protocol });
+        }
+
+        async function createSource(body) {
+            try {
+                await apiPost('/api/data-sources', body);
+                showToast('数据源创建成功', 'success');
+                loadDataSources();
+            } catch (e) { showToast('创建失败', 'error'); }
+        }
+
+        // 更新侧边栏链接
+        document.querySelectorAll('aside nav a').forEach(a => {
+            const text = a.textContent.trim();
+            if (text.includes('数据治理')) { a.href = '/dashboard'; }
+            else if (text.includes('权限')) { a.href = '/permissions'; }
+            else if (text.includes('员工') || text.includes('编排')) { a.href = '/agents'; }
+            else if (text.includes('审计')) { a.href = '/audit'; }
+            else if (text.includes('大屏')) { a.href = '/screen'; }
+        });
+
+        // 用户信息加载到侧边栏
+        loadSidebarUser();
+
+        // 初始化
+        loadMetrics();
+        loadDataSources();
+
+        // 保留原有的微交互
+        document.addEventListener('DOMContentLoaded', () => {
+            const compilerText = document.querySelector('.text-\\[10px\\].font-label-mono.text-secondary-fixed\\/70');
+            if (compilerText) {
+                const messages = [
+                    '[INFO] Rule "Regex Filter" successfully compiled...',
+                    '[OK] Pipeline deployment validation passed.',
+                    '[SYNC] Repository v2.4.8 synchronized.',
+                    '[METRIC] Latency spike detected in Node-7 (ignored per policy).'
+                ];
+                let i = 0;
+                setInterval(() => {
+                    i = (i + 1) % messages.length;
+                    compilerText.innerHTML = messages.slice(0, i + 1).join('<br>');
+                }, 4000);
+            }
+        });
+    </script>
+</body></html>
