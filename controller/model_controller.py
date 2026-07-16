@@ -6,6 +6,7 @@ from database.session import SessionLocal, get_db
 from schema.api import AIModelOut, AIModelCreate, AIModelUpdate
 from dao.model_dao import list_models, get_model, create_model, update_model, delete_model, set_default
 from core.security import get_current_user
+from core.rbac import require_role
 from core.openai_client import OpenAIClient, OpenAIError
 from dao.base_dao import log_action
 from models.user import User
@@ -21,7 +22,7 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
 
 
 @model_router.post("", response_model=AIModelOut, status_code=201)
-def create(body: AIModelCreate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create(body: AIModelCreate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = AIModel(
         name=body.name, provider=body.provider, api_key=body.api_key,
         model_name=body.model_name, endpoint=body.endpoint,
@@ -44,7 +45,7 @@ def get_one(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depe
 
 
 @model_router.put("/{model_id}", response_model=AIModelOut)
-def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     m = update_model(model_id, updates, db)
     if not m:
@@ -54,7 +55,7 @@ def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db
 
 
 @model_router.delete("/{model_id}")
-def delete(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = get_model(model_id, db)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -67,7 +68,7 @@ def delete(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depen
 
 
 @model_router.post("/{model_id}/default", response_model=AIModelOut)
-def set_as_default(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def set_as_default(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = set_default(model_id, db)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -76,7 +77,7 @@ def set_as_default(model_id: int, db: SessionLocal = Depends(get_db), user: User
 
 
 @model_router.post("/{model_id}/test")
-async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     """测试模型可用性（按 type 分发 image/video/chat）"""
     m = get_model(model_id, db)
     if not m:

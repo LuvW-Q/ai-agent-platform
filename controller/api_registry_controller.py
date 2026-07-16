@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from core.security import get_current_user
+from core.rbac import require_role
 from dao.base_dao import log_action
 from database.session import SessionLocal, get_db
 from models.agent import Agent
@@ -72,7 +73,7 @@ def list_apis(db: SessionLocal = Depends(get_db), user: User = Depends(get_curre
 
 @api_registry_router.post("", status_code=201)
 def create_api(body: ApiCreateIn, db: SessionLocal = Depends(get_db),
-               user: User = Depends(get_current_user)):
+               user: User = Depends(require_role("ROOT", "ADMIN"))):
     if db.query(ApiRegistry).filter(ApiRegistry.code == body.code).first():
         raise HTTPException(400, "接口编码已存在")
     api = ApiRegistry(**body.model_dump())
@@ -85,7 +86,7 @@ def create_api(body: ApiCreateIn, db: SessionLocal = Depends(get_db),
 
 @api_registry_router.put("/{api_id}")
 def update_api(api_id: int, body: ApiUpdateIn, db: SessionLocal = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User = Depends(require_role("ROOT", "ADMIN"))):
     api = db.query(ApiRegistry).filter(ApiRegistry.id == api_id).first()
     if not api:
         raise HTTPException(404, "接口不存在")
@@ -104,7 +105,7 @@ def update_api(api_id: int, body: ApiUpdateIn, db: SessionLocal = Depends(get_db
 
 @api_registry_router.delete("/{api_id}")
 def delete_api(api_id: int, db: SessionLocal = Depends(get_db),
-               user: User = Depends(get_current_user)):
+               user: User = Depends(require_role("ROOT", "ADMIN"))):
     api = db.query(ApiRegistry).filter(ApiRegistry.id == api_id).first()
     if not api:
         raise HTTPException(404, "接口不存在")
@@ -192,7 +193,7 @@ def _extract_response_path(text: str, path: str) -> str:
 @api_registry_router.post("/{api_id}/create-agent")
 def create_agent_from_api(api_id: int, agent_name: str = Query(""),
                           db: SessionLocal = Depends(get_db),
-                          user: User = Depends(get_current_user)):
+                          user: User = Depends(require_role("ROOT", "ADMIN"))):
     """从接口生成数字员工：自动绑定 agent_type=api 与 api_id"""
     api = db.query(ApiRegistry).filter(ApiRegistry.id == api_id).first()
     if not api:

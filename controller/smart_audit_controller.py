@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.rbac import require_role
 from core.openai_client import OpenAIClient
 from dao.model_dao import get_default_model
 from dao.base_dao import log_action
@@ -128,7 +129,7 @@ def audit_collected_data(
 
 @smart_audit.post("/data/{data_id}/mark-sentiment")
 def mark_sentiment(data_id: int, sentiment: str = Query(...),
-                   db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+                   db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     """手动标记采集数据的情感"""
     d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
     if not d: raise HTTPException(404, "数据不存在")
@@ -142,7 +143,7 @@ def mark_sentiment(data_id: int, sentiment: str = Query(...),
 # ============ 封禁管理 ============
 @smart_audit.post("/ban/user/{user_id}")
 def ban_user(user_id: int, reason: str = Query("违规消息"), db: SessionLocal = Depends(get_db),
-             user: User = Depends(get_current_user)):
+             user: User = Depends(require_role("ROOT", "ADMIN"))):
     """封禁用户"""
     target = db.query(User).filter(User.id == user_id).first()
     if not target: raise HTTPException(404, "用户不存在")
@@ -158,7 +159,7 @@ def ban_user(user_id: int, reason: str = Query("违规消息"), db: SessionLocal
 
 @smart_audit.post("/ban/user/{user_id}/unban")
 def unban_user(user_id: int, db: SessionLocal = Depends(get_db),
-               user: User = Depends(get_current_user)):
+               user: User = Depends(require_role("ROOT", "ADMIN"))):
     """解封用户"""
     target = db.query(User).filter(User.id == user_id).first()
     if not target: raise HTTPException(404, "用户不存在")
@@ -170,7 +171,7 @@ def unban_user(user_id: int, db: SessionLocal = Depends(get_db),
 
 @smart_audit.post("/ban/group/{group_id}")
 def ban_group(group_id: int, reason: str = Query("群内违规消息"),
-              db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+              db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     """封禁群聊（解散群 + 撤回所有消息）"""
     from models.group import Group
     g = db.query(Group).filter(Group.id == group_id).first()

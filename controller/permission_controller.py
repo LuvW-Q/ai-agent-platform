@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from dao.base_dao import list_roles, log_action
 from core.security import get_current_user
+from core.rbac import require_role
 from models.user import User
 from models.role import Role
 from models.menu import Menu
@@ -48,7 +49,7 @@ def list_all_roles(db: SessionLocal = Depends(get_db), user: User = Depends(get_
 
 
 @permission_router.post("/roles", status_code=201)
-def create_role(body: RoleCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_role(body: RoleCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     if db.query(Role).filter(Role.code == body.code).first():
         raise HTTPException(400, "角色代码已存在")
     r = Role(name=body.name, code=body.code, description=body.description)
@@ -61,7 +62,7 @@ def create_role(body: RoleCreateIn, db: SessionLocal = Depends(get_db), user: Us
 
 @permission_router.put("/roles/{role_id}")
 def update_role(role_id: int, body: RoleUpdateIn, db: SessionLocal = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User = Depends(require_role("ROOT", "ADMIN"))):
     r = db.query(Role).filter(Role.id == role_id).first()
     if not r:
         raise HTTPException(404, "角色不存在")
@@ -74,7 +75,7 @@ def update_role(role_id: int, body: RoleUpdateIn, db: SessionLocal = Depends(get
 
 
 @permission_router.delete("/roles/{role_id}")
-def delete_role(role_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_role(role_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     r = db.query(Role).filter(Role.id == role_id).first()
     if not r:
         raise HTTPException(404, "角色不存在")
@@ -88,7 +89,7 @@ def delete_role(role_id: int, db: SessionLocal = Depends(get_db), user: User = D
 
 @permission_router.put("/user-role")
 def assign_user_role(body: UserRoleIn, db: SessionLocal = Depends(get_db),
-                     user: User = Depends(get_current_user)):
+                     user: User = Depends(require_role("ROOT", "ADMIN"))):
     """分配（修改）用户的角色"""
     target = db.query(User).filter(User.id == body.user_id).first()
     if not target:
@@ -225,7 +226,7 @@ def list_all_menus(db: SessionLocal = Depends(get_db), user: User = Depends(get_
 
 @permission_router.post("/menus", status_code=201)
 def create_menu(body: MenuCreateIn, db: SessionLocal = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = Menu(name=body.name, icon=body.icon, path=body.path,
              parent_id=body.parent_id, sort_order=body.sort_order,
              role_codes=body.role_codes)
@@ -240,7 +241,7 @@ def create_menu(body: MenuCreateIn, db: SessionLocal = Depends(get_db),
 
 @permission_router.put("/menus/{menu_id}")
 def update_menu(menu_id: int, body: MenuUpdateIn, db: SessionLocal = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = db.query(Menu).filter(Menu.id == menu_id).first()
     if not m:
         raise HTTPException(404, "菜单不存在")
@@ -257,7 +258,7 @@ def update_menu(menu_id: int, body: MenuUpdateIn, db: SessionLocal = Depends(get
 
 @permission_router.delete("/menus/{menu_id}")
 def delete_menu(menu_id: int, db: SessionLocal = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = db.query(Menu).filter(Menu.id == menu_id).first()
     if not m:
         raise HTTPException(404, "菜单不存在")
@@ -295,7 +296,7 @@ def list_perm_users(search: str = Query(None, description="按用户名或昵称
 
 @permission_router.put("/users/{user_id}")
 def update_perm_user(user_id: int, body: UserUpdateIn, db: SessionLocal = Depends(get_db),
-                     user: User = Depends(get_current_user)):
+                     user: User = Depends(require_role("ROOT", "ADMIN"))):
     """更新用户基本信息（昵称、邮箱、角色、启停用）"""
     target = db.query(User).filter(User.id == user_id).first()
     if not target:

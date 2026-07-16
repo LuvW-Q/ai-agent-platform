@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.rbac import require_role
 from models.user import User
 from models.setting import Setting
 
@@ -28,7 +29,7 @@ def list_settings(db: SessionLocal = Depends(get_db), user: User = Depends(get_c
 
 @setting_router.put("/{key}", response_model=SettingOut)
 def update_setting(key: str, body: SettingUpdateIn, db: SessionLocal = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+                   user: User = Depends(require_role("ROOT"))):
     s = db.query(Setting).filter(Setting.key == key).first()
     if not s:
         s = Setting(key=key, value=body.value)
@@ -42,7 +43,7 @@ def update_setting(key: str, body: SettingUpdateIn, db: SessionLocal = Depends(g
 
 @setting_router.post("/system-name")
 def set_system_name(body: SettingUpdateIn, db: SessionLocal = Depends(get_db),
-                    user: User = Depends(get_current_user)):
+                    user: User = Depends(require_role("ROOT"))):
     """修改系统名称，更新 settings 表"""
     s = db.query(Setting).filter(Setting.key == "system_name").first()
     if not s:

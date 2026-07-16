@@ -12,6 +12,7 @@ from dao.model_dao import get_model
 from dao.skill_dao import get_skills_by_ids
 from models.agent import Agent
 from core.security import get_current_user
+from core.rbac import require_role
 from models.user import User
 
 agent_router = APIRouter(prefix="/api/agents", tags=["数字员工"])
@@ -66,7 +67,7 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
 
 
 @agent_router.post("", status_code=201)
-def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     agent = Agent(
         name=body.name,
         avatar=body.avatar or "",
@@ -98,7 +99,7 @@ def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = D
 
 @agent_router.put("/{agent_id}")
 def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(get_db),
-                 user: User = Depends(get_current_user)):
+                 user: User = Depends(require_role("ROOT", "ADMIN"))):
     agent = get_agent(agent_id, db)
     if not agent:
         raise HTTPException(status_code=404, detail="数字员工不存在")
@@ -155,7 +156,7 @@ def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(
 
 
 @agent_router.delete("/{agent_id}")
-def delete_agent(agent_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_agent(agent_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     agent = get_agent(agent_id, db)
     if not agent:
         raise HTTPException(status_code=404, detail="数字员工不存在")

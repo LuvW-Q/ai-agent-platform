@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.rbac import require_role
 from dao.model_dao import get_default_model
 from core.openai_client import OpenAIClient
 from models.user import User
@@ -63,7 +64,7 @@ def list_sources(db: SessionLocal = Depends(get_db), user: User = Depends(get_cu
 
 
 @dc_router.post("/sources", status_code=201)
-def create_source(body: DSCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_source(body: DSCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     ds = DataSourceConfig(**body.model_dump())
     db.add(ds)
     db.commit()
@@ -73,7 +74,7 @@ def create_source(body: DSCreateIn, db: SessionLocal = Depends(get_db), user: Us
 
 @dc_router.put("/sources/{ds_id}")
 def update_source(ds_id: int, body: DSUpdateIn, db: SessionLocal = Depends(get_db),
-                  user: User = Depends(get_current_user)):
+                  user: User = Depends(require_role("ROOT", "ADMIN"))):
     ds = db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).first()
     if not ds: raise HTTPException(404, "数据源不存在")
     for k, v in body.model_dump().items():
@@ -83,7 +84,7 @@ def update_source(ds_id: int, body: DSUpdateIn, db: SessionLocal = Depends(get_d
 
 
 @dc_router.delete("/sources/{ds_id}")
-def delete_source(ds_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_source(ds_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).delete()
     db.commit()
     return {"deleted": True}
@@ -125,7 +126,7 @@ def list_rules(db: SessionLocal = Depends(get_db), user: User = Depends(get_curr
 
 
 @dc_router.post("/rules", status_code=201)
-def create_rule(body: CleanRuleIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_rule(body: CleanRuleIn, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     r = CleanRule(**body.model_dump())
     db.add(r)
     db.commit()
@@ -134,7 +135,7 @@ def create_rule(body: CleanRuleIn, db: SessionLocal = Depends(get_db), user: Use
 
 
 @dc_router.delete("/rules/{rule_id}")
-def delete_rule(rule_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_rule(rule_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     db.query(CleanRule).filter(CleanRule.id == rule_id).delete()
     db.commit()
     return {"deleted": True}
@@ -143,7 +144,7 @@ def delete_rule(rule_id: int, db: SessionLocal = Depends(get_db), user: User = D
 # ============ 数据采集 ============
 @dc_router.post("/crawl")
 async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
     """执行采集：按关键词搜索数据源，抓取并清洗"""
     sources = db.query(DataSourceConfig).filter(
         DataSourceConfig.id.in_(body.source_ids), DataSourceConfig.status == "active"
@@ -207,7 +208,7 @@ def list_warehouse(keyword: str = Query(None), db: SessionLocal = Depends(get_db
 
 @dc_router.post("/warehouse/{data_id}/save")
 def save_to_warehouse(data_id: int, db: SessionLocal = Depends(get_db),
-                      user: User = Depends(get_current_user)):
+                      user: User = Depends(require_role("ROOT", "ADMIN"))):
     d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
     if not d: raise HTTPException(404, "数据不存在")
     d.saved = True
@@ -217,7 +218,7 @@ def save_to_warehouse(data_id: int, db: SessionLocal = Depends(get_db),
 
 @dc_router.post("/warehouse/{data_id}/deep-collect")
 async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
-                       user: User = Depends(get_current_user)):
+                       user: User = Depends(require_role("ROOT", "ADMIN"))):
     """深度采集：访问数据URL，AI 解析摘要+实体"""
     d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
     if not d: raise HTTPException(404, "数据不存在")
@@ -278,7 +279,7 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
 
 
 @dc_router.delete("/warehouse/{data_id}")
-def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     db.query(CollectedData).filter(CollectedData.id == data_id).delete()
     db.commit()
     return {"deleted": True}
@@ -287,7 +288,7 @@ def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: Use
 # ============ 批量深度采集 + 任务进度日志 ============
 @dc_router.post("/batch-deep-collect")
 async def batch_deep_collect(body: CrawlIn, db: SessionLocal = Depends(get_db),
-                              user: User = Depends(get_current_user)):
+                              user: User = Depends(require_role("ROOT", "ADMIN"))):
     """批量深度采集：创建任务，对仓库中已保存且未深度采集的数据执行深度采集"""
     source_ids_str = ",".join(str(s) for s in body.source_ids) if body.source_ids else ""
     task = CollectionTask(
