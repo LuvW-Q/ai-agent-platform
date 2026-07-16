@@ -33,6 +33,22 @@ function ensureTechLightTheme() {
 
 ensureTechLightTheme();
 
+function preloadMaterialSymbols() {
+  if (document.querySelector('[data-material-symbols-preload]')) return;
+  const preload = document.createElement('span');
+  preload.className = 'material-symbols-outlined';
+  preload.setAttribute('data-material-symbols-preload', '');
+  preload.setAttribute('aria-hidden', 'true');
+  preload.textContent = String.fromCodePoint(0xe0c9);
+  Object.assign(preload.style, {
+    position: 'fixed', left: '-10000px', top: '0', width: '1px', height: '1px',
+    overflow: 'hidden', pointerEvents: 'none'
+  });
+  document.body.appendChild(preload);
+}
+
+preloadMaterialSymbols();
+
 /* ========== API 请求封装 ========== */
 async function api(path, opts = {}) {
   const url = path.startsWith('http') ? path : path;
@@ -42,18 +58,31 @@ async function api(path, opts = {}) {
   }
   if (Token.access) headers['Authorization'] = `Bearer ${Token.access}`;
 
-  const res = await fetch(url, { ...opts, headers });
+  let res = await fetch(url, { ...opts, headers });
 
   // 401 → 尝试刷新令牌
   if (res.status === 401) {
     const refreshed = await tryRefresh();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${Token.access}`;
-      return fetch(url, { ...opts, headers });
+      res = await fetch(url, { ...opts, headers });
+    } else {
+      Token.clear();
+      window.location.href = '/login';
+      throw new Error('未授权，请重新登录');
     }
-    Token.clear();
-    window.location.href = '/login';
-    throw new Error('未授权，请重新登录');
+  }
+
+  if (!res.ok) {
+    let message = `请求失败（HTTP ${res.status}）`;
+    try {
+      const errorBody = await res.clone().json();
+      if (typeof errorBody.detail === 'string') message = errorBody.detail;
+      else if (errorBody.detail !== undefined) message = JSON.stringify(errorBody.detail);
+    } catch (error) {}
+    const apiError = new Error(message);
+    apiError.status = res.status;
+    throw apiError;
   }
   return res;
 }
@@ -157,7 +186,7 @@ const PAGE_META = {
   'smart-audit': { title: '智能审计', desc: '消息敏感度、舆情情感和封禁治理闭环', icon: 'gavel' },
   'chat-management': { title: '聊天管理', desc: '群组、聊天记录和文件消息集中管理', icon: 'chat_bubble' },
   'data-collection': { title: '数据采集', desc: '配置数据源、清洗规则、采集任务与数据仓库', icon: 'cloud_download' },
-  messages: { title: '消息中心', desc: '好友、群聊和即时消息入口', icon: 'chat', fluid: true },
+  messages: { title: '消息中心', desc: '查看最近会话、好友申请与系统通知', icon: 'chat' },
   im: { title: 'IM 控制台', desc: '即时通信、会话列表和消息收发控制台', icon: 'forum', fluid: true },
   query: { title: '智能问数', desc: '用自然语言查询数据，自动生成 SQL 与图表', icon: 'terminal' },
   settings: { title: '个人设置', desc: '账号资料、安全配置和通知偏好', icon: 'settings' },
@@ -389,7 +418,7 @@ const DEFAULT_MENUS = [
   { name: '数据采集', icon: 'cloud_download', path: '/data-collection', key: 'data-collection' },
   { name: '消息中心', icon: 'chat', path: '/messages', key: 'messages' },
   { name: 'IM 控制台', icon: 'forum', path: '/im', key: 'im' },
-  { name: '系统设置', icon: 'settings', path: '/settings', key: 'settings' },
+  { name: '个人设置', icon: 'settings', path: '/settings', key: 'settings' },
 ];
 
 /* 路径 → key 映射（用于 active 高亮） */
@@ -407,7 +436,7 @@ async function fetchMenus() {
     const data = await apiGet('/api/permissions/menus');
     if (Array.isArray(data) && data.length > 0) {
       return data.map(m => ({
-        name: m.name,
+        name: m.path === '/settings' ? '个人设置' : m.name,
         icon: m.icon || 'circle',
         path: m.path,
         key: PATH_TO_KEY[m.path] || m.path.replace(/^\//, '') || 'dashboard',
@@ -449,7 +478,7 @@ function injectSidebar(active, menus) {
           <p class="text-[10px] text-on-surface-variant uppercase tracking-[0.18em]">Data Outlook</p>
         </div>
       </div>
-      <nav class="app-top-nav-scroll flex-1 overflow-x-auto whitespace-nowrap flex items-center gap-2 py-2">${nav}</nav>
+      <nav class="app-top-nav-scroll min-w-0 flex-1 overflow-x-auto whitespace-nowrap flex items-center gap-2 py-2" tabindex="0" aria-label="功能导航">${nav}</nav>
     </div>
   </header>
   <aside data-app-utility-rail class="app-utility-rail fixed left-0 top-[72px] bottom-0 w-[252px] border-r border-outline-variant bg-surface-container-low shadow-md flex flex-col py-5 z-40">
@@ -460,13 +489,14 @@ function injectSidebar(active, menus) {
         </div>
         <div>
           <h2 class="text-[16px] leading-5 font-extrabold text-primary">快捷控制</h2>
-          <p class="text-[11px] text-on-surface-variant mt-0.5">原顶部功能区</p>
+          <p class="text-[11px] text-on-surface-variant mt-0.5">常用操作与菜单检索</p>
         </div>
       </div>
       <div class="relative mt-5">
         <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
-        <input class="w-full bg-surface-container-high border border-outline-variant rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:border-primary" placeholder="搜索资源、任务或规则..." type="text"/>
+        <input id="app-menu-search" oninput="filterTopNav(this.value)" onkeydown="if(event.key==='Enter')openFirstMatchedMenu()" class="w-full bg-surface-container-high border border-outline-variant rounded-xl pl-10 pr-3 py-2.5 text-sm outline-none focus:border-primary" placeholder="搜索功能菜单..." type="search" aria-label="搜索功能菜单"/>
       </div>
+      <p id="app-menu-search-status" class="mt-2 min-h-4 text-[10px] text-on-surface-variant" aria-live="polite">输入名称可定位顶部菜单</p>
       <div class="grid grid-cols-3 gap-2 mt-4">
         <button onclick="openNotificationPanel()" data-app-action="notifications" class="h-11 rounded-xl border border-outline-variant bg-surface-container-high text-on-surface-variant hover:text-primary" title="通知">
           <span class="material-symbols-outlined text-[21px]">notifications</span>
@@ -504,6 +534,75 @@ function injectSidebar(active, menus) {
       </button>
     </div>
   </aside>`;
+}
+
+const TOP_NAV_SCROLL_STORAGE_KEY = 'data-outlook-top-nav-scroll-left';
+
+function setupTopNavScrolling(header) {
+  const nav = header?.querySelector('.app-top-nav-scroll');
+  if (!nav) return;
+
+  const previousInlineBehavior = nav.style.scrollBehavior;
+  nav.style.scrollBehavior = 'auto';
+  try {
+    const savedLeft = Number(sessionStorage.getItem(TOP_NAV_SCROLL_STORAGE_KEY));
+    if (Number.isFinite(savedLeft) && savedLeft >= 0) nav.scrollLeft = savedLeft;
+  } catch (error) {}
+
+  const activeLink = nav.querySelector('a[class*="bg-secondary-container"]');
+  if (activeLink) {
+    const navRect = nav.getBoundingClientRect();
+    const activeRect = activeLink.getBoundingClientRect();
+    if (activeRect.left < navRect.left + 8 || activeRect.right > navRect.right - 8) {
+      nav.scrollLeft += activeRect.left + activeRect.width / 2 - (navRect.left + navRect.width / 2);
+    }
+  }
+  nav.getBoundingClientRect();
+  requestAnimationFrame(() => { nav.style.scrollBehavior = previousInlineBehavior; });
+
+  let saveScheduled = false;
+  const saveScrollPosition = () => {
+    if (saveScheduled) return;
+    saveScheduled = true;
+    requestAnimationFrame(() => {
+      saveScheduled = false;
+      try { sessionStorage.setItem(TOP_NAV_SCROLL_STORAGE_KEY, String(nav.scrollLeft)); } catch (error) {}
+    });
+  };
+
+  nav.addEventListener('wheel', event => {
+    if (nav.scrollWidth <= nav.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+    event.preventDefault();
+    nav.scrollLeft += event.deltaY;
+  }, { passive: false });
+  nav.addEventListener('scroll', saveScrollPosition, { passive: true });
+  nav.addEventListener('click', event => {
+    if (!event.target.closest('a')) return;
+    try { sessionStorage.setItem(TOP_NAV_SCROLL_STORAGE_KEY, String(nav.scrollLeft)); } catch (error) {}
+  });
+}
+
+function filterTopNav(value) {
+  const nav = document.querySelector('.app-top-nav-scroll');
+  if (!nav) return;
+  const query = value.trim().toLocaleLowerCase('zh-CN');
+  const links = [...nav.querySelectorAll('a')];
+  const matches = [];
+  links.forEach(link => {
+    const matched = !query || link.textContent.trim().toLocaleLowerCase('zh-CN').includes(query);
+    link.classList.toggle('app-menu-filtered-out', !matched);
+    if (matched) matches.push(link);
+  });
+  window.__firstMatchedMenu = query && matches.length ? matches[0] : null;
+  const status = document.getElementById('app-menu-search-status');
+  if (status) status.textContent = query ? `找到 ${matches.length} 个功能菜单${matches.length ? '，按 Enter 打开第一个' : ''}` : '输入名称可定位顶部菜单';
+  if (window.__firstMatchedMenu) {
+    window.__firstMatchedMenu.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+}
+
+function openFirstMatchedMenu() {
+  if (window.__firstMatchedMenu) window.location.href = window.__firstMatchedMenu.href;
 }
 
 /* 统一替换所有页面的侧边栏，保证一致性 */
@@ -561,6 +660,7 @@ async function replaceSidebar() {
     }
   }
   document.body.prepend(newTopNav);
+  setupTopNavScrolling(newTopNav);
 
   // 统一主内容区：顶部留给功能导航，左侧留给工具栏
   const main = document.querySelector('main');

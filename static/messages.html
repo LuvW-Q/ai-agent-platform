@@ -41,7 +41,17 @@ tailwind.config = {
 };
 </script>
 <style>
-  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  .material-symbols-outlined {
+    display: inline-block;
+    width: 1.25em;
+    overflow: hidden;
+    white-space: nowrap;
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    line-height: 1;
+    font-feature-settings: 'liga';
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
   .fill-icon { font-variation-settings: 'FILL' 1; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -54,66 +64,60 @@ tailwind.config = {
 <aside></aside>
 
 <!-- Main Content -->
-<main class=" min-h-screen p-lg">
-  <!-- Page Header -->
-  <div class="mb-lg">
-    <h1 class="font-headline-md text-headline-md font-bold text-on-surface">消息中心</h1>
-    <p class="text-body-sm text-on-surface-variant mt-1">查看会话列表、好友申请和系统通知</p>
-  </div>
-
+<main class="min-h-screen">
   <!-- Stats Cards -->
-  <div class="grid grid-cols-4 gap-md mb-lg">
-    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="material-symbols-outlined text-primary text-lg">chat</span>
-        <span class="text-xs text-outline">活跃会话</span>
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="material-symbols-outlined text-primary text-xl">chat</span>
+        <span class="text-sm text-on-surface-variant">活跃会话</span>
       </div>
       <p class="text-2xl font-bold text-on-surface" id="stat-conversations">-</p>
     </div>
-    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="material-symbols-outlined text-secondary text-lg">people</span>
-        <span class="text-xs text-outline">好友数</span>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="material-symbols-outlined text-secondary text-xl">people</span>
+        <span class="text-sm text-on-surface-variant">好友数</span>
       </div>
       <p class="text-2xl font-bold text-on-surface" id="stat-friends">-</p>
     </div>
-    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="material-symbols-outlined text-tertiary text-lg">groups</span>
-        <span class="text-xs text-outline">群聊数</span>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="material-symbols-outlined text-tertiary text-xl">groups</span>
+        <span class="text-sm text-on-surface-variant">群聊数</span>
       </div>
       <p class="text-2xl font-bold text-on-surface" id="stat-groups">-</p>
     </div>
-    <div class="bg-surface-container border border-outline-variant rounded-xl p-md">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="material-symbols-outlined text-error text-lg">notifications</span>
-        <span class="text-xs text-outline">待处理申请</span>
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-5">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="material-symbols-outlined text-error text-xl">notifications</span>
+        <span class="text-sm text-on-surface-variant">待处理申请</span>
       </div>
       <p class="text-2xl font-bold text-on-surface" id="stat-requests">-</p>
     </div>
   </div>
 
   <!-- Two Column Layout -->
-  <div class="grid grid-cols-2 gap-lg">
+  <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] gap-6 items-start">
     <!-- Left: Conversations -->
     <section class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
-      <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+      <div class="px-5 py-4 bg-surface-container-high border-b border-outline-variant flex items-center justify-between gap-4">
         <h2 class="text-sm font-bold text-on-surface flex items-center gap-2">
           <span class="material-symbols-outlined text-primary text-sm">forum</span>
           最近会话
         </h2>
         <a href="/im" class="text-xs text-primary hover:underline">进入IM控制台</a>
       </div>
-      <div id="conv-list" class="divide-y divide-outline-variant/30 max-h-[500px] overflow-y-auto">
-        <div class="text-center text-outline text-sm py-lg">加载中...</div>
+      <div id="conv-list" class="divide-y divide-outline-variant/30 min-h-[320px] max-h-[560px] overflow-y-auto">
+        <div class="text-center text-on-surface-variant text-sm py-12">加载中...</div>
       </div>
     </section>
 
     <!-- Right: Friend Requests + System Notifications -->
-    <section class="space-y-lg">
+    <div class="space-y-6">
       <!-- Friend Requests -->
       <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
-        <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+        <div class="px-5 py-4 bg-surface-container-high border-b border-outline-variant flex items-center justify-between gap-4">
           <h2 class="text-sm font-bold text-on-surface flex items-center gap-2">
             <span class="material-symbols-outlined text-secondary text-sm">person_add</span>
             好友申请
@@ -121,37 +125,37 @@ tailwind.config = {
           <span id="req-count" class="text-xs bg-error text-on-error px-2 rounded-full hidden">0</span>
         </div>
         <div id="req-list" class="divide-y divide-outline-variant/30 max-h-[300px] overflow-y-auto">
-          <div class="text-center text-outline text-sm py-lg">加载中...</div>
+          <div class="text-center text-on-surface-variant text-sm py-10">加载中...</div>
         </div>
       </div>
 
       <!-- System Notifications -->
       <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
-        <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+        <div class="px-5 py-4 bg-surface-container-high border-b border-outline-variant flex items-center justify-between gap-4">
           <h2 class="text-sm font-bold text-on-surface flex items-center gap-2">
             <span class="material-symbols-outlined text-tertiary text-sm">notifications_active</span>
             系统通知
           </h2>
           <a href="/audit" class="text-xs text-primary hover:underline">查看审计日志</a>
         </div>
-        <div id="notif-list" class="divide-y divide-outline-variant/30 max-h-[200px] overflow-y-auto">
-          <div class="text-center text-outline text-sm py-lg">加载中...</div>
+        <div id="notif-list" class="divide-y divide-outline-variant/30 max-h-[300px] overflow-y-auto">
+          <div class="text-center text-on-surface-variant text-sm py-10">加载中...</div>
         </div>
       </div>
-    </section>
+    </div>
   </div>
 
   <!-- Quick Actions -->
-  <div class="mt-lg flex gap-md">
-    <a href="/im" class="flex items-center gap-2 px-lg py-sm bg-primary text-on-primary rounded-xl text-sm font-bold hover:brightness-110 transition-all">
+  <div class="mt-6 flex flex-wrap gap-3">
+    <a href="/im" class="flex items-center gap-2 px-5 py-3 bg-primary text-on-primary rounded-xl text-sm font-bold hover:brightness-110 transition-all">
       <span class="material-symbols-outlined text-sm">forum</span>
       进入即时通信
     </a>
-    <a href="/agents" class="flex items-center gap-2 px-lg py-sm bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container-high transition-all">
+    <a href="/agents" class="flex items-center gap-2 px-5 py-3 bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container-high transition-all">
       <span class="material-symbols-outlined text-sm">smart_toy</span>
       数字员工
     </a>
-    <a href="/query" class="flex items-center gap-2 px-lg py-sm bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container-high transition-all">
+    <a href="/query" class="flex items-center gap-2 px-5 py-3 bg-surface-container border border-outline-variant text-on-surface-variant rounded-xl text-sm font-medium hover:bg-surface-container-high transition-all">
       <span class="material-symbols-outlined text-sm">terminal</span>
       智能问数
     </a>
@@ -212,7 +216,7 @@ async function loadConversations() {
 function renderConversations(convs) {
   const container = document.getElementById('conv-list');
   if (!convs.length) {
-    container.innerHTML = '<div class="text-center text-outline text-sm py-lg">暂无会话<div class="text-xs mt-1">在IM控制台发起对话</div></div>';
+    container.innerHTML = '<div class="text-center text-on-surface-variant text-sm py-12">暂无会话<div class="text-xs mt-1">在 IM 控制台发起对话</div></div>';
     return;
   }
   container.innerHTML = convs.map(c => {
@@ -224,7 +228,7 @@ function renderConversations(convs) {
         ? `<img src="${escapeHtml(c.peer_avatar)}" class="w-full h-full object-cover"/>`
         : '<span class="material-symbols-outlined text-on-surface-variant">person</span>');
     return `
-      <a href="${link}" class="flex items-center gap-3 p-md hover:bg-surface-container-high transition-colors cursor-pointer">
+      <a href="${link}" class="flex items-center gap-3 p-4 hover:bg-surface-container-high transition-colors cursor-pointer">
         <div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden flex-shrink-0">${icon}</div>
         <div class="flex-1 min-w-0">
           <div class="flex justify-between items-start">
@@ -252,12 +256,12 @@ function renderRequests(requests) {
   }
 
   if (!pending.length) {
-    container.innerHTML = '<div class="text-center text-outline text-sm py-lg">暂无待处理的好友申请</div>';
+    container.innerHTML = '<div class="text-center text-on-surface-variant text-sm py-10">暂无待处理的好友申请</div>';
     return;
   }
 
   container.innerHTML = pending.map(r => `
-    <div class="flex items-center gap-3 p-md">
+    <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 p-4">
       <div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden flex-shrink-0">
         ${r.from_avatar ? `<img src="${escapeHtml(r.from_avatar)}" class="w-full h-full object-cover"/>` : '<span class="material-symbols-outlined text-sm text-on-surface-variant">person</span>'}
       </div>
@@ -265,7 +269,7 @@ function renderRequests(requests) {
         <p class="text-sm font-medium truncate">${escapeHtml(r.from_nickname || r.from_username)}</p>
         <p class="text-xs text-outline truncate">${escapeHtml(r.message || '请求添加你为好友')}</p>
       </div>
-      <div class="flex gap-1 flex-shrink-0">
+      <div class="ml-12 sm:ml-0 flex gap-2 flex-shrink-0">
         <button class="px-2 py-1 bg-secondary text-on-secondary text-xs rounded hover:brightness-110 transition-all" data-action="accept" data-id="${r.id}">接受</button>
         <button class="px-2 py-1 border border-outline-variant text-outline text-xs rounded hover:bg-surface-variant transition-all" data-action="reject" data-id="${r.id}">拒绝</button>
       </div>
@@ -296,12 +300,12 @@ function renderRequests(requests) {
 function renderNotifications(audits) {
   const container = document.getElementById('notif-list');
   if (!audits || !audits.length) {
-    container.innerHTML = '<div class="text-center text-outline text-sm py-lg">暂无系统通知</div>';
+    container.innerHTML = '<div class="text-center text-on-surface-variant text-sm py-10">暂无系统通知</div>';
     return;
   }
   const riskColors = { high: 'text-error', medium: 'text-tertiary', low: 'text-outline' };
   container.innerHTML = audits.map(a => `
-    <div class="p-md flex gap-2">
+    <div class="p-4 flex gap-3">
       <span class="material-symbols-outlined text-sm ${riskColors[a.risk_level] || 'text-outline'} flex-shrink-0 mt-0.5">
         ${a.risk_level === 'high' ? 'warning' : a.risk_level === 'medium' ? 'info' : 'check_circle'}
       </span>

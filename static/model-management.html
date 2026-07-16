@@ -2,6 +2,7 @@
 <html class="dark" lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>模型管理 - 数据瞭望系统</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
@@ -264,7 +265,7 @@ function editModel(id) {
   document.getElementById('mName').value = m.name;
   document.getElementById('mProvider').value = m.provider;
   document.getElementById('mModelName').value = m.model_name;
-  document.getElementById('mApiKey').value = m.api_key || '';
+  document.getElementById('mApiKey').value = '';
   document.getElementById('mApiKey').placeholder = '留空则不修改';
   document.getElementById('mEndpoint').value = m.endpoint;
   document.getElementById('mType').value = m.model_type;
@@ -324,10 +325,10 @@ function onTypeChange() {
 }
 
 async function saveModel() {
+  const apiKey = document.getElementById('mApiKey').value.trim();
   const data = {
     name: document.getElementById('mName').value.trim(),
     provider: document.getElementById('mProvider').value.trim() || 'openai',
-    api_key: document.getElementById('mApiKey').value.trim() || 'sk-placeholder',
     model_name: document.getElementById('mModelName').value.trim(),
     endpoint: document.getElementById('mEndpoint').value.trim() || 'https://api.openai.com/v1',
     context_length: parseInt(document.getElementById('mContext').value) || 4096,
@@ -336,6 +337,8 @@ async function saveModel() {
     max_tokens: parseInt(document.getElementById('mMaxTokens').value) || 2048,
   };
   if (!data.name || !data.model_name) { showToast('请填写名称和模型ID', 'error'); return; }
+  if (!editId && !apiKey) { showToast('请填写 API Key', 'error'); return; }
+  if (apiKey) data.api_key = apiKey;
   try {
     if (editId) {
       await apiPut(`/api/models/${editId}`, data);
