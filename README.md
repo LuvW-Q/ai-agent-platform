@@ -4,19 +4,27 @@
 
 ## 环境要求
 
-- Windows 10/11 或兼容的 Python 运行环境
-- Python 3.10 及以上
+- 64 位 Windows 10/11，或 Apple Silicon Mac 上的 macOS
+- CPython 3.10 至 3.14（Windows 可使用官方 `py` 启动器，macOS 可使用 `python3`）
 - 人脸识别需要浏览器允许摄像头，并能访问固定版本的 face-api.js CDN
 - 真实大模型、图片和视频生成需要在模型管理中配置有效服务地址与 API Key
 - 百度新闻、RSS 和自定义网页采集需要部署环境能够访问对应公网源
 
 ## 最快启动本地预览
 
-直接双击仓库根目录的 `preview.cmd`，或在 PowerShell 中执行：
+Windows：直接双击仓库根目录的 `preview.cmd`，或在 PowerShell 中执行：
 
 ```powershell
 .\preview.cmd
 ```
+
+Apple Silicon macOS：在 Finder 中双击仓库根目录的 `preview.command`，或在终端执行：
+
+```bash
+./preview.command
+```
+
+通过 Git 克隆时会保留 `preview.command` 的可执行权限；如果通过压缩包或文件复制导致权限丢失，先执行一次 `chmod +x preview.command`。
 
 首次运行会自动创建 `.preview-venv` 并安装依赖，后续直接复用；核心链路验证通过后会自动打开登录页。终端会显示本次临时管理员账号与随机密码，按 `Ctrl+C` 即可停止服务。
 
@@ -26,7 +34,7 @@
 .\preview.cmd -Port 18082
 ```
 
-不希望自动打开浏览器时，可增加 `-NoBrowser`。
+Apple Silicon macOS 对应命令为 `./preview.command --port 18082`。不希望自动打开浏览器时，Windows 增加 `-NoBrowser`，macOS 增加 `--no-browser`。
 
 ## 手动安装与启动
 
@@ -37,6 +45,17 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Apple Silicon macOS：
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
@@ -59,7 +78,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8001
 .\scripts\demo.ps1
 ```
 
-该底层脚本适合已经手动准备好依赖环境的场景。日常本地预览优先使用根目录的 `preview.cmd`。
+Apple Silicon macOS 或其他兼容环境可执行 `python scripts/demo.py`。该底层脚本适合已经手动准备好依赖环境的场景；日常本地预览优先使用根目录对应平台的一键入口。
 
 回归结束后可清理隔离数据库和测试日志；脚本只处理固定测试文件名，不会删除 `data_outlook_v2.db`：
 
