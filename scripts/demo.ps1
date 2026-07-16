@@ -1,14 +1,32 @@
 param(
+    [ValidateRange(1024, 65535)]
     [int]$Port = 18081,
     [switch]$SmokeOnly,
-    [switch]$Detach
+    [switch]$Detach,
+    [switch]$NoBrowser,
+    [string]$PythonPath
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$python = Join-Path $projectRoot "venv\Scripts\python.exe"
-if (-not (Test-Path -LiteralPath $python)) {
-    $python = (Get-Command python -ErrorAction Stop).Source
+if ($PythonPath) {
+    $python = [System.IO.Path]::GetFullPath($PythonPath)
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        throw "Python executable does not exist: $python"
+    }
+}
+else {
+    $python = Join-Path $projectRoot "venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        $python = (Get-Command python -ErrorAction Stop).Source
+    }
+}
+
+$occupiedPort = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners() |
+    Where-Object { $_.Port -eq $Port } |
+    Select-Object -First 1
+if ($occupiedPort) {
+    throw "Port $Port is already in use. Stop the existing service or run preview.cmd -Port <another-port>."
 }
 
 $databasePath = [System.IO.Path]::GetFullPath((Join-Path $projectRoot "demo_run.db"))
@@ -35,6 +53,7 @@ $env:WORKFLOW_CODE_EXECUTION_ENABLED = "0"
 
 $stdoutLog = Join-Path $env:TEMP "ai-agent-platform-demo-$PID.stdout.log"
 $stderrLog = Join-Path $env:TEMP "ai-agent-platform-demo-$PID.stderr.log"
+$process = $null
 $process = Start-Process -FilePath $python `
     -ArgumentList @("-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "$Port") `
     -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru `
@@ -51,20 +70,28 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Demo is ready: http://127.0.0.1:$Port/login"
-    Write-Host "Admin username: $adminUsername"
-    Write-Host "Admin password: $adminPassword"
-    Write-Host "Service PID: $($process.Id)"
-    if ($Detach) {
-        $keepRunning = $true
+    if ($SmokeOnly) {
+        Write-Host "Demo smoke test passed; stopping the temporary service."
     }
-    elseif (-not $SmokeOnly) {
-        Write-Host "Press Ctrl+C to stop the demo service."
-        Wait-Process -Id $process.Id
+    else {
+        Write-Host "Demo is ready: http://127.0.0.1:$Port/login"
+        Write-Host "Admin username: $adminUsername"
+        Write-Host "Admin password: $adminPassword"
+        Write-Host "Service PID: $($process.Id)"
+        if (-not $NoBrowser) {
+            Start-Process "http://127.0.0.1:$Port/login" | Out-Null
+        }
+        if ($Detach) {
+            $keepRunning = $true
+        }
+        else {
+            Write-Host "Press Ctrl+C to stop the demo service."
+            Wait-Process -Id $process.Id
+        }
     }
 }
 finally {
-    if (-not $keepRunning -and -not $process.HasExited) {
+    if ($null -ne $process -and -not $keepRunning -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force
     }
     if (Test-Path -LiteralPath $stderrLog) {

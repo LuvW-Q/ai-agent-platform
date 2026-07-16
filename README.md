@@ -10,7 +10,25 @@
 - 真实大模型、图片和视频生成需要在模型管理中配置有效服务地址与 API Key
 - 百度新闻、RSS 和自定义网页采集需要部署环境能够访问对应公网源
 
-## 安装与启动
+## 最快启动本地预览
+
+直接双击仓库根目录的 `preview.cmd`，或在 PowerShell 中执行：
+
+```powershell
+.\preview.cmd
+```
+
+首次运行会自动创建 `.preview-venv` 并安装依赖，后续直接复用；核心链路验证通过后会自动打开登录页。终端会显示本次临时管理员账号与随机密码，按 `Ctrl+C` 即可停止服务。
+
+预览使用独立的 `demo_run.db`，不需要手动配置 `.env`，不会访问或修改 `data_outlook_v2.db`。如端口 `18081` 已被占用，可指定其他端口：
+
+```powershell
+.\preview.cmd -Port 18082
+```
+
+不希望自动打开浏览器时，可增加 `-NoBrowser`。
+
+## 手动安装与启动
 
 PowerShell：
 
@@ -33,7 +51,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8001
 
 生产部署必须保持 `ENABLE_DEMO_SEED=0`，使用不同的随机 `SECRET_KEY` 与 Fernet `APP_SECRET_KEY`，并将 `CORS_ORIGINS` 限制为实际前端域名。工作流代码节点默认关闭，仅在隔离环境评估后才可设置 `WORKFLOW_CODE_EXECUTION_ENABLED=1`。
 
-## 一键演示
+## 演示脚本
 
 脚本使用独立的 `demo_run.db`，随机生成临时管理员密码和两类密钥，不会访问或修改 `data_outlook_v2.db`。它会自动灌入演示数据，验证“登录 → 问数 → 数字员工 → 大屏”链路，然后保持服务运行：
 
@@ -41,7 +59,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8001
 .\scripts\demo.ps1
 ```
 
-终端会显示本次临时账号与密码。按 `Ctrl+C` 停止服务。
+该底层脚本适合已经手动准备好依赖环境的场景。日常本地预览优先使用根目录的 `preview.cmd`。
 
 回归结束后可清理隔离数据库和测试日志；脚本只处理固定测试文件名，不会删除 `data_outlook_v2.db`：
 
