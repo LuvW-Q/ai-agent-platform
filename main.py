@@ -171,10 +171,17 @@ run_seed()
 app = FastAPI(title="智能数据瞭望系统", version="1.0.0")
 
 # CORS中间件：允许跨域请求
+# 从环境变量读取允许的源（逗号分隔），默认本地开发环境
+import os as _os
 from fastapi.middleware.cors import CORSMiddleware
+
+_DEFAULT_CORS_ORIGINS = "http://localhost:8001,http://localhost:5173"
+_cors_origins_env = _os.environ.get("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS)
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
