@@ -13,6 +13,8 @@ from dao.skill_dao import get_skill, get_skills_by_ids
 from core.security import get_current_user
 from core.openai_client import OpenAIClient, OpenAIError
 from core.sandbox import sandbox
+from core.builtin_skills import execute_builtin_skill
+from core.safe_http import request_public_url
 from core.circuit_breaker import circuit_breaker
 from core.sensitive_filter import sensitive_filter
 from models.user import User
@@ -481,6 +483,12 @@ def _generate_persona_reply(agent: Agent, user_msg: str) -> str:
 async def _execute_skill(skill: Skill, args: dict, agent_id: int, user_id: int, db) -> dict:
     """执行单个技能调用"""
     try:
+        if skill.skill_type == "builtin":
+            config = json.loads(skill.config) if skill.config else {}
+            result = execute_builtin_skill(config.get("handler", ""), args, db)
+            circuit_breaker.record_success(skill.id)
+            return {"success": True, "result": result}
+
         if skill.skill_type == "function_call":
             # 沙箱执行
             result = sandbox.execute_function(skill.config, "execute", args)
@@ -500,9 +508,13 @@ async def _execute_skill(skill: Skill, args: dict, agent_id: int, user_id: int, 
                 return {"success": False, "error": "MCP配置缺少server_url/url"}
             async with httpx.AsyncClient(timeout=15) as http_client:
                 if method == "GET":
-                    resp = await http_client.get(server_url, params=args)
+                    resp = await request_public_url(
+                        http_client, "GET", server_url, params=args
+                    )
                 else:
-                    resp = await http_client.post(server_url, json=args)
+                    resp = await request_public_url(
+                        http_client, "POST", server_url, json=args
+                    )
                 result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
                 circuit_breaker.record_success(skill.id)
                 return {"success": True, "result": result}

@@ -7,6 +7,9 @@ import json, traceback
 from fastapi import APIRouter, Depends, HTTPException
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.rbac import require_role
+from core.config import config
+from core.safe_http import request_public_url
 from dao.model_dao import get_model, get_default_model
 from dao.skill_dao import get_skill
 from core.sandbox import sandbox
@@ -80,7 +83,8 @@ def list_wf(db: SessionLocal = Depends(get_db), user: User = Depends(get_current
 
 
 @wf_router.post("", status_code=201)
-def create_wf(body: WFCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_wf(body: WFCreateIn, db: SessionLocal = Depends(get_db),
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     wf = Workflow(name=body.name, description=body.description, created_by=user.username)
     db.add(wf)
     db.commit()
@@ -95,7 +99,9 @@ def create_wf(body: WFCreateIn, db: SessionLocal = Depends(get_db), user: User =
 @wf_router.get("/node-types")
 def get_node_types():
     """获取可用节点类型列表"""
-    return NODE_TYPES
+    if config.WORKFLOW_CODE_EXECUTION_ENABLED:
+        return NODE_TYPES
+    return {key: value for key, value in NODE_TYPES.items() if key != "code"}
 
 
 @wf_router.get("/{wf_id}")
@@ -116,7 +122,7 @@ def get_wf(wf_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(
 
 @wf_router.put("/{wf_id}")
 def update_wf(wf_id: int, body: WFUpdateIn, db: SessionLocal = Depends(get_db),
-              user: User = Depends(get_current_user)):
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     wf = db.query(Workflow).filter(Workflow.id == wf_id).first()
     if not wf:
         raise HTTPException(404, "工作流不存在")
@@ -127,6 +133,10 @@ def update_wf(wf_id: int, body: WFUpdateIn, db: SessionLocal = Depends(get_db),
 
     # 全量替换节点和边
     if body.nodes is not None:
+        if not config.WORKFLOW_CODE_EXECUTION_ENABLED and any(
+            node.get("type") == "code" for node in body.nodes
+        ):
+            raise HTTPException(400, "工作流代码节点默认关闭")
         db.query(WorkflowNode).filter(WorkflowNode.workflow_id == wf_id).delete()
         db.query(WorkflowEdge).filter(WorkflowEdge.workflow_id == wf_id).delete()
         # 保存节点（临时ID→真实ID映射）
@@ -153,7 +163,8 @@ def update_wf(wf_id: int, body: WFUpdateIn, db: SessionLocal = Depends(get_db),
 
 
 @wf_router.delete("/{wf_id}")
-def delete_wf(wf_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_wf(wf_id: int, db: SessionLocal = Depends(get_db),
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     wf = db.query(Workflow).filter(Workflow.id == wf_id).first()
     if not wf:
         raise HTTPException(404, "工作流不存在")
@@ -166,7 +177,8 @@ def delete_wf(wf_id: int, db: SessionLocal = Depends(get_db), user: User = Depen
 
 # ============ 校验 ============
 @wf_router.post("/{wf_id}/validate")
-def validate_wf(wf_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def validate_wf(wf_id: int, db: SessionLocal = Depends(get_db),
+                user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """校验工作流编排是否合理"""
     wf = db.query(Workflow).filter(Workflow.id == wf_id).first()
     if not wf:
@@ -176,6 +188,10 @@ def validate_wf(wf_id: int, db: SessionLocal = Depends(get_db), user: User = Dep
 
     errors = []
     warnings = []
+    if not config.WORKFLOW_CODE_EXECUTION_ENABLED and any(
+        node.node_type == "code" for node in nodes
+    ):
+        errors.append("工作流包含已禁用的代码节点")
     node_map = {n.id: n for n in nodes}
 
     # 1. 必须有 start 和 end
@@ -246,7 +262,7 @@ def validate_wf(wf_id: int, db: SessionLocal = Depends(get_db), user: User = Dep
 # ============ 执行 ============
 @wf_router.post("/{wf_id}/run")
 async def run_wf(wf_id: int, input_data: dict = None, db: SessionLocal = Depends(get_db),
-                 user: User = Depends(get_current_user)):
+                 user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """执行工作流"""
     if input_data is None:
         input_data = {}
@@ -378,14 +394,16 @@ async def _execute_node(node: WorkflowNode, context: dict, db) -> str:
         try:
             async with httpx.AsyncClient(timeout=15) as c:
                 if method == "POST":
-                    r = await c.post(url, json={"input": inp})
+                    r = await request_public_url(c, "POST", url, json={"input": inp})
                 else:
-                    r = await c.get(url, params={"input": inp})
+                    r = await request_public_url(c, "GET", url, params={"input": inp})
                 return r.text[:2000]
         except Exception as e:
             return f"HTTP 错误: {e}"
 
     elif node.node_type == "code":
+        if not config.WORKFLOW_CODE_EXECUTION_ENABLED:
+            raise RuntimeError("工作流代码节点默认关闭")
         code = cfg.get("code", "")
         result = sandbox.execute_raw(code, {"input": inp})
         return str(result.get("result", result.get("error", "")))

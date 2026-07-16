@@ -11,7 +11,9 @@ from core.rbac import require_role
 from models.user import User
 from models.role import Role
 from models.menu import Menu
-from pydantic import BaseModel
+from models.permission import FunctionPoint, RoleFunctionPermission
+from pydantic import BaseModel, Field
+from core.security import hash_password
 
 permission_router = APIRouter(prefix="/api/permissions", tags=["权限管理"])
 
@@ -43,7 +45,8 @@ class UserRoleIn(BaseModel):
 
 
 @permission_router.get("/roles", response_model=list[RoleOut])
-def list_all_roles(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def list_all_roles(db: SessionLocal = Depends(get_db),
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
     roles = list_roles(db)
     return [RoleOut(id=r.id, name=r.name, code=r.code, description=r.description, is_active=r.is_active) for r in roles]
 
@@ -66,11 +69,21 @@ def update_role(role_id: int, body: RoleUpdateIn, db: SessionLocal = Depends(get
     r = db.query(Role).filter(Role.id == role_id).first()
     if not r:
         raise HTTPException(404, "角色不存在")
+    if r.code in ("ROOT", "AUDIT", "OPS", "USER", "GUEST") and body.code not in (None, r.code):
+        raise HTTPException(400, "系统内置角色代码不可修改")
+    old_code = r.code
+    if body.code is not None and body.code != old_code:
+        if db.query(Role).filter(Role.code == body.code, Role.id != role_id).first():
+            raise HTTPException(400, "角色代码已存在")
+        db.query(RoleFunctionPermission).filter(
+            RoleFunctionPermission.role_code == old_code
+        ).update({"role_code": body.code})
     for k, v in body.model_dump().items():
         if v is not None:
             setattr(r, k, v)
     db.commit()
     db.refresh(r)
+    log_action("role_update", f"更新角色: {r.name}({r.code})", user.username, db)
     return RoleOut(id=r.id, name=r.name, code=r.code, description=r.description, is_active=r.is_active)
 
 
@@ -81,6 +94,9 @@ def delete_role(role_id: int, db: SessionLocal = Depends(get_db), user: User = D
         raise HTTPException(404, "角色不存在")
     if r.code in ("ROOT", "AUDIT", "OPS", "USER", "GUEST"):
         raise HTTPException(400, "系统内置角色不可删除")
+    db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.role_code == r.code
+    ).delete(synchronize_session=False)
     db.delete(r)
     db.commit()
     log_action("role_delete", f"删除角色: {r.name}", user.username, db)
@@ -156,11 +172,199 @@ PERM_TREE = {
 
 
 @permission_router.get("/tree")
-def get_permission_tree(user: User = Depends(get_current_user)):
+def get_permission_tree(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """返回当前用户角色的权限树"""
     role_code = user.role or "USER"
+    bindings = (
+        db.query(RoleFunctionPermission, FunctionPoint)
+        .join(FunctionPoint, FunctionPoint.code == RoleFunctionPermission.function_code)
+        .filter(
+            RoleFunctionPermission.role_code == role_code,
+            FunctionPoint.is_active == True,
+        )
+        .order_by(FunctionPoint.id)
+        .all()
+    )
+    if bindings:
+        modules = [{
+            "name": function.name,
+            "icon": "verified_user",
+            "path": binding.resource,
+            "permissions": [action.strip() for action in binding.actions.split(",") if action.strip()],
+        } for binding, function in bindings]
+        return {
+            "role": role_code,
+            "role_name": _get_role_name(role_code),
+            "modules": modules,
+            "total_nodes": sum(len(module["permissions"]) for module in modules),
+            "api_coverage": 100,
+            "menu_coverage": 100,
+        }
     tree = PERM_TREE.get(role_code, PERM_TREE["USER"])
     return {"role": role_code, "role_name": _get_role_name(role_code), **tree}
+
+
+# ===== 功能点与角色-功能-资源绑定 =====
+
+class FunctionCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    code: str = Field(..., min_length=1, max_length=80)
+    description: str = ""
+
+
+class FunctionUpdateIn(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    code: str | None = Field(None, min_length=1, max_length=80)
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class PermissionBindingIn(BaseModel):
+    role_code: str = Field(..., min_length=1, max_length=50)
+    function_code: str = Field(..., min_length=1, max_length=80)
+    resource: str = Field(..., min_length=1, max_length=255)
+    actions: str = Field("查看", min_length=1, max_length=255)
+
+
+@permission_router.get("/functions")
+def list_functions(db: SessionLocal = Depends(get_db),
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
+    return [{
+        "id": item.id,
+        "name": item.name,
+        "code": item.code,
+        "description": item.description,
+        "is_active": item.is_active,
+    } for item in db.query(FunctionPoint).order_by(FunctionPoint.id).all()]
+
+
+@permission_router.post("/functions", status_code=201)
+def create_function(body: FunctionCreateIn, db: SessionLocal = Depends(get_db),
+                    user: User = Depends(require_role("ROOT", "ADMIN"))):
+    if db.query(FunctionPoint).filter(FunctionPoint.code == body.code).first():
+        raise HTTPException(400, "功能代码已存在")
+    item = FunctionPoint(name=body.name, code=body.code, description=body.description)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action("function_create", f"创建功能点: {item.name}({item.code})", user.username, db)
+    return {"id": item.id, "name": item.name, "code": item.code,
+            "description": item.description, "is_active": item.is_active}
+
+
+@permission_router.put("/functions/{function_id}")
+def update_function(function_id: int, body: FunctionUpdateIn, db: SessionLocal = Depends(get_db),
+                    user: User = Depends(require_role("ROOT", "ADMIN"))):
+    item = db.query(FunctionPoint).filter(FunctionPoint.id == function_id).first()
+    if item is None:
+        raise HTTPException(404, "功能点不存在")
+    old_code = item.code
+    if body.code is not None and body.code != old_code:
+        if db.query(FunctionPoint).filter(FunctionPoint.code == body.code).first():
+            raise HTTPException(400, "功能代码已存在")
+        db.query(RoleFunctionPermission).filter(
+            RoleFunctionPermission.function_code == old_code
+        ).update({"function_code": body.code})
+    for key, value in body.model_dump().items():
+        if value is not None:
+            setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    log_action("function_update", f"更新功能点: {item.name}({item.code})", user.username, db)
+    return {"id": item.id, "name": item.name, "code": item.code,
+            "description": item.description, "is_active": item.is_active}
+
+
+@permission_router.delete("/functions/{function_id}")
+def delete_function(function_id: int, db: SessionLocal = Depends(get_db),
+                    user: User = Depends(require_role("ROOT", "ADMIN"))):
+    item = db.query(FunctionPoint).filter(FunctionPoint.id == function_id).first()
+    if item is None:
+        raise HTTPException(404, "功能点不存在")
+    db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.function_code == item.code
+    ).delete(synchronize_session=False)
+    name = item.name
+    db.delete(item)
+    db.commit()
+    log_action("function_delete", f"删除功能点: {name}", user.username, db)
+    return {"deleted": True}
+
+
+@permission_router.get("/bindings")
+def list_bindings(role_code: str | None = None, db: SessionLocal = Depends(get_db),
+                  user: User = Depends(require_role("ROOT", "ADMIN"))):
+    query = db.query(RoleFunctionPermission)
+    if role_code is not None:
+        query = query.filter(RoleFunctionPermission.role_code == role_code)
+    return [{
+        "id": item.id,
+        "role_code": item.role_code,
+        "function_code": item.function_code,
+        "resource": item.resource,
+        "actions": item.actions,
+    } for item in query.order_by(RoleFunctionPermission.role_code, RoleFunctionPermission.id).all()]
+
+
+def _validate_binding(body: PermissionBindingIn, db: SessionLocal):
+    if db.query(Role).filter(Role.code == body.role_code).first() is None:
+        raise HTTPException(400, "角色不存在")
+    if db.query(FunctionPoint).filter(FunctionPoint.code == body.function_code).first() is None:
+        raise HTTPException(400, "功能点不存在")
+
+
+@permission_router.post("/bindings", status_code=201)
+def create_binding(body: PermissionBindingIn, db: SessionLocal = Depends(get_db),
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
+    _validate_binding(body, db)
+    exists = db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.role_code == body.role_code,
+        RoleFunctionPermission.function_code == body.function_code,
+        RoleFunctionPermission.resource == body.resource,
+    ).first()
+    if exists:
+        raise HTTPException(400, "该角色-功能-资源绑定已存在")
+    item = RoleFunctionPermission(**body.model_dump())
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action("permission_binding_create", f"创建权限绑定: {body.role_code}/{body.function_code}/{body.resource}", user.username, db)
+    return {"id": item.id, **body.model_dump()}
+
+
+@permission_router.put("/bindings/{binding_id}")
+def update_binding(binding_id: int, body: PermissionBindingIn, db: SessionLocal = Depends(get_db),
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
+    item = db.query(RoleFunctionPermission).filter(RoleFunctionPermission.id == binding_id).first()
+    if item is None:
+        raise HTTPException(404, "权限绑定不存在")
+    _validate_binding(body, db)
+    duplicate = db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.role_code == body.role_code,
+        RoleFunctionPermission.function_code == body.function_code,
+        RoleFunctionPermission.resource == body.resource,
+        RoleFunctionPermission.id != binding_id,
+    ).first()
+    if duplicate:
+        raise HTTPException(400, "该角色-功能-资源绑定已存在")
+    for key, value in body.model_dump().items():
+        setattr(item, key, value)
+    db.commit()
+    log_action("permission_binding_update", f"更新权限绑定: {body.role_code}/{body.function_code}/{body.resource}", user.username, db)
+    return {"id": item.id, **body.model_dump()}
+
+
+@permission_router.delete("/bindings/{binding_id}")
+def delete_binding(binding_id: int, db: SessionLocal = Depends(get_db),
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
+    item = db.query(RoleFunctionPermission).filter(RoleFunctionPermission.id == binding_id).first()
+    if item is None:
+        raise HTTPException(404, "权限绑定不存在")
+    description = f"{item.role_code}/{item.function_code}/{item.resource}"
+    db.delete(item)
+    db.commit()
+    log_action("permission_binding_delete", f"删除权限绑定: {description}", user.username, db)
+    return {"deleted": True}
 
 
 def _get_role_name(code: str) -> str:
@@ -216,7 +420,8 @@ def get_menus(db: SessionLocal = Depends(get_db), user: User = Depends(get_curre
 
 
 @permission_router.get("/menus/all", response_model=list[MenuOut])
-def list_all_menus(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def list_all_menus(db: SessionLocal = Depends(get_db),
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
     """管理侧：全部菜单列表"""
     all_menus = db.query(Menu).order_by(Menu.sort_order, Menu.id).all()
     return [MenuOut(id=m.id, name=m.name, icon=m.icon, path=m.path,
@@ -270,6 +475,14 @@ def delete_menu(menu_id: int, db: SessionLocal = Depends(get_db),
 
 # ===== 用户管理 =====
 
+class UserCreateIn(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=72)
+    nickname: str = Field(..., min_length=1, max_length=50)
+    email: str = Field(..., min_length=1, max_length=255)
+    role: str = Field("USER", min_length=1, max_length=50)
+
+
 class UserUpdateIn(BaseModel):
     nickname: str | None = None
     email: str | None = None
@@ -277,10 +490,34 @@ class UserUpdateIn(BaseModel):
     is_active: bool | None = None
 
 
+@permission_router.post("/users", status_code=201)
+def create_perm_user(body: UserCreateIn, db: SessionLocal = Depends(get_db),
+                     user: User = Depends(require_role("ROOT", "ADMIN"))):
+    if db.query(User).filter(User.username == body.username).first():
+        raise HTTPException(400, "用户名已存在")
+    if db.query(Role).filter(Role.code == body.role, Role.is_active == True).first() is None:
+        raise HTTPException(400, "角色不存在或已停用")
+    target = User(
+        username=body.username,
+        password_hash=hash_password(body.password),
+        nickname=body.nickname,
+        email=body.email,
+        role=body.role,
+    )
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    log_action("user_create", f"管理员创建用户 {target.username}", user.username, db)
+    return {
+        "id": target.id, "username": target.username, "nickname": target.nickname,
+        "email": target.email, "role": target.role, "is_active": target.is_active,
+    }
+
+
 @permission_router.get("/users")
 def list_perm_users(search: str = Query(None, description="按用户名或昵称搜索"),
                    db: SessionLocal = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
     """用户管理列表 — 支持按用户名/昵称搜索"""
     q = db.query(User)
     if search:
@@ -306,6 +543,11 @@ def update_perm_user(user_id: int, body: UserUpdateIn, db: SessionLocal = Depend
         raise HTTPException(400, "不能停用超级管理员")
     if target.role == "ROOT" and body.role is not None and body.role != "ROOT":
         raise HTTPException(400, "不能修改超级管理员角色")
+    if body.role is not None and db.query(Role).filter(
+        Role.code == body.role,
+        Role.is_active == True,
+    ).first() is None:
+        raise HTTPException(400, "角色不存在或已停用")
     for k, v in body.model_dump().items():
         if v is not None:
             setattr(target, k, v)
@@ -316,3 +558,20 @@ def update_perm_user(user_id: int, body: UserUpdateIn, db: SessionLocal = Depend
         "nickname": target.nickname, "email": target.email,
         "role": target.role, "is_active": target.is_active,
     }
+
+
+@permission_router.delete("/users/{user_id}")
+def delete_perm_user(user_id: int, db: SessionLocal = Depends(get_db),
+                     user: User = Depends(require_role("ROOT", "ADMIN"))):
+    target = db.query(User).filter(User.id == user_id).first()
+    if target is None:
+        raise HTTPException(404, "用户不存在")
+    if target.role == "ROOT":
+        raise HTTPException(400, "不能删除超级管理员")
+    if target.id == user.id:
+        raise HTTPException(400, "不能删除当前登录用户")
+    username = target.username
+    db.delete(target)
+    db.commit()
+    log_action("user_delete", f"管理员删除用户 {username}", user.username, db)
+    return {"deleted": True}

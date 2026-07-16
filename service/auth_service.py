@@ -34,12 +34,19 @@ def login(data: LoginIn, db: SessionLocal):
         raise HTTPException(status_code=400, detail="用户不存在")
     if not check_password(data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="密码不正确")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已停用")
 
+    return issue_tokens(user, db)
+
+
+def issue_tokens(user: User, db: SessionLocal):
+    """为已完成身份校验的用户签发并持久化访问令牌与刷新令牌。"""
     access = gen_access_token(user.username)
     refresh, expire_at = gen_refresh_token(user.username)
-
     record = RefreshToken(uid=user.id, token=refresh, expires_at=expire_at)
-    store_refresh_token(record, db)
+    if not store_refresh_token(record, db):
+        raise HTTPException(status_code=500, detail="登录令牌保存失败")
     return access, refresh
 
 

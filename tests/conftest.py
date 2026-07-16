@@ -19,6 +19,10 @@ TEST_DB = PROJECT_ROOT / "data_outlook_v2.test.db"
 if TEST_DB.exists():
     TEST_DB.unlink()
 os.environ["SQLITE_URL"] = f"sqlite:///{TEST_DB}"
+os.environ["SECRET_KEY"] = "test-only-jwt-secret-key-32-characters-minimum"
+os.environ["APP_SECRET_KEY"] = "MGAx5eSNSRKyEvpe553H9w0lZ8R2wg5yRTEKwmtaYdE="
+os.environ["ENABLE_DEMO_SEED"] = "1"
+os.environ["INITIAL_ADMIN_PASSWORD"] = "TestAdminPassword123!"
 
 
 def pytest_configure(config):

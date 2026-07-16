@@ -45,7 +45,7 @@ def audit_messages(
     risk_level: str = Query(None, description="low/medium/high 筛选"),
     limit: int = Query(100, ge=1, le=1000),
     db: SessionLocal = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("ROOT", "AUDIT", "ADMIN")),
 ):
     """审计聊天消息 — 基于关键词和规则的敏感度分级"""
     q = db.query(Message).filter(Message.msg_type == "text", Message.status != "recalled")
@@ -83,7 +83,8 @@ def audit_messages(
 @smart_audit.get("/messages/stats")
 def message_audit_stats(
     start: str = Query(None), end: str = Query(None),
-    db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT", "AUDIT", "ADMIN")),
 ):
     """消息审计统计 — SQL CASE WHEN 单次聚合，避免 Python 循环 _classify_risk
 
@@ -161,7 +162,8 @@ def message_audit_stats(
 def audit_collected_data(
     start: str = Query(None), end: str = Query(None),
     sentiment: str = Query(None),
-    db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT", "AUDIT", "ADMIN")),
 ):
     """审计采集数据 — 情感分析"""
     q = db.query(CollectedData)
@@ -243,7 +245,7 @@ def ban_group(group_id: int, reason: str = Query("群内违规消息"),
 # ============ 用户管理 ============
 @smart_audit.get("/users")
 def list_users(search: str = Query(None), db: SessionLocal = Depends(get_db),
-               user: User = Depends(get_current_user)):
+               user: User = Depends(require_role("ROOT", "AUDIT", "ADMIN"))):
     """列出所有用户"""
     q = db.query(User)
     if search:
@@ -264,7 +266,7 @@ async def ai_risk_analyze(
     conversation_id: str = Query("", description="会话标识(以 sender_id 解析最近消息)"),
     data_id: int = Query(None, description="采集数据ID"),
     db: SessionLocal = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("ROOT", "AUDIT", "ADMIN")),
 ):
     """将当前会话或采集数据送 LLM 做风险分析
 

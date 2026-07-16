@@ -3,7 +3,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>数字员工管理 - 数据瞭望系统</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
@@ -206,7 +207,7 @@ function buildCard(a, isApi) {
   const statusColor = a.status === 'published' ? 'text-secondary bg-secondary-container/10' : 'text-on-surface-variant bg-surface-container-high';
   const statusLabel = { published: '已发布', draft: '草稿', testing: '测试中' }[a.status] || a.status;
   const avatar = a.avatar
-    ? `<img src="${escapeHtml(a.avatar)}" class="w-12 h-12 rounded-full object-cover"/>`
+    ? `<img ${protectedImageAttrs(a.avatar)} class="w-12 h-12 rounded-full object-cover"/>`
     : `<div class="w-12 h-12 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary">smart_toy</span></div>`;
   const skillTags = (a.skill_names || []).map(n => `<span class="text-[10px] bg-secondary-container/10 text-secondary-container px-1.5 py-0.5 rounded">${escapeHtml(n)}</span>`).join('');
   let modelInfo = '';

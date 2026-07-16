@@ -4,7 +4,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>权限管理 — 数据瞭望系统</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script>
@@ -58,7 +59,7 @@ tailwind.config = {
   <!-- Page Header -->
   <div class="mb-lg">
     <h1 class="font-headline-md text-headline-md font-bold text-on-surface">权限管理</h1>
-    <p class="text-body-sm text-on-surface-variant mt-1">用户管理、角色管理、菜单配置与权限树查看</p>
+    <p class="text-body-sm text-on-surface-variant mt-1">用户、角色、功能点、资源权限绑定与菜单统一管理</p>
   </div>
 
   <!-- Tabs -->
@@ -66,6 +67,8 @@ tailwind.config = {
     <nav class="flex gap-6 -mb-px">
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-primary text-primary" data-tab="users" onclick="switchTab('users')">用户管理</button>
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="roles" onclick="switchTab('roles')">角色管理</button>
+      <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="functions" onclick="switchTab('functions')">功能管理</button>
+      <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="bindings" onclick="switchTab('bindings')">资源权限</button>
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="menus" onclick="switchTab('menus')">菜单管理</button>
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="tree" onclick="switchTab('tree')">权限树</button>
     </nav>
@@ -80,7 +83,10 @@ tailwind.config = {
           <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">search</span>
           <input id="user-search" class="bg-surface-container border border-outline-variant rounded-xl pl-10 pr-4 py-2 text-sm w-72 outline-none focus:border-primary" placeholder="搜索用户名或昵称..." oninput="debounceSearch('users', this.value)"/>
         </div>
-        <span class="text-xs text-on-surface-variant" id="user-count">共 0 人</span>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-on-surface-variant" id="user-count">共 0 人</span>
+          <button class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110" onclick="createUser()"><span class="material-symbols-outlined text-sm">person_add</span>新增用户</button>
+        </div>
       </div>
       <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
         <table class="w-full app-table">
@@ -129,10 +135,42 @@ tailwind.config = {
       </div>
     </div>
 
-    <!-- Tab3: 菜单管理 -->
+    <!-- Tab3: 功能管理 -->
+    <div id="tab-functions" class="tab-panel hidden">
+      <div class="flex items-center justify-between mb-md">
+        <span class="text-xs text-on-surface-variant" id="function-count">共 0 个功能点</span>
+        <button class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110" onclick="createFunction()"><span class="material-symbols-outlined text-sm">add</span>新增功能</button>
+      </div>
+      <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+        <table class="w-full app-table">
+          <thead><tr class="bg-surface-container-high text-xs text-on-surface-variant uppercase tracking-wider">
+            <th class="text-left px-4 py-3">ID</th><th class="text-left px-4 py-3">名称</th><th class="text-left px-4 py-3">代码</th><th class="text-left px-4 py-3">描述</th><th class="text-left px-4 py-3">状态</th><th class="text-left px-4 py-3">操作</th>
+          </tr></thead>
+          <tbody id="function-tbody" class="divide-y divide-outline-variant/30"><tr><td colspan="6" class="text-center text-outline py-lg">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab4: 角色-功能-资源绑定 -->
+    <div id="tab-bindings" class="tab-panel hidden">
+      <div class="flex items-center justify-between mb-md">
+        <span class="text-xs text-on-surface-variant" id="binding-count">共 0 条绑定</span>
+        <button class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110" onclick="createBinding()"><span class="material-symbols-outlined text-sm">add_link</span>新增绑定</button>
+      </div>
+      <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+        <table class="w-full app-table">
+          <thead><tr class="bg-surface-container-high text-xs text-on-surface-variant uppercase tracking-wider">
+            <th class="text-left px-4 py-3">ID</th><th class="text-left px-4 py-3">角色</th><th class="text-left px-4 py-3">功能代码</th><th class="text-left px-4 py-3">资源</th><th class="text-left px-4 py-3">操作权限</th><th class="text-left px-4 py-3">操作</th>
+          </tr></thead>
+          <tbody id="binding-tbody" class="divide-y divide-outline-variant/30"><tr><td colspan="6" class="text-center text-outline py-lg">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab5: 菜单管理 -->
     <div id="tab-menus" class="tab-panel hidden">
       <div class="flex items-center justify-between mb-md">
-        <span class="text-xs text-on-surface-variant" id="menu-count">共 0 个菜单</span>
+        <span class="text-xs text-on-surface-variant"><span id="menu-count">共 0 个菜单</span>；拖拽表格行可调整顺序</span>
         <button class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110 transition-all" onclick="openMenuModal()">
           <span class="material-symbols-outlined text-sm">add</span> 新增菜单
         </button>
@@ -159,7 +197,7 @@ tailwind.config = {
       </div>
     </div>
 
-    <!-- Tab4: 权限树 -->
+    <!-- Tab6: 权限树 -->
     <div id="tab-tree" class="tab-panel hidden">
       <div class="flex items-center justify-between mb-md">
         <span class="text-xs text-on-surface-variant" id="tree-role-label">当前角色: --</span>
@@ -238,6 +276,8 @@ function switchTab(tab) {
   // Load data on first switch
   if (tab === 'users') loadUsers();
   else if (tab === 'roles') loadRoles();
+  else if (tab === 'functions') loadFunctions();
+  else if (tab === 'bindings') loadBindings();
   else if (tab === 'menus') loadMenus();
   else if (tab === 'tree') loadPermTree();
 }
@@ -277,11 +317,34 @@ async function loadUsers(search) {
         '<td class="px-4 py-3"><div class="flex gap-1">' +
           '<button class="text-[11px] px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary/30 transition-all" onclick="editUser(' + u.id + ')">编辑</button>' +
           (u.role !== 'ROOT'
-            ? '<button class="text-[11px] px-2 py-1 ' + (u.is_active ? 'bg-error/20 text-error' : 'bg-secondary/20 text-secondary') + ' rounded hover:brightness-110 transition-all" onclick="toggleUserActive(' + u.id + ',' + u.is_active + ')">' + (u.is_active ? '停用' : '启用') + '</button>'
+            ? '<button class="text-[11px] px-2 py-1 ' + (u.is_active ? 'bg-error/20 text-error' : 'bg-secondary/20 text-secondary') + ' rounded hover:brightness-110 transition-all" onclick="toggleUserActive(' + u.id + ',' + u.is_active + ')">' + (u.is_active ? '停用' : '启用') + '</button>' +
+              '<button class="text-[11px] px-2 py-1 bg-error/20 text-error rounded hover:brightness-110" onclick="deleteUser(' + u.id + ')">删除</button>'
             : '') +
         '</div></td></tr>';
     }).join('');
   } catch(e) { showToast('加载用户失败', 'error'); }
+}
+
+async function createUser() {
+  const username = prompt('用户名:'); if (!username) return;
+  const password = prompt('初始密码（至少 6 位）:'); if (!password) return;
+  const nickname = prompt('昵称:', username); if (!nickname) return;
+  const email = prompt('邮箱:'); if (!email) return;
+  const role = prompt('角色代码:', 'USER'); if (!role) return;
+  try {
+    await apiPost('/api/permissions/users', {username, password, nickname, email, role});
+    showToast('用户创建成功', 'success');
+    loadUsers();
+  } catch (error) { showToast(error.message || '创建失败', 'error'); }
+}
+
+async function deleteUser(id) {
+  if (!confirm('确定删除该用户？')) return;
+  try {
+    await apiDelete('/api/permissions/users/' + id);
+    showToast('用户已删除', 'success');
+    loadUsers();
+  } catch (error) { showToast(error.message || '删除失败', 'error'); }
 }
 
 async function editUser(id) {
@@ -403,7 +466,85 @@ async function deleteRole(id) {
   } catch(e) { showToast('删除失败', 'error'); }
 }
 
-// ===== Tab3: 菜单管理 =====
+// ===== Tab3: 功能管理 =====
+async function loadFunctions() {
+  try {
+    const items = await apiGet('/api/permissions/functions');
+    document.getElementById('function-count').textContent = '共 ' + items.length + ' 个功能点';
+    document.getElementById('function-tbody').innerHTML = items.length ? items.map(item => `<tr>
+      <td class="px-4 py-3 text-sm">${item.id}</td><td class="px-4 py-3 text-sm">${escapeHtml(item.name)}</td>
+      <td class="px-4 py-3 text-sm font-mono">${escapeHtml(item.code)}</td><td class="px-4 py-3 text-sm text-on-surface-variant">${escapeHtml(item.description || '')}</td>
+      <td class="px-4 py-3 text-sm">${item.is_active ? '启用' : '停用'}</td><td class="px-4 py-3"><button class="text-[11px] px-2 py-1 bg-primary/20 text-primary rounded" onclick="editFunction(${item.id})">编辑</button> <button class="text-[11px] px-2 py-1 bg-error/20 text-error rounded" onclick="deleteFunction(${item.id})">删除</button></td>
+    </tr>`).join('') : '<tr><td colspan="6" class="text-center text-outline py-lg">暂无功能点</td></tr>';
+  } catch (error) { showToast(error.message || '加载功能点失败', 'error'); }
+}
+
+async function createFunction() {
+  const name = prompt('功能名称:'); if (!name) return;
+  const code = prompt('功能代码:'); if (!code) return;
+  const description = prompt('描述:', '') ?? '';
+  try { await apiPost('/api/permissions/functions', {name, code, description}); loadFunctions(); showToast('功能点已创建', 'success'); }
+  catch (error) { showToast(error.message || '创建失败', 'error'); }
+}
+
+async function editFunction(id) {
+  const items = await apiGet('/api/permissions/functions');
+  const item = items.find(row => row.id === id); if (!item) return;
+  const name = prompt('功能名称:', item.name); if (!name) return;
+  const code = prompt('功能代码:', item.code); if (!code) return;
+  const description = prompt('描述:', item.description || ''); if (description === null) return;
+  try { await apiPut('/api/permissions/functions/' + id, {name, code, description}); loadFunctions(); showToast('功能点已更新', 'success'); }
+  catch (error) { showToast(error.message || '更新失败', 'error'); }
+}
+
+async function deleteFunction(id) {
+  if (!confirm('删除功能点会同时删除相关权限绑定，是否继续？')) return;
+  try { await apiDelete('/api/permissions/functions/' + id); loadFunctions(); showToast('功能点已删除', 'success'); }
+  catch (error) { showToast(error.message || '删除失败', 'error'); }
+}
+
+// ===== Tab4: 资源权限绑定 =====
+async function loadBindings() {
+  try {
+    const items = await apiGet('/api/permissions/bindings');
+    document.getElementById('binding-count').textContent = '共 ' + items.length + ' 条绑定';
+    document.getElementById('binding-tbody').innerHTML = items.length ? items.map(item => `<tr>
+      <td class="px-4 py-3 text-sm">${item.id}</td><td class="px-4 py-3 text-sm font-mono">${escapeHtml(item.role_code)}</td><td class="px-4 py-3 text-sm font-mono">${escapeHtml(item.function_code)}</td>
+      <td class="px-4 py-3 text-sm font-mono">${escapeHtml(item.resource)}</td><td class="px-4 py-3 text-sm">${escapeHtml(item.actions)}</td>
+      <td class="px-4 py-3"><button class="text-[11px] px-2 py-1 bg-primary/20 text-primary rounded" onclick="editBinding(${item.id})">编辑</button> <button class="text-[11px] px-2 py-1 bg-error/20 text-error rounded" onclick="deleteBinding(${item.id})">删除</button></td>
+    </tr>`).join('') : '<tr><td colspan="6" class="text-center text-outline py-lg">暂无权限绑定</td></tr>';
+  } catch (error) { showToast(error.message || '加载权限绑定失败', 'error'); }
+}
+
+async function promptBinding(existing) {
+  const role_code = prompt('角色代码:', existing?.role_code || 'USER'); if (!role_code) return null;
+  const function_code = prompt('功能代码:', existing?.function_code || ''); if (!function_code) return null;
+  const resource = prompt('资源路径或资源标识:', existing?.resource || ''); if (!resource) return null;
+  const actions = prompt('操作权限（逗号分隔）:', existing?.actions || '查看'); if (!actions) return null;
+  return {role_code, function_code, resource, actions};
+}
+
+async function createBinding() {
+  const body = await promptBinding(null); if (!body) return;
+  try { await apiPost('/api/permissions/bindings', body); loadBindings(); showToast('权限绑定已创建', 'success'); }
+  catch (error) { showToast(error.message || '创建失败', 'error'); }
+}
+
+async function editBinding(id) {
+  const items = await apiGet('/api/permissions/bindings'); const item = items.find(row => row.id === id); if (!item) return;
+  const body = await promptBinding(item); if (!body) return;
+  try { await apiPut('/api/permissions/bindings/' + id, body); loadBindings(); showToast('权限绑定已更新', 'success'); }
+  catch (error) { showToast(error.message || '更新失败', 'error'); }
+}
+
+async function deleteBinding(id) {
+  if (!confirm('确定删除该权限绑定？')) return;
+  try { await apiDelete('/api/permissions/bindings/' + id); loadBindings(); showToast('权限绑定已删除', 'success'); }
+  catch (error) { showToast(error.message || '删除失败', 'error'); }
+}
+
+// ===== Tab5: 菜单管理 =====
+let draggedMenuId = null;
 async function loadMenus() {
   try {
     const menus = await apiGet('/api/permissions/menus/all');
@@ -414,7 +555,7 @@ async function loadMenus() {
       return;
     }
     tbody.innerHTML = menus.map(m => {
-      return '<tr class="hover:bg-surface-container-high transition-colors">' +
+      return '<tr draggable="true" ondragstart="draggedMenuId=' + m.id + '" ondragover="event.preventDefault()" ondrop="dropMenuOrder(' + m.id + ')" class="hover:bg-surface-container-high transition-colors cursor-move">' +
         '<td class="px-4 py-3 text-sm text-on-surface-variant">' + m.id + '</td>' +
         '<td class="px-4 py-3 text-sm font-medium">' + escapeHtml(m.name) + '</td>' +
         '<td class="px-4 py-3 text-sm text-on-surface-variant">' + escapeHtml(m.icon || '-') + '</td>' +
@@ -433,6 +574,21 @@ async function loadMenus() {
         '</div></td></tr>';
     }).join('');
   } catch(e) { showToast('加载菜单失败', 'error'); }
+}
+
+async function dropMenuOrder(targetId) {
+  if (draggedMenuId === null || draggedMenuId === targetId) return;
+  try {
+    const menus = await apiGet('/api/permissions/menus/all');
+    const source = menus.find(menu => menu.id === draggedMenuId);
+    const target = menus.find(menu => menu.id === targetId);
+    if (!source || !target) return;
+    await apiPut('/api/permissions/menus/' + source.id, {sort_order: target.sort_order});
+    await apiPut('/api/permissions/menus/' + target.id, {sort_order: source.sort_order});
+    draggedMenuId = null;
+    loadMenus();
+    showToast('菜单顺序已更新', 'success');
+  } catch (error) { showToast(error.message || '排序失败', 'error'); }
 }
 
 function openMenuModal() {
@@ -498,7 +654,7 @@ async function deleteMenu(id) {
   } catch(e) { showToast('删除失败', 'error'); }
 }
 
-// ===== Tab4: 权限树 =====
+// ===== Tab6: 权限树 =====
 async function loadPermTree() {
   try {
     const tree = await apiGet('/api/permissions/tree');

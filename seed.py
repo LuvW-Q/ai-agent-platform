@@ -19,13 +19,17 @@ from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.menu import Menu
 from models.setting import Setting
 from models.api_registry import ApiRegistry
+from models.permission import FunctionPoint, RoleFunctionPermission
 from core.security import hash_password
+from core.config import config
+from core.crypto import encrypt
 
 
 def run_seed():
     db = SessionLocal()
     try:
         _seed_roles(db)
+        _seed_function_permissions(db)
         _seed_users(db)
         _seed_ai_models(db)
         _seed_skills(db)
@@ -42,6 +46,7 @@ def run_seed():
     except Exception as e:
         db.rollback()
         print(f"[seed] 种子数据写入失败: {e}")
+        raise
     finally:
         db.close()
 
@@ -60,31 +65,71 @@ def _seed_roles(db: SessionLocal):
     print("[seed] 角色写入完成")
 
 
+def _seed_function_permissions(db: SessionLocal):
+    functions = [
+        ("数据治理", "data_governance", "/dashboard", "查看,编辑,删除"),
+        ("数字大屏", "digital_screen", "/screen", "查看"),
+        ("员工编排", "agent_orchestration", "/agents", "查看,创建,发布"),
+        ("权限管理", "permission_management", "/permissions", "查看,编辑"),
+        ("审计管理", "audit_management", "/audit", "查看,导出"),
+        ("IM控制台", "im_console", "/im", "查看,发送"),
+        ("智能问数", "smart_query", "/query", "查看"),
+        ("模型管理", "model_management", "/models", "查看,编辑"),
+        ("技能管理", "skill_management", "/skills", "查看,编辑"),
+        ("数字员工管理", "agent_management", "/agent-management", "查看,编辑"),
+        ("个人设置", "personal_settings", "/settings", "查看,编辑"),
+    ]
+    existing_functions = {row.code for row in db.query(FunctionPoint).all()}
+    for name, code, _resource, _actions in functions:
+        if code not in existing_functions:
+            db.add(FunctionPoint(name=name, code=code, description=f"{name}功能点"))
+    db.flush()
+
+    role_scopes = {
+        "ROOT": {code for _name, code, _resource, _actions in functions},
+        "AUDIT": {"digital_screen", "audit_management", "personal_settings"},
+        "OPS": {"data_governance", "digital_screen", "smart_query", "personal_settings"},
+        "USER": {"digital_screen", "im_console", "smart_query", "agent_management", "personal_settings"},
+        "GUEST": {"digital_screen"},
+    }
+    existing_bindings = {
+        (row.role_code, row.function_code, row.resource)
+        for row in db.query(RoleFunctionPermission).all()
+    }
+    for role_code, codes in role_scopes.items():
+        for _name, code, resource, actions in functions:
+            key = (role_code, code, resource)
+            if code in codes and key not in existing_bindings:
+                db.add(RoleFunctionPermission(
+                    role_code=role_code,
+                    function_code=code,
+                    resource=resource,
+                    actions=actions,
+                ))
+    print("[seed] 功能点与权限绑定写入完成")
+
+
 def _seed_users(db: SessionLocal):
-    if db.query(User).filter(User.username == "admin").first():
+    if db.query(User).filter(User.username == config.INITIAL_ADMIN_USERNAME).first():
         return
+
+    password = config.INITIAL_ADMIN_PASSWORD or ""
+    if len(password) < 12:
+        raise RuntimeError(
+            "首次启动必须通过 INITIAL_ADMIN_PASSWORD 提供至少 12 位的管理员密码"
+        )
     admin = User(
-        username="admin",
-        password_hash=hash_password("admin123"),
+        username=config.INITIAL_ADMIN_USERNAME,
+        password_hash=hash_password(password),
         nickname="Admin_Core",
-        email="admin@dataoutlook.cn",
+        email=config.INITIAL_ADMIN_EMAIL,
         role="ROOT",
         avatar="",
-        signature="系统默认管理员",
+        signature="系统管理员",
         is_active=True,
     )
     db.add(admin)
-    for u in [
-        ("demo", "demo123456", "Demo用户", "demo@dataoutlook.cn", "USER"),
-        ("zhang_san", "zhang123456", "张三", "zhang_san@dataoutlook.cn", "USER"),
-        ("li_si", "li123456", "李四", "li_si@dataoutlook.cn", "AUDIT"),
-    ]:
-        if not db.query(User).filter(User.username == u[0]).first():
-            db.add(User(
-                username=u[0], password_hash=hash_password(u[1]),
-                nickname=u[2], email=u[3], role=u[4], avatar="", signature="", is_active=True,
-            ))
-    print("[seed] 用户写入完成")
+    print("[seed] 初始管理员写入完成")
 
 
 def _seed_ai_models(db: SessionLocal):
@@ -166,51 +211,14 @@ def _seed_skills(db: SessionLocal):
 """,
               parameters='{"type": "object", "properties": {"city": {"type": "string", "description": "城市名(英文)"}}, "required": ["city"]}',
               status="active"),
-        Skill(name="随机音乐推荐", skill_type="function_call",
+        Skill(name="随机音乐推荐", skill_type="builtin",
               description="从内置曲库随机推荐一首歌曲，不依赖外部接口",
-              config="""def execute(args):
-    import random
-    tracks = [
-        {'song': '夜空中最亮的星', 'artist': '逃跑计划'},
-        {'song': '平凡之路', 'artist': '朴树'},
-        {'song': '稻香', 'artist': '周杰伦'},
-        {'song': '光年之外', 'artist': 'G.E.M.邓紫棋'},
-        {'song': '成都', 'artist': '赵雷'},
-    ]
-    return random.choice(tracks)
-""",
+              config='{"handler": "random_music"}',
               parameters='{"type": "object", "properties": {}}',
               status="active"),
-        Skill(name="新闻检索", skill_type="function_call",
+        Skill(name="新闻检索", skill_type="builtin",
               description="从本地采集数据仓库检索最新新闻",
-              config="""def execute(args):
-    from database.session import SessionLocal
-    from models.data_collection import CollectedData
-    db = SessionLocal()
-    try:
-        keyword = (args.get('keyword') or '').strip()
-        query = db.query(CollectedData).filter(CollectedData.saved == True)
-        if keyword:
-            query = query.filter(
-                CollectedData.title.contains(keyword) |
-                CollectedData.content.contains(keyword) |
-                CollectedData.summary.contains(keyword)
-            )
-        rows = query.order_by(CollectedData.created_at.desc()).limit(5).all()
-        return {
-            'count': len(rows),
-            'items': [
-                {
-                    'title': row.title or '无标题',
-                    'source': row.source_name or '',
-                    'summary': (row.summary or row.content or '')[:120],
-                }
-                for row in rows
-            ],
-        }
-    finally:
-        db.close()
-""",
+              config='{"handler": "news_search"}',
               parameters='{"type": "object", "properties": {"keyword": {"type": "string", "description": "可选的新闻关键词"}}}',
               status="active"),
         Skill(name="审计报告模板", skill_type="prompt",
@@ -306,20 +314,54 @@ def _seed_sensitive_words(db: SessionLocal):
 
 
 def _seed_sources_and_rules(db: SessionLocal):
-    if not db.query(DataSourceConfig).first():
-        for src in [
-            DataSourceConfig(name="百度新闻搜索", url="https://news.baidu.com/ns?word={keyword}&tn=news",
-                             method="GET", parse_type="selector", parse_rule=".result",
-                             headers='{"User-Agent":"Mozilla/5.0"}', template="baidu"),
-            DataSourceConfig(name="36氪RSS", url="https://36kr.com/feed",
-                             method="GET", parse_type="crawl4ai", parse_rule="",
-                             headers='{"User-Agent":"Mozilla/5.0"}', template="rss"),
-            DataSourceConfig(name="知乎热门", url="https://www.zhihu.com/api/v3/feed/topstory?limit=20",
-                             method="GET", parse_type="selector", parse_rule=".TopstoryItem",
-                             headers='{"User-Agent":"Mozilla/5.0"}', template="custom"),
-        ]:
-            db.add(src)
-        print("[seed] 数据采集源写入完成")
+    source_specs = [
+        {
+            "name": "百度新闻首页",
+            "url": "https://news.baidu.com/",
+            "method": "GET",
+            "parse_type": "selector",
+            "parse_rule": ".hotnews a, .ulist a",
+            "headers": '{"User-Agent":"Mozilla/5.0"}',
+            "template": "baidu",
+        },
+        {
+            "name": "36氪RSS",
+            "url": "https://36kr.com/feed",
+            "method": "GET",
+            "parse_type": "rss",
+            "parse_rule": "item",
+            "headers": '{"User-Agent":"Mozilla/5.0"}',
+            "template": "rss",
+        },
+        {
+            "name": "Hacker News",
+            "url": "https://news.ycombinator.com/",
+            "method": "GET",
+            "parse_type": "selector",
+            "parse_rule": ".athing",
+            "headers": '{"User-Agent":"Mozilla/5.0"}',
+            "template": "custom",
+        },
+    ]
+    legacy_names = {"百度新闻搜索", "知乎热门"}
+    existing_by_template = {
+        source.template: source
+        for source in db.query(DataSourceConfig).filter(
+            DataSourceConfig.template.in_(["baidu", "rss", "custom"])
+        ).all()
+    }
+    changed = 0
+    for spec in source_specs:
+        source = existing_by_template.get(spec["template"])
+        if source is None:
+            db.add(DataSourceConfig(**spec))
+            changed += 1
+        elif source.name in legacy_names or source.name == spec["name"]:
+            for key, value in spec.items():
+                setattr(source, key, value)
+            changed += 1
+    if changed:
+        print(f"[seed] 数据采集源写入或校准完成（{changed} 条）")
     if not db.query(CleanRule).first():
         for rule in [
             CleanRule(name="去除HTML标签", rule_type="remove_html", config="{}"),
@@ -409,20 +451,24 @@ def _seed_api_registries(db: SessionLocal):
 
 def _seed_settings(db: SessionLocal):
     """初始化系统设置默认值"""
-    if db.query(Setting).first():
-        return
     defaults = [
         Setting(key="system_name", value="智能数据瞭望系统", description="系统名称"),
+        Setting(key="database_url", value=encrypt(config.SQLITE_URL), description="数据库连接（修改后重启生效）"),
         Setting(key="log_retention_days", value="30", description="日志保留天数"),
         Setting(key="default_model_id", value="1", description="默认模型ID"),
         Setting(key="sensitive_threshold", value="0.6", description="敏感词匹配阈值"),
         Setting(key="voice_enabled", value="true", description="语音播报开关"),
-        Setting(key="face_recognition_enabled", value="false", description="人脸识别开关"),
+        Setting(key="face_recognition_enabled", value="true", description="人脸识别开关"),
         Setting(key="collection_rate_limit", value="10", description="采集频率限制(次/分钟)"),
+        Setting(key="external_api_key", value="", description="外链 API 全局密钥"),
     ]
+    existing_keys = {setting.key for setting in db.query(Setting).all()}
+    added = 0
     for s in defaults:
-        db.add(s)
-    print("[seed] 系统设置写入完成")
+        if s.key not in existing_keys:
+            db.add(s)
+            added += 1
+    print(f"[seed] 系统设置写入完成（新增 {added} 条）")
 
 
 def _seed_collected_data(db: SessionLocal):

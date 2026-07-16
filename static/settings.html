@@ -4,7 +4,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>DataOutlook - 个人设置</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
@@ -380,6 +381,30 @@
 </label>
 </div>
 </div>
+<!-- Advanced System Settings -->
+<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+<div>
+<h4 class="font-bold text-on-surface text-body-lg">运行参数</h4>
+<p class="text-body-md text-on-surface-variant">管理员可调整数据库、日志、模型、安全阈值、采集频率和外链密钥。数据库连接保存后需重启服务。</p>
+<div class="mt-4 flex gap-6">
+<label class="flex items-center gap-2"><input data-setting-key="voice_enabled" type="checkbox"/><span>语音播报</span></label>
+<label class="flex items-center gap-2"><input data-setting-key="face_recognition_enabled" type="checkbox"/><span>人脸识别</span></label>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-3">
+<input data-config-key="database_url" type="password" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="数据库连接（已配置时留空表示不修改）"/>
+<div class="grid grid-cols-2 gap-3">
+<input data-config-key="log_retention_days" type="number" min="1" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="日志保留天数"/>
+<input data-config-key="default_model_id" type="number" min="1" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="默认模型 ID"/>
+</div>
+<div class="grid grid-cols-2 gap-3">
+<input data-config-key="sensitive_threshold" type="number" min="0" max="1" step="0.01" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="敏感词阈值"/>
+<input data-config-key="collection_rate_limit" type="number" min="1" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="采集频率/分钟"/>
+</div>
+<input data-config-key="external_api_key" type="password" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="外链 API 全局密钥（已配置时留空表示不修改）"/>
+<button id="advanced-settings-save" class="justify-self-end bg-primary-container text-on-primary-container px-5 py-2 rounded-lg font-bold">保存运行参数</button>
+</div>
+</div>
 </div>
 </div>
 </section>
@@ -464,6 +489,10 @@ async function loadSettings() {
                 el.checked = val === true || val === 'true' || val === '1';
             }
         });
+        document.querySelectorAll('input[data-config-key]').forEach(el => {
+            const key = el.getAttribute('data-config-key');
+            if (map[key]) el.value = map[key];
+        });
     } catch (e) { /* \u9759\u9ed8\uff1a\u8bbe\u7f6e\u52a0\u8f7d\u5931\u8d25\u4e0d\u963b\u585e\u7528\u6237\u8d44\u6599 */ }
 }
 
@@ -512,6 +541,23 @@ document.querySelectorAll('input[type="checkbox"][data-setting-key]').forEach(el
             showToast('设置已保存', 'success');
         } catch (e) { showToast('保存失败', 'error'); }
     });
+});
+
+document.getElementById('advanced-settings-save')?.addEventListener('click', async () => {
+    const updates = [];
+    document.querySelectorAll('input[data-config-key]').forEach(input => {
+        const value = input.value.trim();
+        if (value) updates.push([input.getAttribute('data-config-key'), value]);
+    });
+    if (!updates.length) { showToast('没有需要保存的运行参数', 'info'); return; }
+    try {
+        for (const [key, value] of updates) {
+            await apiPut('/api/settings/' + encodeURIComponent(key), { value });
+        }
+        document.querySelectorAll('input[data-config-key][type="password"]').forEach(input => { input.value = ''; });
+        const databaseChanged = updates.some(([key]) => key === 'database_url');
+        showToast(databaseChanged ? '设置已保存；数据库连接将在重启后生效' : '运行参数已保存', 'success');
+    } catch (error) { showToast(error.message || '保存失败', 'error'); }
 });
 
 // Password change modal
@@ -573,7 +619,7 @@ async function uploadSettingsAvatar(input) {
     if (res.ok) {
       const d = await res.json();
       const imgEl = document.querySelector('.w-32.h-32 img') || document.querySelector('.w-10.h-10');
-      if (imgEl) imgEl.src = d.avatar;
+      if (imgEl) await setProtectedImage(imgEl, d.avatar);
       showToast('头像上传成功', 'success');
     } else { showToast('上传失败', 'error'); }
   } catch(e) { showToast('上传失败', 'error'); }

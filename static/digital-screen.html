@@ -4,14 +4,15 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>智能数据瞭望系统 - 数智大屏</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <!-- ECharts + GL + Wordcloud CDNs -->
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts-gl@2/dist/echarts-gl.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.1.0/dist/echarts-gl.min.js" integrity="sha384-RSPZ3vSNVFJnUBsUVMnD0qizvywfxO1bcpIeS9dg5sseJ+Daf08BIyMCZMX+rmLl" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js" integrity="sha384-U1KEY0DDCF4Dq6Yx1J+EZ5Hnj8X5bMn52OAcJB8C4OiAWeU4iJhJ/Tv5KhTqu8zZ" crossorigin="anonymous"></script>
 <!-- Theme Config -->
 <script id="tailwind-config">
       tailwind.config = {
@@ -332,15 +333,11 @@ function renderGlobe(sourceStats) {
         backgroundColor: 'transparent',
         geo3D: {
             map: 'world',
-            shading: 'realistic',
-            environment: '#031024',
-            realisticMaterial: { detailTexture: '#071425', textureTiling: 1, roughness: 0.6, metalness: 0 },
-            colorMaterial: { texture: '#0a1830' },
+            shading: 'lambert',
             light: {
                 main: { intensity: 1.2, shadow: false, alpha: 30 },
                 ambient: { intensity: 0.6 },
             },
-            atmosphere: { offset: 2, color: '#b4c5ff', opacity: 0.6 },
             itemStyle: {
                 color: '#0c1a35',
                 borderColor: '#3b4a66',

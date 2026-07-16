@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json, re, uuid
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urljoin
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
@@ -12,6 +13,7 @@ from core.rbac import require_role
 from dao.model_dao import get_default_model
 from core.openai_client import OpenAIClient
 from core.url_guard import assert_public_url
+from core.safe_http import request_public_url
 from models.user import User
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.collection_task import CollectionTask
@@ -93,7 +95,7 @@ def delete_source(ds_id: int, db: SessionLocal = Depends(get_db), user: User = D
 
 @dc_router.post("/sources/{ds_id}/test")
 async def test_source(ds_id: int, db: SessionLocal = Depends(get_db),
-                      user: User = Depends(get_current_user)):
+                      user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """测试数据源连接：访问URL 并返回状态码与摘要"""
     ds = db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).first()
     if not ds:
@@ -103,12 +105,14 @@ async def test_source(ds_id: int, db: SessionLocal = Depends(get_db),
     assert_public_url(test_url)
     try:
         headers = json.loads(ds.headers) if ds.headers else {}
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             if ds.method.upper() == "POST":
                 req_body = ds.body.replace("{keyword}", "test") if ds.body else ""
-                resp = await client.post(test_url, content=req_body, headers=headers)
+                resp = await request_public_url(
+                    client, "POST", test_url, content=req_body, headers=headers
+                )
             else:
-                resp = await client.get(test_url, headers=headers)
+                resp = await request_public_url(client, "GET", test_url, headers=headers)
         return {
             "success": resp.status_code < 500,
             "status_code": resp.status_code,
@@ -166,16 +170,18 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
             async with httpx.AsyncClient(timeout=30) as client:
                 if src.method == "POST":
                     req_body = src.body.replace("{keyword}", body.keyword) if src.body else ""
-                    resp = await client.post(url, content=req_body, headers=headers)
+                    resp = await request_public_url(
+                        client, "POST", url, content=req_body, headers=headers
+                    )
                 else:
-                    resp = await client.get(url, headers=headers, follow_redirects=True)
+                    resp = await request_public_url(client, "GET", url, headers=headers)
                 html = resp.text
         except Exception as e:
             results.append({"source": src.name, "error": str(e), "items": []})
             continue
 
         # 解析
-        items = _parse_content(html, src.parse_type, src.parse_rule)
+        items = _parse_content(html, src.parse_type, src.parse_rule, str(resp.url))
 
         # 清洗
         cleaned = [_apply_clean_rules(item, rules) for item in items]
@@ -183,9 +189,20 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
         # 创建临时结果（不自动保存）
         result_items = []
         for item in cleaned:
+            title = item.get("title", "").strip()
+            content = item.get("content", "").strip()
+            if not title and content:
+                title = content[:200]
+            if not content and title:
+                content = title
+            if not title or not content:
+                continue
+            keywords = [body.keyword.strip()] if body.keyword.strip() else [title[:20]]
             cd = CollectedData(
                 source_id=src.id, source_name=src.name, keyword=body.keyword,
-                title=item.get("title", ""), url=item.get("url", ""), content=item.get("content", "")[:5000],
+                title=title, url=item.get("url", ""), content=content[:5000],
+                summary=content[:200],
+                keywords_extracted=json.dumps(keywords, ensure_ascii=False),
             )
             db.add(cd)
             db.flush()
@@ -236,7 +253,9 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
     # 抓取目标页面
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(d.url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+            resp = await request_public_url(
+                client, "GET", d.url, headers={"User-Agent": "Mozilla/5.0"}
+            )
             full_text = resp.text
     except Exception as e:
         raise HTTPException(500, f"抓取失败: {e}")
@@ -339,10 +358,11 @@ async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
                         raise ValueError("该数据无来源URL")
                     # SSRF 防护：单条失败被外层 except 捕获后记录到任务日志
                     assert_public_url(item.url)
-                    resp = await client.get(
+                    resp = await request_public_url(
+                        client,
+                        "GET",
                         item.url,
                         headers={"User-Agent": "Mozilla/5.0"},
-                        follow_redirects=True,
                     )
                     soup = BeautifulSoup(resp.text, "html.parser")
                     for tag in soup(["script", "style", "nav", "footer", "header"]):
@@ -462,8 +482,27 @@ def get_task(task_id: int, db: SessionLocal = Depends(get_db), user: User = Depe
 
 
 # ============ 辅助函数 ============
-def _parse_content(html: str, parse_type: str, parse_rule: str) -> list[dict]:
+def _parse_content(html: str, parse_type: str, parse_rule: str, base_url: str = "") -> list[dict]:
     items = []
+    if parse_type == "rss":
+        feed = BeautifulSoup(html, "xml")
+        for entry in feed.find_all(["item", "entry"]):
+            title_node = entry.find("title")
+            description_node = entry.find("description") or entry.find("summary") or entry.find("content")
+            link_node = entry.find("link")
+            link = ""
+            if link_node is not None:
+                link = link_node.get("href", "") or link_node.get_text(strip=True)
+            title = title_node.get_text(strip=True) if title_node else ""
+            description_html = description_node.get_text() if description_node else ""
+            content = BeautifulSoup(description_html, "html.parser").get_text(" ", strip=True)
+            items.append({
+                "title": title,
+                "content": content or title,
+                "url": urljoin(base_url, link),
+            })
+        return items
+
     soup = BeautifulSoup(html, "html.parser")
 
     if parse_type == "crawl4ai" or not parse_rule:
@@ -471,7 +510,7 @@ def _parse_content(html: str, parse_type: str, parse_rule: str) -> list[dict]:
         for tag in soup(["script", "style", "nav", "footer"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)[:5000]
-        items.append({"title": soup.title.string if soup.title else "", "content": text, "url": ""})
+        items.append({"title": soup.title.string if soup.title else "", "content": text, "url": base_url})
     elif parse_type == "xpath":
         try:
             from lxml import etree
@@ -479,18 +518,18 @@ def _parse_content(html: str, parse_type: str, parse_rule: str) -> list[dict]:
             elements = tree.xpath(parse_rule)
             for el in elements:
                 items.append({"title": el.text_content()[:200] if hasattr(el, "text_content") else str(el),
-                              "content": str(el), "url": ""})
+                              "content": str(el), "url": base_url})
         except ImportError:
             items.append({"title": "XPath需要lxml库", "content": html[:2000], "url": ""})
     else:
         # CSS 选择器
         elements = soup.select(parse_rule) if parse_rule else [soup]
         for el in elements:
-            link = el.find("a")
+            link = el if el.name == "a" else el.find("a")
             items.append({
                 "title": el.get_text(strip=True)[:200],
                 "content": el.get_text(strip=True)[:2000],
-                "url": link.get("href", "") if link else "",
+                "url": urljoin(base_url, link.get("href", "")) if link else base_url,
             })
     return items
 

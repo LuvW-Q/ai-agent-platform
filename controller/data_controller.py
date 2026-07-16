@@ -10,6 +10,7 @@ from schema.api import DataSourceOut, DataSourceCreate
 from dao.base_dao import list_data_sources, create_data_source, delete_data_source, get_data_source, log_action
 from models.data_source import DataSource
 from core.security import get_current_user
+from core.rbac import require_role
 from models.user import User
 
 data_router = APIRouter(prefix="/api/data-sources", tags=["数据源管理"])
@@ -30,7 +31,8 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
 
 
 @data_router.post("", response_model=DataSourceOut, status_code=201)
-def create(body: DataSourceCreate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create(body: DataSourceCreate, db: SessionLocal = Depends(get_db),
+           user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     ds = DataSource(
         resource_id=body.resource_id,
         name=body.name,
@@ -48,7 +50,7 @@ def create(body: DataSourceCreate, db: SessionLocal = Depends(get_db), user: Use
 
 @data_router.put("/{ds_id}", response_model=DataSourceOut)
 def update(ds_id: int, body: DataSourceUpdateIn, db: SessionLocal = Depends(get_db),
-           user: User = Depends(get_current_user)):
+           user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     ds = get_data_source(ds_id, db)
     if not ds:
         raise HTTPException(404, "数据源不存在")
@@ -62,7 +64,8 @@ def update(ds_id: int, body: DataSourceUpdateIn, db: SessionLocal = Depends(get_
 
 
 @data_router.delete("/{ds_id}")
-def delete(ds_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete(ds_id: int, db: SessionLocal = Depends(get_db),
+           user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     ok = delete_data_source(ds_id, db)
     if ok:
         log_action("data_source_delete", f"删除数据源 ID: {ds_id}", user.username, db)

@@ -4,7 +4,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>消息中心 — 数据瞭望系统</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script>
@@ -225,7 +226,7 @@ function renderConversations(convs) {
     const icon = isGroup
       ? '<span class="material-symbols-outlined text-on-surface-variant">groups</span>'
       : (c.peer_avatar
-        ? `<img src="${escapeHtml(c.peer_avatar)}" class="w-full h-full object-cover"/>`
+        ? `<img ${protectedImageAttrs(c.peer_avatar)} class="w-full h-full object-cover"/>`
         : '<span class="material-symbols-outlined text-on-surface-variant">person</span>');
     return `
       <a href="${link}" class="flex items-center gap-3 p-4 hover:bg-surface-container-high transition-colors cursor-pointer">
@@ -263,7 +264,7 @@ function renderRequests(requests) {
   container.innerHTML = pending.map(r => `
     <div class="flex flex-wrap sm:flex-nowrap items-center gap-3 p-4">
       <div class="w-9 h-9 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden flex-shrink-0">
-        ${r.from_avatar ? `<img src="${escapeHtml(r.from_avatar)}" class="w-full h-full object-cover"/>` : '<span class="material-symbols-outlined text-sm text-on-surface-variant">person</span>'}
+        ${r.from_avatar ? `<img ${protectedImageAttrs(r.from_avatar)} class="w-full h-full object-cover"/>` : '<span class="material-symbols-outlined text-sm text-on-surface-variant">person</span>'}
       </div>
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium truncate">${escapeHtml(r.from_nickname || r.from_username)}</p>

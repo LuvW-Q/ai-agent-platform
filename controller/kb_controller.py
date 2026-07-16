@@ -3,11 +3,13 @@ RAG 知识库管理：知识库 CRUD + 文档上传/切片/嵌入/检索/问答
 """
 from __future__ import annotations
 
-import os, json, uuid
+import os, json
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
 from fastapi.responses import JSONResponse
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.rbac import require_role
+from core.upload_security import KB_EXTENSIONS, save_validated_upload
 from core.milvus_client import (
     ensure_collection, insert_chunks, search_chunks, delete_doc_chunks,
     delete_collection, collection_stats, milvus_available, MILVUS_URI,
@@ -20,10 +22,6 @@ from models.ai_model import AIModel
 from pydantic import BaseModel
 
 kb_router = APIRouter(prefix="/api/kb", tags=["RAG知识库"])
-
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "kb")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 
 # ============ Schemas ============
 class KBCreateIn(BaseModel):
@@ -82,7 +80,8 @@ def list_kb(db: SessionLocal = Depends(get_db), user: User = Depends(get_current
 
 
 @kb_router.post("", status_code=201)
-def create_kb(body: KBCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_kb(body: KBCreateIn, db: SessionLocal = Depends(get_db),
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     kb = KnowledgeBase(
         name=body.name, description=body.description,
         embedding_model_id=body.embedding_model_id, rerank_model_id=body.rerank_model_id,
@@ -97,7 +96,7 @@ def create_kb(body: KBCreateIn, db: SessionLocal = Depends(get_db), user: User =
 
 @kb_router.put("/{kb_id}")
 def update_kb(kb_id: int, body: KBUpdateIn, db: SessionLocal = Depends(get_db),
-              user: User = Depends(get_current_user)):
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     if not kb:
         raise HTTPException(404, "知识库不存在")
@@ -110,7 +109,8 @@ def update_kb(kb_id: int, body: KBUpdateIn, db: SessionLocal = Depends(get_db),
 
 
 @kb_router.delete("/{kb_id}")
-def delete_kb(kb_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_kb(kb_id: int, db: SessionLocal = Depends(get_db),
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     if not kb:
         raise HTTPException(404, "知识库不存在")
@@ -136,29 +136,28 @@ def list_docs(kb_id: int, db: SessionLocal = Depends(get_db), user: User = Depen
 
 @kb_router.post("/{kb_id}/upload")
 async def upload_doc(kb_id: int, file: UploadFile = File(...), db: SessionLocal = Depends(get_db),
-                     user: User = Depends(get_current_user)):
+                     user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """上传文档到知识库：自动解析、切片、嵌入、存入向量库"""
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
     if not kb:
         raise HTTPException(404, "知识库不存在")
 
-    # 保存文件
-    ext = os.path.splitext(file.filename or "doc.txt")[1].lower()
-    safe_name = f"{uuid.uuid4().hex}{ext}"
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    content_bytes = await file.read()
-    if len(content_bytes) > 50 * 1024 * 1024:
-        raise HTTPException(400, "文件超过50MB")
-    with open(file_path, "wb") as f:
-        f.write(content_bytes)
+    saved = await save_validated_upload(
+        file,
+        category=f"kb/{kb_id}",
+        allowed_extensions=KB_EXTENSIONS,
+        max_size=50 * 1024 * 1024,
+    )
+    ext = saved.extension
+    file_path = str(saved.absolute_path)
 
     # 解析文件内容
     text = _parse_file(file_path, ext)
 
     # 创建文档记录
     doc = KBDocument(
-        kb_id=kb_id, filename=file.filename or "unknown",
-        file_type=ext.replace(".", ""), file_size=len(content_bytes),
+        kb_id=kb_id, filename=saved.original_name,
+        file_type=ext.replace(".", ""), file_size=saved.size,
         content=text[:50000], chunk_count=0, status="processing",
     )
     db.add(doc)
@@ -181,7 +180,7 @@ async def upload_doc(kb_id: int, file: UploadFile = File(...), db: SessionLocal 
 
 @kb_router.delete("/{kb_id}/docs/{doc_id}")
 def delete_doc(kb_id: int, doc_id: int, db: SessionLocal = Depends(get_db),
-               user: User = Depends(get_current_user)):
+               user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     doc = db.query(KBDocument).filter(KBDocument.id == doc_id, KBDocument.kb_id == kb_id).first()
     if not doc:
         raise HTTPException(404, "文档不存在")

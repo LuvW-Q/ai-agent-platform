@@ -3,13 +3,14 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>数字员工会话 - 数据瞭望系统</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" integrity="sha384-oHwoZ9HyKv5ark5VOH+XWdbNfmhYtptAOBuV8plz6mAfXvTA6d8fULuYllWouEK2" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" integrity="sha384-q1KhAZhJcJXr3zfC3Tz07pBqQSabwFIZhXlmlUAB8s0zk4ETWERkIKGBCFQ5Jc3e" crossorigin="anonymous"></script>
 <script id="tailwind-config">
 tailwind.config = {
 darkMode: "class",
@@ -209,6 +210,7 @@ let currentAgent = null;
 let chatHistory = [];
 let isWaiting = false;
 let speechButton = null;
+let voicePlaybackEnabled = true;
 const LOCAL_CONVERSATION_KEY = 'ai-agent-platform-local-conversations-v1';
 let localConversations = [];
 let activeConversationId = null;
@@ -220,6 +222,14 @@ let stableGestureStartedAt = 0;
 let gestureOnCooldown = false;
 const GESTURE_STABLE_MS = 1500;
 const GESTURE_AGENT_NAMES = Object.freeze({ victory: '天气助手', fist: '随机音乐', palm: '新闻' });
+
+async function loadVoicePlaybackSetting() {
+  try {
+    const settings = await apiGet('/api/settings');
+    const setting = settings.find(item => item.key === 'voice_enabled');
+    voicePlaybackEnabled = !setting || setting.value === 'true' || setting.value === '1';
+  } catch (error) {}
+}
 
 async function loadAgents() {
   loadLocalConversations();
@@ -327,7 +337,7 @@ function renderAgentList() {
   }
   list.innerHTML = agentList.map(a => {
     const avatar = a.avatar
-      ? `<img src="${escapeHtml(a.avatar)}" class="w-10 h-10 rounded-full object-cover"/>`
+      ? `<img ${protectedImageAttrs(a.avatar)} class="w-10 h-10 rounded-full object-cover"/>`
       : `<div class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></div>`;
     const isActive = currentAgent && currentAgent.id === a.id;
     return `<button type="button" onclick="selectAgent(${a.id})" class="w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
@@ -347,7 +357,7 @@ function filterAgents() {
   if (!filtered.length) { list.innerHTML = '<div class="text-center py-8 text-on-surface-variant text-sm">无匹配结果</div>'; return; }
   list.innerHTML = filtered.map(a => {
     const avatar = a.avatar
-      ? `<img src="${escapeHtml(a.avatar)}" class="w-10 h-10 rounded-full object-cover"/>`
+      ? `<img ${protectedImageAttrs(a.avatar)} class="w-10 h-10 rounded-full object-cover"/>`
       : `<div class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></div>`;
     const isActive = currentAgent && currentAgent.id === a.id;
     return `<button type="button" onclick="selectAgent(${a.id})" class="w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
@@ -421,7 +431,7 @@ function updateChatHeader() {
   document.getElementById('headerStatus').textContent = skills ? `技能: ${skills}` : '无绑定技能';
   const avatarEl = document.getElementById('headerAvatar');
   if (currentAgent.avatar) {
-    avatarEl.innerHTML = `<img src="${escapeHtml(currentAgent.avatar)}" class="w-full h-full rounded-full object-cover"/>`;
+    avatarEl.innerHTML = `<img ${protectedImageAttrs(currentAgent.avatar)} class="w-full h-full rounded-full object-cover"/>`;
   } else {
     avatarEl.innerHTML = '<span class="material-symbols-outlined text-primary">smart_toy</span>';
   }
@@ -435,7 +445,7 @@ function appendMessage(role, content, skillCalls, createdAt) {
   const avatar = isUser
     ? '<div class="w-8 h-8 rounded-full bg-primary-container/20 border border-primary/30 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary text-sm">person</span></div>'
     : (currentAgent && currentAgent.avatar
-      ? `<img src="${escapeHtml(currentAgent.avatar)}" class="w-8 h-8 rounded-full object-cover flex-shrink-0"/>`
+      ? `<img ${protectedImageAttrs(currentAgent.avatar)} class="w-8 h-8 rounded-full object-cover flex-shrink-0"/>`
       : '<div class="w-8 h-8 rounded-full bg-secondary-container/15 border border-secondary-container/30 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-secondary text-sm">smart_toy</span></div>');
   const time = createdAt ? new Date(createdAt) : new Date();
   bubble.innerHTML = `
@@ -622,7 +632,7 @@ async function startGestureMode() {
   }
   try {
     gestureHands = new Hands({
-      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
     });
     gestureHands.setOptions({
       maxNumHands: 1,
@@ -745,6 +755,10 @@ async function triggerGestureAction(gesture) {
 }
 
 function speakMessage(button) {
+  if (!voicePlaybackEnabled) {
+    showToast('管理员已关闭语音播报', 'info');
+    return;
+  }
   if (!('speechSynthesis' in window)) {
     showToast('当前浏览器不支持语音播报', 'error');
     return;
@@ -828,7 +842,10 @@ function renderMessages() {
   document.getElementById('skillCallBar').classList.add('hidden');
 }
 
-if (requireAuth()) loadAgents();
+if (requireAuth()) {
+  loadVoicePlaybackSetting();
+  loadAgents();
+}
 </script>
 </body>
 </html>

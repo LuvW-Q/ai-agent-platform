@@ -4,7 +4,8 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>聊天管理 — 数据瞭望系统</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script>
@@ -131,7 +132,11 @@ tailwind.config = {
     <div id="detail-body" class="flex-1 overflow-y-auto p-md space-y-2">
       <div class="text-center text-outline text-sm py-lg">加载中...</div>
     </div>
-    <div class="px-md py-sm border-t border-outline-variant text-right">
+    <div class="px-md py-sm border-t border-outline-variant flex items-center justify-between">
+      <div class="flex gap-2">
+        <button onclick="exportCurrentConversation()" class="text-xs px-4 py-1.5 bg-primary/20 text-primary rounded-lg hover:opacity-80">导出 CSV</button>
+        <button onclick="deleteCurrentConversation()" class="text-xs px-4 py-1.5 bg-error/20 text-error rounded-lg hover:opacity-80">删除会话</button>
+      </div>
       <button onclick="closeDetailModal()" class="text-xs px-4 py-1.5 bg-surface-container-high rounded-lg hover:opacity-80">关闭</button>
     </div>
   </div>
@@ -143,6 +148,7 @@ if (!requireAuth()) throw new Error('redirecting');
 
 let currentTab = 'convos';
 let auditCache = null; // 缓存 /api/smart-audit/messages?limit=200 的结果
+let currentDetailUserId = null;
 
 function switchTab(t) {
   currentTab = t;
@@ -213,15 +219,12 @@ async function openDetailModal(userId, username) {
   const title = document.getElementById('detail-title');
   const body  = document.getElementById('detail-body');
   modal.classList.remove('hidden');
+  currentDetailUserId = userId;
   title.textContent = '对话详情 — ' + (username || ('用户' + userId));
   body.innerHTML = '<div class="text-center text-outline text-sm py-lg">加载中...</div>';
   try {
-    // 取该用户作为 sender/receiver 的最近 20 条消息
-    const all = await apiGet(`/api/smart-audit/messages?limit=1000`);
-    const msgs = (all || [])
-      .filter(m => m.sender_id === userId || m.receiver_id === userId)
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      .slice(-20);
+    const all = await apiGet(`/api/messages/admin/conversations/${userId}/messages`);
+    const msgs = (all || []).slice(-20);
     if (!msgs.length) {
       body.innerHTML = '<div class="text-center text-outline text-sm py-lg">该用户暂无消息</div>';
       return;
@@ -250,6 +253,37 @@ async function openDetailModal(userId, username) {
 
 function closeDetailModal() {
   document.getElementById('detail-modal').classList.add('hidden');
+  currentDetailUserId = null;
+}
+
+async function exportCurrentConversation() {
+  if (currentDetailUserId === null) return;
+  try {
+    const response = await api(`/api/messages/admin/conversations/${currentDetailUserId}/export`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `conversation-${currentDetailUserId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('会话已导出', 'success');
+  } catch (error) {
+    showToast(error.message || '导出失败', 'error');
+  }
+}
+
+async function deleteCurrentConversation() {
+  if (currentDetailUserId === null || !confirm('确定删除该用户参与的全部消息？此操作不可恢复。')) return;
+  try {
+    await apiDelete(`/api/messages/admin/conversations/${currentDetailUserId}`);
+    closeDetailModal();
+    auditCache = null;
+    await loadConvos();
+    showToast('会话已删除', 'success');
+  } catch (error) {
+    showToast(error.message || '删除失败', 'error');
+  }
 }
 
 // ===== Tab2: 消息检索 =====
@@ -294,12 +328,25 @@ function renderSearchResults(list) {
         <div class="flex items-center gap-2">
           <span class="text-[10px] px-2 py-0.5 rounded ${RISK_BADGE[risk] || RISK_BADGE.low}">${RISK_LABEL[risk] || risk}</span>
           <span class="text-[10px] text-outline">${m.created_at ? timeAgo(m.created_at) : ''}</span>
+          <button onclick="deleteSearchMessage(${m.id})" class="text-[10px] px-2 py-0.5 rounded bg-error/20 text-error">删除</button>
         </div>
       </div>
       <div class="text-sm text-on-surface-variant break-all">${escapeHtml((m.content || '').slice(0, 300))}</div>
       ${m.matched_words && m.matched_words.length ? `<div class="text-[10px] text-error mt-1">命中: ${escapeHtml(m.matched_words.join(', '))}</div>` : ''}
     </div>`;
   }).join('');
+}
+
+async function deleteSearchMessage(messageId) {
+  if (!confirm('确定删除这条消息？')) return;
+  try {
+    await apiDelete(`/api/messages/admin/messages/${messageId}`);
+    auditCache = (auditCache || []).filter(message => message.id !== messageId);
+    searchMessages();
+    showToast('消息已删除', 'success');
+  } catch (error) {
+    showToast(error.message || '删除失败', 'error');
+  }
 }
 
 // Initial load

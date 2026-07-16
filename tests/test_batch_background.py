@@ -73,12 +73,15 @@ def test_batch_deep_collect_runs_in_background(db_session):
 
     client = _make_client_with_role("root")
 
-    def _fake_get(url, *args, **kwargs):
+    def _fake_request(client, method, url, *args, **kwargs):
         # url 形如 https://example.com/{i}
         idx = url.rsplit("/", 1)[-1]
         return _make_mock_response(f"<html><body>test content {idx}</body></html>")
 
-    with patch("httpx.AsyncClient.get", new=AsyncMock(side_effect=_fake_get)):
+    with patch(
+        "controller.dc_controller.request_public_url",
+        new=AsyncMock(side_effect=_fake_request),
+    ):
         resp = client.post(
             "/api/dc/batch-deep-collect",
             json={"keyword": "test", "source_ids": []},
@@ -120,7 +123,10 @@ def test_batch_deep_collect_cap_exceeds_100(db_session):
     client = _make_client_with_role("root")
 
     # 即便入队也应因 422 在后台执行前被拒绝，但仍然 mock 以防意外
-    with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_make_mock_response("x"))):
+    with patch(
+        "controller.dc_controller.request_public_url",
+        new=AsyncMock(return_value=_make_mock_response("x")),
+    ):
         resp = client.post(
             "/api/dc/batch-deep-collect",
             json={"keyword": keyword, "source_ids": []},

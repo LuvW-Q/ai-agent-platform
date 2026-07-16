@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException
 
+from core.config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,10 +45,6 @@ def assert_public_url(url: str) -> None:
     - 通过 DNS 解析后逐个判定解析结果
     - 设置 `SSRF_ALLOW_INTERNAL=1` 可旁路（记录 WARN）
     """
-    if os.environ.get("SSRF_ALLOW_INTERNAL") == "1":
-        logger.warning("SSRF_ALLOW_INTERNAL=1 — bypassing guard for %s", url)
-        return
-
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(
@@ -56,6 +54,33 @@ def assert_public_url(url: str) -> None:
     host = parsed.hostname or ""
     if not host:
         raise HTTPException(400, "URL not allowed: no hostname")
+    if parsed.username or parsed.password:
+        raise HTTPException(400, "URL not allowed: embedded credentials")
+
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        raise HTTPException(400, "URL not allowed: invalid port")
+    allowed_ports = {
+        int(value.strip())
+        for value in os.environ.get("SSRF_ALLOWED_PORTS", config.SSRF_ALLOWED_PORTS).split(",")
+        if value.strip().isdigit()
+    }
+    if port not in allowed_ports:
+        raise HTTPException(400, f"URL not allowed: port {port} not permitted")
+
+    allowed_hosts = {
+        value.strip().lower()
+        for value in os.environ.get("SSRF_ALLOWED_HOSTS", config.SSRF_ALLOWED_HOSTS).split(",")
+        if value.strip()
+    }
+    if allowed_hosts and host.lower() not in allowed_hosts:
+        raise HTTPException(400, "URL not allowed: hostname is not allowlisted")
+
+    allow_internal = os.environ.get("SSRF_ALLOW_INTERNAL")
+    if allow_internal == "1" or (allow_internal is None and config.SSRF_ALLOW_INTERNAL):
+        logger.warning("SSRF_ALLOW_INTERNAL=1 — bypassing IP guard for %s", url)
+        return
 
     # 直接 IP 字面量
     try:

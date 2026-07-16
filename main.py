@@ -5,6 +5,7 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from core.config import config
 
 from database.session import Base, engine, SessionLocal
 from controller.auth_controller import auth_router
@@ -29,6 +30,7 @@ from controller.smart_audit_controller import smart_audit as smart_audit_router
 from controller.setting_controller import setting_router
 from controller.creative_controller import creative_router
 from controller.api_registry_controller import api_registry_router, migrate_agents_table_extensions
+from controller.upload_controller import upload_router
 
 # 导入新模型，确保建表时创建
 from models.ai_model import AIModel
@@ -43,9 +45,24 @@ from models.collection_task import CollectionTask
 from models.menu import Menu
 from models.setting import Setting
 from models.api_registry import ApiRegistry
+from models.permission import FunctionPoint, RoleFunctionPermission
 
 # 建表
 Base.metadata.create_all(bind=engine)
+
+
+def migrate_users_face_descriptor():
+    """为已有 SQLite 用户表补充加密人脸特征字段。"""
+    from sqlalchemy import inspect, text
+
+    columns = [column["name"] for column in inspect(engine).get_columns("users")]
+    if "face_descriptor" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN face_descriptor TEXT DEFAULT ''"))
+        print("[migrate] Added column face_descriptor to users table")
+
+
+migrate_users_face_descriptor()
 
 # 数据库迁移：为messages表添加新列（SQLite不支持IF NOT EXISTS语法，用try/except）
 def migrate_messages_table():
@@ -53,18 +70,18 @@ def migrate_messages_table():
     inspector = inspect(engine)
     columns = [c["name"] for c in inspector.get_columns("messages")]
     new_cols = {
-        "msg_id": "VARCHAR(64) DEFAULT ''",
-        "status": "VARCHAR(20) DEFAULT 'sent'",
-        "file_url": "VARCHAR(500) DEFAULT ''",
-        "file_name": "VARCHAR(255) DEFAULT ''",
-        "file_size": "INTEGER DEFAULT 0",
-        "recall_at": "DATETIME",
+        "msg_id": text("ALTER TABLE messages ADD COLUMN msg_id VARCHAR(64) DEFAULT ''"),
+        "status": text("ALTER TABLE messages ADD COLUMN status VARCHAR(20) DEFAULT 'sent'"),
+        "file_url": text("ALTER TABLE messages ADD COLUMN file_url VARCHAR(500) DEFAULT ''"),
+        "file_name": text("ALTER TABLE messages ADD COLUMN file_name VARCHAR(255) DEFAULT ''"),
+        "file_size": text("ALTER TABLE messages ADD COLUMN file_size INTEGER DEFAULT 0"),
+        "recall_at": text("ALTER TABLE messages ADD COLUMN recall_at DATETIME"),
     }
     with engine.connect() as conn:
-        for col, col_type in new_cols.items():
+        for col, statement in new_cols.items():
             if col not in columns:
                 try:
-                    conn.execute(text(f"ALTER TABLE messages ADD COLUMN {col} {col_type}"))
+                    conn.execute(statement)
                     conn.commit()
                     print(f"[migrate] Added column {col} to messages table")
                 except Exception as e:
@@ -79,16 +96,16 @@ def migrate_agents_table():
     inspector = inspect(engine)
     columns = [c["name"] for c in inspector.get_columns("agents")]
     new_cols = {
-        "avatar": "VARCHAR(500) DEFAULT ''",
-        "model_id": "INTEGER",
-        "skill_ids": "VARCHAR(500) DEFAULT ''",
-        "fallback_message": "VARCHAR(500) DEFAULT '系统繁忙，请稍后再试'",
+        "avatar": text("ALTER TABLE agents ADD COLUMN avatar VARCHAR(500) DEFAULT ''"),
+        "model_id": text("ALTER TABLE agents ADD COLUMN model_id INTEGER"),
+        "skill_ids": text("ALTER TABLE agents ADD COLUMN skill_ids VARCHAR(500) DEFAULT ''"),
+        "fallback_message": text("ALTER TABLE agents ADD COLUMN fallback_message VARCHAR(500) DEFAULT '系统繁忙，请稍后再试'"),
     }
     with engine.connect() as conn:
-        for col, col_type in new_cols.items():
+        for col, statement in new_cols.items():
             if col not in columns:
                 try:
-                    conn.execute(text(f"ALTER TABLE agents ADD COLUMN {col} {col_type}"))
+                    conn.execute(statement)
                     conn.commit()
                     print(f"[migrate] Added column {col} to agents table")
                 except Exception as e:
@@ -170,27 +187,39 @@ run_seed()
 
 app = FastAPI(title="智能数据瞭望系统", version="1.0.0")
 
-# CORS中间件：允许跨域请求
-# 从环境变量读取允许的源（逗号分隔），默认本地开发环境
-import os as _os
+# CORS中间件：允许源由部署环境显式配置，默认仅本地开发地址。
 from fastapi.middleware.cors import CORSMiddleware
 
-_DEFAULT_CORS_ORIGINS = "http://localhost:8001,http://localhost:5173"
-_cors_origins_env = _os.environ.get("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS)
-_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+_cors_origins = [o.strip() for o in config.CORS_ORIGINS.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
 @app.middleware("http")
 async def disable_static_cache(request, call_next):
     response = await call_next(request)
+    script_policy = "'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net"
+    if request.url.path == "/screen":
+        # ECharts-GL 2 uses Function() to parse internal expr(...) texture sizes.
+        script_policy += " 'unsafe-eval'"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self' https: data: blob:; "
+        f"script-src {script_policy}; "
+        "style-src 'self' 'unsafe-inline' https:; "
+        "connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'"
+    )
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
@@ -199,7 +228,6 @@ async def disable_static_cache(request, call_next):
 
 # 静态资源
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # API路由
 app.include_router(auth_router)
@@ -222,6 +250,7 @@ app.include_router(smart_audit_router)
 app.include_router(setting_router)
 app.include_router(creative_router)
 app.include_router(api_registry_router)
+app.include_router(upload_router)
 
 # WebSocket路由
 app.include_router(ws_router)
@@ -231,4 +260,4 @@ app.include_router(page_router)
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host=config.APP_HOST, port=config.APP_PORT)

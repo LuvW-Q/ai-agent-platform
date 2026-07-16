@@ -3,15 +3,21 @@
 """
 from __future__ import annotations
 
-import os, uuid
+import json
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from database.session import SessionLocal, get_db
 from schema.api import RegisterIn, LoginIn, TokenOut, RefreshIn, UserOut
-from service.auth_service import register, login, refresh_access
+from service.auth_service import issue_tokens, login, refresh_access, register
 from core.security import get_current_user
+from core.crypto import decrypt, encrypt
 from models.user import User
+from models.setting import Setting
+from dao.user_dao import find_user_by_name
 from dao.base_dao import log_action
+from core.upload_security import IMAGE_EXTENSIONS, save_validated_upload
 
 auth_router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -21,6 +27,31 @@ class ProfileUpdateIn(BaseModel):
     email: str | None = None
     signature: str | None = None
     avatar: str | None = None
+
+
+class FaceDescriptorIn(BaseModel):
+    descriptor: list[float]
+
+    @field_validator("descriptor", mode="before")
+    @classmethod
+    def validate_descriptor_input(cls, value):
+        if not isinstance(value, list) or len(value) != 128:
+            raise ValueError("人脸特征必须是 128 维数组")
+        if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
+            raise ValueError("人脸特征只能包含数值")
+        if any(not math.isfinite(float(item)) for item in value):
+            raise ValueError("人脸特征不能包含非有限数值")
+        return value
+
+
+class FaceLoginIn(FaceDescriptorIn):
+    username: str = Field(..., min_length=3, max_length=50)
+
+
+def _require_face_recognition_enabled(db: SessionLocal) -> None:
+    setting = db.query(Setting).filter(Setting.key == "face_recognition_enabled").first()
+    if setting is not None and setting.value not in ("true", "1"):
+        raise HTTPException(status_code=403, detail="人脸识别已关闭")
 
 
 @auth_router.post("/register", response_model=UserOut)
@@ -38,6 +69,48 @@ def do_login(body: LoginIn, db: SessionLocal = Depends(get_db)):
         log_action("login_failed", f"登录失败: {body.username}", body.username, db)
         raise
     log_action("login", f"用户登录成功: {body.username}", body.username, db)
+    return TokenOut(access_token=access, refresh_token=refresh)
+
+
+@auth_router.post("/face/register")
+def register_face(body: FaceDescriptorIn, db: SessionLocal = Depends(get_db),
+                  current: User = Depends(get_current_user)):
+    """为当前已认证账号加密保存 128 维人脸特征。"""
+    _require_face_recognition_enabled(db)
+    descriptor_json = json.dumps(body.descriptor, ensure_ascii=False, separators=(",", ":"))
+    current.face_descriptor = encrypt(descriptor_json)
+    db.commit()
+    log_action("face_register", f"用户注册人脸特征: {current.username}", current.username, db)
+    return {"registered": True}
+
+
+@auth_router.post("/face/login", response_model=TokenOut)
+def login_with_face(body: FaceLoginIn, db: SessionLocal = Depends(get_db)):
+    """比对人脸特征；欧氏距离严格小于 0.6 时签发登录令牌。"""
+    _require_face_recognition_enabled(db)
+    user = find_user_by_name(body.username, db)
+    if user is None or not user.face_descriptor:
+        log_action("face_login_failed", f"人脸登录失败: {body.username}", body.username, db)
+        raise HTTPException(status_code=400, detail="该账号尚未注册人脸特征")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已停用")
+
+    try:
+        stored_value = json.loads(decrypt(user.face_descriptor) or "")
+        stored_descriptor = FaceDescriptorIn(descriptor=stored_value).descriptor
+    except (json.JSONDecodeError, TypeError, ValidationError):
+        raise HTTPException(status_code=400, detail="已保存的人脸特征无效，请重新注册")
+
+    distance = math.sqrt(sum(
+        (saved - current) ** 2
+        for saved, current in zip(stored_descriptor, body.descriptor)
+    ))
+    if distance >= 0.6:
+        log_action("face_login_failed", f"人脸登录失败: {body.username}", body.username, db)
+        raise HTTPException(status_code=401, detail="人脸验证失败")
+
+    access, refresh = issue_tokens(user, db)
+    log_action("face_login", f"用户人脸登录成功: {body.username}", body.username, db)
     return TokenOut(access_token=access, refresh_token=refresh)
 
 
@@ -91,32 +164,20 @@ def do_refresh(body: RefreshIn, db: SessionLocal = Depends(get_db)):
 
 
 # ===== 头像上传 =====
-AVATAR_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-os.makedirs(AVATAR_DIR, exist_ok=True)
-ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
-
-
 @auth_router.post("/avatar")
-async def upload_avatar(file: UploadFile = File(...), user: User = Depends(get_current_user)):
-    """上传用户头像 — 自动裁剪为200x200并更新当前用户"""
-    ext = os.path.splitext(file.filename or ".png")[1].lower()
-    if ext not in ALLOWED_IMAGE_EXT:
-        raise HTTPException(400, f"不支持的图片格式: {ext}，仅支持 jpg/png/gif/webp/bmp")
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(400, "图片不能超过5MB")
-    safe_name = f"avatar_{uuid.uuid4().hex[:12]}{ext}"
-    file_path = os.path.join(AVATAR_DIR, safe_name)
-    with open(file_path, "wb") as f:
-        f.write(content)
-    avatar_url = f"/uploads/{safe_name}"
+async def upload_avatar(file: UploadFile = File(...), db: SessionLocal = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """上传用户头像：分块限流并校验真实图片文件头。"""
+    saved = await save_validated_upload(
+        file,
+        category=f"avatars/{user.id}",
+        allowed_extensions=IMAGE_EXTENSIONS,
+        max_size=5 * 1024 * 1024,
+    )
+    avatar_url = f"/api/uploads/{saved.relative_path}"
     # 更新用户头像
-    db = next(get_db())
-    try:
-        me = db.query(User).filter(User.id == user.id).first()
-        if me:
-            me.avatar = avatar_url
-            db.commit()
-    finally:
-        db.close()
-    return {"avatar": avatar_url, "filename": file.filename, "size": len(content)}
+    me = db.query(User).filter(User.id == user.id).first()
+    if me:
+        me.avatar = avatar_url
+        db.commit()
+    return {"avatar": avatar_url, "filename": saved.original_name, "size": saved.size}

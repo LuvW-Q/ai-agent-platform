@@ -174,9 +174,9 @@ async function loadSystemName() {
 rm -f data_outlook_v2.db
 python main.py &
 # 验证
-curl -s http://127.0.0.1:8001/api/settings -H "Authorization: Bearer $(curl -s -X POST http://127.0.0.1:8001/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"admin123"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"access_token\"])')" | python3 -m json.tool
+curl -s http://127.0.0.1:8001/api/settings -H "Authorization: Bearer $(curl -s -X POST http://127.0.0.1:8001/api/auth/login -H 'Content-Type: application/json' -d '{"username":"<INITIAL_ADMIN_USERNAME>","password":"<INITIAL_ADMIN_PASSWORD>"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"access_token\"])')" | python3 -m json.tool
 ```
-Expected: 7 个系统设置返回，包括 system_name = "智能数据瞭望系统"。
+Expected: 9 个系统设置返回，包括 system_name = "智能数据瞭望系统"；数据库连接和外链密钥只返回配置状态，不返回明文。
 
 - [ ] **Step 8: Commit**
 

@@ -39,3 +39,4 @@ uploads/*
 # Env
 .env
 .env.*
+!.env.example

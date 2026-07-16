@@ -171,6 +171,70 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+
+function normalizeProtectedMediaUrl(url) {
+  if (typeof url !== 'string') return '';
+  if (url.startsWith('/uploads/')) return '/api/uploads/' + url.slice('/uploads/'.length);
+  return url;
+}
+
+function protectedImageAttrs(url) {
+  const normalized = normalizeProtectedMediaUrl(url);
+  if (normalized.startsWith('/api/uploads/')) {
+    return `src="${TRANSPARENT_PIXEL}" data-protected-src="${escapeHtml(normalized)}"`;
+  }
+  return `src="${escapeHtml(normalized)}"`;
+}
+
+async function setProtectedImage(img, url) {
+  if (!img) return;
+  const normalized = normalizeProtectedMediaUrl(url);
+  if (!normalized.startsWith('/api/uploads/')) {
+    img.src = normalized;
+    return;
+  }
+  img.src = TRANSPARENT_PIXEL;
+  img.dataset.protectedSrc = normalized;
+  try {
+    const response = await fetch(normalized, {
+      headers: { 'Authorization': `Bearer ${Token.access}` }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const oldUrl = img.dataset.objectUrl;
+    img.src = objectUrl;
+    img.dataset.objectUrl = objectUrl;
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+  } catch (error) {
+    console.warn('受保护图片加载失败:', error);
+  }
+}
+
+function hydrateProtectedImages(root = document) {
+  const images = [];
+  if (root.matches?.('img[data-protected-src]')) images.push(root);
+  root.querySelectorAll?.('img[data-protected-src]').forEach(img => images.push(img));
+  images.forEach(img => {
+    if (img.dataset.protectedLoading === '1' || img.dataset.objectUrl) return;
+    img.dataset.protectedLoading = '1';
+    setProtectedImage(img, img.dataset.protectedSrc).finally(() => {
+      img.dataset.protectedLoading = '0';
+    });
+  });
+}
+
+const protectedImageObserver = new MutationObserver(mutations => {
+  mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+    if (node.nodeType === Node.ELEMENT_NODE) hydrateProtectedImages(node);
+  }));
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  hydrateProtectedImages();
+  protectedImageObserver.observe(document.body, { childList: true, subtree: true });
+});
+
 const PAGE_META = {
   dashboard: { title: '数据治理', desc: '统一管理数据源、采集链路、治理规则与任务状态', icon: 'database' },
   screen: { title: '数字大屏', desc: '关键指标、风险事件与系统运行态势总览', icon: 'monitoring', fluid: true },

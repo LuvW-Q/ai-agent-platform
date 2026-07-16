@@ -15,7 +15,7 @@ class DataSourceConfig(Base):
     method = Column(String(10), default="GET")
     headers = Column(Text, default="{}")           # JSON headers
     body = Column(Text, default="")                 # POST body
-    parse_type = Column(String(20), default="selector")  # selector/xpath/crawl4ai
+    parse_type = Column(String(20), default="selector")  # selector/xpath/rss/crawl4ai
     parse_rule = Column(Text, default="")           # CSS选择器 / XPath / 空=crawl4ai全文
     template = Column(String(50), default="")       # baidu/rss/custom
     status = Column(String(20), default="active")

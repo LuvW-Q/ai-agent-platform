@@ -13,6 +13,7 @@ from sqlalchemy import text
 from core.security import get_current_user
 from core.rbac import require_role
 from core.url_guard import assert_public_url
+from core.safe_http import request_public_url
 from dao.base_dao import log_action
 from database.session import SessionLocal, get_db
 from models.agent import Agent
@@ -120,7 +121,7 @@ def delete_api(api_id: int, db: SessionLocal = Depends(get_db),
 @api_registry_router.post("/{api_id}/test")
 async def test_api(api_id: int, params: str = Query("{}"),
                    db: SessionLocal = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+                   user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """在线测试接口：以 params JSON 字符串替换占位符 {params}"""
     api = db.query(ApiRegistry).filter(ApiRegistry.id == api_id).first()
     if not api:
@@ -142,10 +143,17 @@ async def test_api(api_id: int, params: str = Query("{}"),
                 body = api.body_template or ""
                 if params and "{params}" in body:
                     body = body.replace("{params}", params)
-                resp = await client.post(resolved_url, content=body, headers=headers)
+                resp = await request_public_url(
+                    client, "POST", resolved_url, content=body, headers=headers
+                )
             else:
-                resp = await client.get(resolved_url, headers=headers, follow_redirects=True,
-                                        params=_build_query_params(api, params))
+                resp = await request_public_url(
+                    client,
+                    "GET",
+                    resolved_url,
+                    headers=headers,
+                    params=_build_query_params(api, params),
+                )
         result_text = resp.text[:2000]
         extracted = _extract_response_path(result_text, api.response_path)
         return {
@@ -247,14 +255,14 @@ def migrate_agents_table_extensions():
     existing_cols = {c["name"] for c in inspector.get_columns("agents")}
     add_cols = {
         # model(默认，对话型) / api(接口型，调用 api_registries)
-        "agent_type": "VARCHAR(20) DEFAULT 'model'",
-        "api_id": "INTEGER",
+        "agent_type": text("ALTER TABLE agents ADD COLUMN agent_type VARCHAR(20) DEFAULT 'model'"),
+        "api_id": text("ALTER TABLE agents ADD COLUMN api_id INTEGER"),
     }
     with engine.connect() as conn:
-        for col, col_type in add_cols.items():
+        for col, statement in add_cols.items():
             if col not in existing_cols:
                 try:
-                    conn.execute(text(f"ALTER TABLE agents ADD COLUMN {col} {col_type}"))
+                    conn.execute(statement)
                     conn.commit()
                     print(f"[migrate] Added column {col} to agents table")
                 except Exception as e:

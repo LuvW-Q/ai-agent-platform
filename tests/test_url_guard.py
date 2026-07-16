@@ -35,6 +35,25 @@ def test_bad_scheme_blocked():
     assert "scheme" in exc.value.detail
 
 
+def test_non_standard_port_blocked():
+    with pytest.raises(HTTPException) as exc:
+        assert_public_url("https://example.com:8443")
+    assert "port 8443" in exc.value.detail
+
+
+def test_embedded_credentials_blocked():
+    with pytest.raises(HTTPException) as exc:
+        assert_public_url("https://user:pass@example.com")
+    assert "embedded credentials" in exc.value.detail
+
+
+def test_hostname_allowlist():
+    with patch.dict(os.environ, {"SSRF_ALLOWED_HOSTS": "allowed.example"}, clear=False):
+        with pytest.raises(HTTPException) as exc:
+            assert_public_url("https://example.com")
+    assert "allowlisted" in exc.value.detail
+
+
 def test_bypass_env():
     """SSRF_ALLOW_INTERNAL=1 时旁路校验"""
     with patch.dict(os.environ, {"SSRF_ALLOW_INTERNAL": "1"}, clear=False):

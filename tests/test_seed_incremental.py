@@ -1,6 +1,8 @@
 """数字员工增量种子和本地技能执行回归测试。"""
 
-from core.sandbox import sandbox
+import json
+
+from core.builtin_skills import execute_builtin_skill
 from database.session import SessionLocal
 from models.agent import Agent
 from models.skill import Skill
@@ -23,22 +25,14 @@ def test_music_and_news_seed_is_idempotent_and_executable():
         assert music_agent.skill_ids == str(music_skill.id)
         assert news_agent.skill_ids == str(news_skill.id)
 
-        music_result = sandbox.execute_function(
-            music_skill.config,
-            "execute",
-            {},
-        )
-        assert music_result["success"] is True, music_result["error"]
-        assert set(music_result["result"]) == {"song", "artist"}
-        assert all(music_result["result"].values())
+        music_handler = json.loads(music_skill.config)["handler"]
+        music_result = execute_builtin_skill(music_handler, {}, db)
+        assert set(music_result) == {"song", "artist"}
+        assert all(music_result.values())
 
-        news_result = sandbox.execute_function(
-            news_skill.config,
-            "execute",
-            {"keyword": ""},
-        )
-        assert news_result["success"] is True, news_result["error"]
-        assert set(news_result["result"]) == {"count", "items"}
-        assert news_result["result"]["count"] == len(news_result["result"]["items"])
+        news_handler = json.loads(news_skill.config)["handler"]
+        news_result = execute_builtin_skill(news_handler, {"keyword": ""}, db)
+        assert set(news_result) == {"count", "items"}
+        assert news_result["count"] == len(news_result["items"])
     finally:
         db.close()

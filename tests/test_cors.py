@@ -11,15 +11,19 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def cors_app(monkeypatch):
     """重新加载 main，使其读取测试用的 CORS_ORIGINS。"""
-    monkeypatch.setenv("CORS_ORIGINS", "http://test.example:1234")
+    test_origin = "http://test.example:1234"
+    monkeypatch.setenv("CORS_ORIGINS", test_origin)
     # SQL 必须指向测试库（与 conftest 保持一致）
     if "SQLITE_URL" not in os.environ:
         monkeypatch.setenv("SQLITE_URL", f"sqlite:///data_outlook_v2.test.db")
 
     import main
+    original_origins = main.config.CORS_ORIGINS
+    main.config.CORS_ORIGINS = test_origin
     importlib.reload(main)
     yield main.app
     # 还原以避免污染其他测试模块
+    main.config.CORS_ORIGINS = original_origins
     importlib.reload(main)
 
 

@@ -2,12 +2,17 @@
 页面路由：返回各HTML页面
 """
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import os
 
 page_router = APIRouter(tags=["页面"])
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+
+@page_router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 @page_router.get("/", include_in_schema=False)

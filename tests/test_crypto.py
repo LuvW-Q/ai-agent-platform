@@ -80,3 +80,45 @@ def test_model_round_trip(db_session):
 
     assert row.api_key == plain, "hybrid getter should return plaintext"
     assert row.api_key_cipher != plain, "db column should hold ciphertext, not plaintext"
+
+
+def test_sensitive_system_setting_is_encrypted_and_redacted():
+    from fastapi.testclient import TestClient
+
+    from core.security import get_current_user
+    from database.session import SessionLocal
+    from models.setting import Setting
+    from models.user import User
+    from main import app
+
+    root = User(
+        username="setting_crypto_root",
+        password_hash="unused",
+        nickname="Setting Root",
+        email="setting-root@test.local",
+        role="ROOT",
+        is_active=True,
+    )
+    root.id = 920001
+    app.dependency_overrides[get_current_user] = lambda: root
+    client = TestClient(app)
+    secret = "external-api-secret-value"
+    try:
+        response = client.put("/api/settings/external_api_key", json={"value": secret})
+        assert response.status_code == 200
+        assert response.json()["value"] == ""
+        assert response.json()["is_configured"] is True
+
+        db = SessionLocal()
+        try:
+            setting = db.query(Setting).filter(Setting.key == "external_api_key").one()
+            assert setting.value != secret
+        finally:
+            db.close()
+
+        listed = client.get("/api/settings")
+        exposed = next(item for item in listed.json() if item["key"] == "external_api_key")
+        assert exposed["value"] == ""
+        assert exposed["is_configured"] is True
+    finally:
+        app.dependency_overrides.clear()
