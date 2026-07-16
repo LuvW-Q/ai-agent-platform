@@ -21,6 +21,11 @@ if TEST_DB.exists():
 os.environ["SQLITE_URL"] = f"sqlite:///{TEST_DB}"
 
 
+def pytest_configure(config):
+    """Register custom markers to avoid PytestUnknownMarkWarning."""
+    config.addinivalue_line("markers", "slow: opt-in performance test, skipped in CI timing")
+
+
 @pytest.fixture(scope="function")
 def db_session():
     """Provide a clean SQLAlchemy session backed by the test database.

@@ -85,26 +85,75 @@ def message_audit_stats(
     start: str = Query(None), end: str = Query(None),
     db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """消息审计统计"""
-    q = db.query(Message).filter(Message.msg_type == "text", Message.status != "recalled")
-    if start: q = q.filter(Message.created_at >= datetime.fromisoformat(start))
-    if end: q = q.filter(Message.created_at <= datetime.fromisoformat(end))
+    """消息审计统计 — SQL CASE WHEN 单次聚合，避免 Python 循环 _classify_risk
 
-    high = medium = low = 0
-    for m in q.all():
-        risk, _ = _classify_risk(m.content or "", db)
-        if risk == "high":
-            high += 1
-        elif risk == "medium":
-            medium += 1
-        else:
-            low += 1
-    total = high + medium + low or 1
+    逻辑等价于逐条调用 _classify_risk：
+      - action="block" 命中 → high
+      - action="replace" 命中 → medium
+      - 无命中 → low
+
+    实现策略：从 sensitive_filter 单例缓存读取敏感词列表，构造 SQLAlchemy
+    `case()` + `func.instr(func.lower(...))` 表达式，在 SQL 端一次性 GROUP BY
+    聚合，避免把全部消息加载到 Python 后逐条分类。
+    """
+    from sqlalchemy import case, func
+
+    # 公共过滤条件
+    base_filters = [
+        Message.msg_type == "text",
+        Message.status != "recalled",
+    ]
+    if start:
+        base_filters.append(Message.created_at >= datetime.fromisoformat(start))
+    if end:
+        base_filters.append(Message.created_at <= datetime.fromisoformat(end))
+
+    # 加载敏感词（_ensure_cache 自带 60s 内存缓存）
+    words = sensitive_filter._ensure_cache(db)
+    block_words = [w["word"] for w in words if w.get("action") == "block"]
+    replace_words = [w["word"] for w in words if w.get("action") == "replace"]
+
+    # 边界场景：没有任何敏感词时，全部记为 low
+    if not block_words and not replace_words:
+        total = db.query(func.count(Message.id)).filter(*base_filters).scalar() or 0
+        return {
+            "total": total, "high": 0, "medium": 0, "low": total,
+            "high_pct": 0.0, "medium_pct": 0.0,
+            "low_pct": 100.0 if total else 0.0,
+        }
+
+    # 构造 CASE WHEN 表达式：block 词优先于 replace 词，命中即分到高/中档
+    lower_content = func.lower(Message.content)
+    whens = []
+    for w in block_words:
+        whens.append((func.instr(lower_content, w.lower()) > 0, "high"))
+    for w in replace_words:
+        whens.append((func.instr(lower_content, w.lower()) > 0, "medium"))
+    case_expr = case(*whens, else_="low")
+
+    stats_q = db.query(
+        case_expr.label("risk_level"),
+        func.count(Message.id).label("cnt"),
+    ).filter(*base_filters).group_by(case_expr.label("risk_level"))
+
+    rows = stats_q.all()
+
+    counts = {"high": 0, "medium": 0, "low": 0}
+    for r in rows:
+        # SQLite 在无命中时 risk_level 可能为 NULL → 归到 low
+        level = r.risk_level if r.risk_level in counts else "low"
+        counts[level] = r.cnt
+
+    total = counts["high"] + counts["medium"] + counts["low"]
+    base = total or 1
     return {
-        "total": total, "high": high, "medium": medium, "low": low,
-        "high_pct": round(high / total * 100, 1),
-        "medium_pct": round(medium / total * 100, 1),
-        "low_pct": round(low / total * 100, 1),
+        "total": total,
+        "high": counts["high"],
+        "medium": counts["medium"],
+        "low": counts["low"],
+        "high_pct": round(counts["high"] / base * 100, 1),
+        "medium_pct": round(counts["medium"] / base * 100, 1),
+        "low_pct": round(counts["low"] / base * 100, 1),
     }
 
 
