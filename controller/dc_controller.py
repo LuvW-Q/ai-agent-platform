@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import json, re, uuid
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, timezone, timedelta
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
 from core.rbac import require_role
@@ -286,22 +286,91 @@ def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: Use
 
 
 # ============ 批量深度采集 + 任务进度日志 ============
+async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
+    """后台执行批量深度采集。
+
+    使用独立的 SessionLocal：请求的 db 在响应返回后会关闭，
+    因此后台任务必须自己管理会话生命周期。
+    """
+    db = SessionLocal()
+    try:
+        task = db.query(CollectionTask).filter(CollectionTask.id == task_id).first()
+        if not task:
+            return
+
+        # 超时检测：处理服务重启导致的孤儿任务
+        # （任务状态仍为 running 但已超过 30 分钟未更新）
+        if task.status == "running" and task.updated_at is not None:
+            updated = task.updated_at
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - updated
+            if age > timedelta(minutes=30):
+                task.status = "failed"
+                task.log += "任务超时（超过30分钟无更新）\n"
+                db.commit()
+                return
+
+        task.status = "running"
+        db.commit()
+
+        completed = 0
+        failed = 0
+        async with httpx.AsyncClient(timeout=30) as client:
+            for item_id in item_ids:
+                item = db.query(CollectedData).filter(CollectedData.id == item_id).first()
+                if not item:
+                    failed += 1
+                    task.log += f"[FAIL] item_id={item_id} 数据不存在\n"
+                    db.commit()
+                    continue
+                label = item.title or (item.url[:50] if item.url else "未知条目")
+                try:
+                    if not item.url:
+                        raise ValueError("该数据无来源URL")
+                    resp = await client.get(
+                        item.url,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                        follow_redirects=True,
+                    )
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for tag in soup(["script", "style", "nav", "footer", "header"]):
+                        tag.decompose()
+                    body_text = soup.get_text(separator="\n", strip=True)[:8000]
+                    item.content = body_text
+                    item.deep_collected = True
+                    completed += 1
+                    task.completed_count = completed
+                    task.log += f"[OK] {label}... 深度采集完成\n"
+                except Exception as e:
+                    failed += 1
+                    task.log += f"[FAIL] {label}... 错误: {str(e)}\n"
+                db.commit()
+
+        if task.total_count == 0:
+            task.status = "completed"
+            task.log += "无可深度采集的数据，任务直接结束\n"
+        elif failed == 0:
+            task.status = "completed"
+            task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
+        else:
+            task.status = "failed"
+            task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
+        db.commit()
+    finally:
+        db.close()
+
+
 @dc_router.post("/batch-deep-collect")
-async def batch_deep_collect(body: CrawlIn, db: SessionLocal = Depends(get_db),
+async def batch_deep_collect(body: CrawlIn, background_tasks: BackgroundTasks,
+                              db: SessionLocal = Depends(get_db),
                               user: User = Depends(require_role("ROOT", "ADMIN"))):
-    """批量深度采集：创建任务，对仓库中已保存且未深度采集的数据执行深度采集"""
+    """批量深度采集：创建任务后立即返回，后台异步执行采集循环。
+
+    请求处理器仅完成：选取目标条目、100 条上限检查、创建任务行、入队后台任务。
+    实际的 httpx 抓取循环由 _run_batch_deep_collect 在响应返回后执行。
+    """
     source_ids_str = ",".join(str(s) for s in body.source_ids) if body.source_ids else ""
-    task = CollectionTask(
-        keyword=body.keyword,
-        source_ids=source_ids_str,
-        status="running",
-        total_count=0,
-        completed_count=0,
-        log=f"开始批量深度采集: keyword={body.keyword}, source_ids={source_ids_str or 'all'}\n",
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
 
     # 选取需要深度采集的目标：仓库中已保存且未深度采集
     q = db.query(CollectedData).filter(
@@ -312,50 +381,33 @@ async def batch_deep_collect(body: CrawlIn, db: SessionLocal = Depends(get_db),
         q = q.filter(CollectedData.keyword == body.keyword)
     if body.source_ids:
         q = q.filter(CollectedData.source_id.in_(body.source_ids))
-
     items_to_collect = q.all()
-    task.total_count = len(items_to_collect)
-    task.log += f"待采集条数: {task.total_count}\n"
-    db.commit()
 
-    completed = 0
-    failed = 0
-    async with httpx.AsyncClient(timeout=30) as client:
-        for item in items_to_collect:
-            try:
-                if not item.url:
-                    raise ValueError("该数据无来源URL")
-                resp = await client.get(item.url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
-                full_text = resp.text
-                soup = BeautifulSoup(full_text, "html.parser")
-                for tag in soup(["script", "style", "nav", "footer", "header"]):
-                    tag.decompose()
-                body_text = soup.get_text(separator="\n", strip=True)[:8000]
-                item.content = body_text
-                item.deep_collected = True
-                completed += 1
-                task.completed_count = completed
-                task.log += f"[OK] {item.title or (item.url[:50] if item.url else '未知条目')}... 深度采集完成\n"
-            except Exception as e:
-                failed += 1
-                task.log += f"[FAIL] {item.title or (item.url[:50] if item.url else '未知条目')}... 错误: {str(e)}\n"
-            db.commit()
+    # 批量上限检查：100 条
+    if len(items_to_collect) > 100:
+        raise HTTPException(422, "批量大小超过上限 100")
 
-    if task.total_count == 0:
-        task.status = "completed"
-        task.log += "无可深度采集的数据，任务直接结束\n"
-    elif failed == 0:
-        task.status = "completed"
-        task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
-    else:
-        task.status = "failed"
-        task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
+    task = CollectionTask(
+        keyword=body.keyword,
+        source_ids=source_ids_str,
+        status="pending",
+        total_count=len(items_to_collect),
+        completed_count=0,
+        log=f"开始批量深度采集: keyword={body.keyword}, source_ids={source_ids_str or 'all'}\n待采集条数: {len(items_to_collect)}\n",
+    )
+    db.add(task)
     db.commit()
+    db.refresh(task)
+
+    # 只传 id，避免 SQLAlchemy 对象在请求会话关闭后失效
+    item_ids = [it.id for it in items_to_collect]
+    background_tasks.add_task(_run_batch_deep_collect, task.id, item_ids)
+
     return {
         "task_id": task.id,
-        "status": task.status,
-        "completed": completed,
+        "status": "pending",
         "total": task.total_count,
+        "completed": 0,
     }
 
 
