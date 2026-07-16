@@ -8,6 +8,7 @@ from database.session import SessionLocal, get_db
 from core.security import get_current_user
 from core.rbac import require_role
 from core.openai_client import OpenAIClient
+from core.sensitive_filter import sensitive_filter
 from dao.model_dao import get_default_model
 from dao.base_dao import log_action
 from models.user import User
@@ -16,6 +17,25 @@ from models.group_member import GroupMember
 from models.data_collection import CollectedData
 
 smart_audit = APIRouter(prefix="/api/smart-audit", tags=["智能审计"])
+
+
+def _classify_risk(content: str, db) -> tuple[str, list[str]]:
+    """根据 SensitiveFilter 单例对消息内容进行风险分级（数据库驱动）
+
+    映射:
+      - action="block" 命中 → high
+      - action="replace" 命中（filtered != content）→ medium
+      - 无命中 → low
+    """
+    if not content:
+        return ("low", [])
+    filtered, blocked = sensitive_filter.filter(content, db)
+    if blocked:
+        return ("high", [])
+    if filtered != content:
+        # 至少有一个 replace 类敏感词被替换
+        return ("medium", ["***"])
+    return ("low", [])
 
 
 @smart_audit.get("/messages")
@@ -38,24 +58,11 @@ def audit_messages(
 
     msgs = q.order_by(Message.created_at.desc()).limit(limit).all()
 
-    # 敏感词库（可从 sensitive_words 表读取，这里用内置规则）
-    HIGH_RISK = {"密码", "身份证", "银行卡", "转账", "汇款", "裸聊", "赌博", "毒品", "fuck", "kill"}
-    MEDIUM_RISK = {"私聊", "加微信", "QQ号", "手机号", "私下", "shit", "damn"}
-
     results = []
     for m in msgs:
-        content = (m.content or "").lower()
-        risk = "low"
-        matched_words = []
-        for w in HIGH_RISK:
-            if w.lower() in content:
-                risk = "high"
-                matched_words.append(w)
-        if risk != "high":
-            for w in MEDIUM_RISK:
-                if w.lower() in content:
-                    risk = "medium"
-                    matched_words.append(w)
+        content = m.content or ""
+        # 风险分级委托给 SensitiveFilter（数据库 sensitive_words 表）
+        risk, matched_words = _classify_risk(content, db)
 
         sender_name = ""
         if m.sender_id:
@@ -66,7 +73,7 @@ def audit_messages(
             "id": m.id, "msg_id": m.msg_id,
             "sender_id": m.sender_id, "sender_name": sender_name,
             "receiver_id": m.receiver_id, "group_id": m.group_id,
-            "content": content[:200],
+            "content": content.lower()[:200],
             "risk_level": risk, "matched_words": matched_words,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         })
@@ -84,14 +91,11 @@ def message_audit_stats(
     if end: q = q.filter(Message.created_at <= datetime.fromisoformat(end))
 
     high = medium = low = 0
-    HIGH_RISK = {"密码", "身份证", "银行卡", "转账", "汇款", "裸聊", "赌博", "毒品", "fuck", "kill"}
-    MEDIUM_RISK = {"私聊", "加微信", "QQ号", "手机号", "私下", "shit", "damn"}
-
     for m in q.all():
-        c = (m.content or "").lower()
-        if any(w.lower() in c for w in HIGH_RISK):
+        risk, _ = _classify_risk(m.content or "", db)
+        if risk == "high":
             high += 1
-        elif any(w.lower() in c for w in MEDIUM_RISK):
+        elif risk == "medium":
             medium += 1
         else:
             low += 1

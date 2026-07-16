@@ -11,6 +11,7 @@ from schema.api import MessageOut, MessageSend
 from dao.base_dao import list_messages, create_message, log_action
 from models.message import Message
 from core.security import get_current_user
+from core.sensitive_filter import sensitive_filter
 from models.user import User
 
 im_router = APIRouter(prefix="/api/messages", tags=["IM消息"])
@@ -228,23 +229,24 @@ def conversations(db: SessionLocal = Depends(get_db), user: User = Depends(get_c
 
 
 # ==================== 管理员会话管理 ====================
-# 敏感词库（与 smart_audit_controller 保持一致，用于会话列表风险标签）
-_HIGH_RISK_WORDS = {"密码", "身份证", "银行卡", "转账", "汇款", "裸聊", "赌博", "毒品", "fuck", "kill"}
-_MEDIUM_RISK_WORDS = {"私聊", "加微信", "QQ号", "手机号", "私下", "shit", "damn"}
 
 
-def _classify_risk(content: str) -> str:
-    """根据消息内容关键词返回风险等级 low/medium/high"""
+def _classify_risk(content: str, db) -> tuple[str, list[str]]:
+    """根据 SensitiveFilter 单例对消息内容进行风险分级（数据库驱动）
+
+    映射:
+      - action="block" 命中 → high
+      - action="replace" 命中（filtered != content）→ medium
+      - 无命中 → low
+    """
     if not content:
-        return "low"
-    c = content.lower()
-    for w in _HIGH_RISK_WORDS:
-        if w.lower() in c:
-            return "high"
-    for w in _MEDIUM_RISK_WORDS:
-        if w.lower() in c:
-            return "medium"
-    return "low"
+        return ("low", [])
+    filtered, blocked = sensitive_filter.filter(content, db)
+    if blocked:
+        return ("high", [])
+    if filtered != content:
+        return ("medium", ["***"])
+    return ("low", [])
 
 
 @im_router.get("/admin/conversations")
@@ -283,7 +285,7 @@ def admin_conversations(
     convs = []
     for m in last_msgs:
         sender = db.query(User).filter(User.id == m.sender_id).first() if m.sender_id else None
-        risk = _classify_risk(m.content)
+        risk, _matched = _classify_risk(m.content, db)
         convs.append({
             "user_id": m.sender_id,
             "username": (sender.nickname or sender.username) if sender else f"用户{m.sender_id}",
