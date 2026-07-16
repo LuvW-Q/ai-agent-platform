@@ -197,7 +197,10 @@ async def _handle_recall(user: User, msg_id: str, body: dict):
         if msg.sender_id != user.id:
             return
         # 2分钟内可撤回
-        elapsed = (datetime.now(timezone.utc) - msg.created_at).total_seconds() if msg.created_at else 999
+        created_at = msg.created_at
+        if created_at and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - created_at).total_seconds() if created_at else 999
         if elapsed > 120:
             await ws_manager.send_to_user(user.id, _build_packet("ack", {
                 "msg_id": msg_id, "status": "recall_failed", "reason": "超过2分钟不可撤回"

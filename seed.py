@@ -121,8 +121,8 @@ def _seed_ai_models(db: SessionLocal):
 
 
 def _seed_skills(db: SessionLocal):
-    if db.query(Skill).first():
-        return
+    existing = {s.name for s in db.query(Skill).all()}
+    added = 0
     for s in [
         Skill(name="获取当前时间", skill_type="function_call",
               description="返回当前服务器时间和日期",
@@ -166,20 +166,72 @@ def _seed_skills(db: SessionLocal):
 """,
               parameters='{"type": "object", "properties": {"city": {"type": "string", "description": "城市名(英文)"}}, "required": ["city"]}',
               status="active"),
+        Skill(name="随机音乐推荐", skill_type="function_call",
+              description="从内置曲库随机推荐一首歌曲，不依赖外部接口",
+              config="""def execute(args):
+    import random
+    tracks = [
+        {'song': '夜空中最亮的星', 'artist': '逃跑计划'},
+        {'song': '平凡之路', 'artist': '朴树'},
+        {'song': '稻香', 'artist': '周杰伦'},
+        {'song': '光年之外', 'artist': 'G.E.M.邓紫棋'},
+        {'song': '成都', 'artist': '赵雷'},
+    ]
+    return random.choice(tracks)
+""",
+              parameters='{"type": "object", "properties": {}}',
+              status="active"),
+        Skill(name="新闻检索", skill_type="function_call",
+              description="从本地采集数据仓库检索最新新闻",
+              config="""def execute(args):
+    from database.session import SessionLocal
+    from models.data_collection import CollectedData
+    db = SessionLocal()
+    try:
+        keyword = (args.get('keyword') or '').strip()
+        query = db.query(CollectedData).filter(CollectedData.saved == True)
+        if keyword:
+            query = query.filter(
+                CollectedData.title.contains(keyword) |
+                CollectedData.content.contains(keyword) |
+                CollectedData.summary.contains(keyword)
+            )
+        rows = query.order_by(CollectedData.created_at.desc()).limit(5).all()
+        return {
+            'count': len(rows),
+            'items': [
+                {
+                    'title': row.title or '无标题',
+                    'source': row.source_name or '',
+                    'summary': (row.summary or row.content or '')[:120],
+                }
+                for row in rows
+            ],
+        }
+    finally:
+        db.close()
+""",
+              parameters='{"type": "object", "properties": {"keyword": {"type": "string", "description": "可选的新闻关键词"}}}',
+              status="active"),
         Skill(name="审计报告模板", skill_type="prompt",
               description="生成标准审计报告的提示词模板",
               config="你是一位专业的审计报告专家。请根据以下审计日志信息，生成一份结构化的审计报告，包括：\n1. 审计概况\n2. 风险事件汇总\n3. 高风险事项\n4. 建议措施\n\n审计日志：{logs}\n请用中文输出报告。",
               parameters='{"type": "object", "properties": {"logs": {"type": "string", "description": "审计日志内容"}}, "required": ["logs"]}',
               status="active"),
     ]:
-        db.add(s)
-    print("[seed] 技能写入完成")
+        if s.name not in existing:
+            db.add(s)
+            added += 1
+    db.flush()
+    print(f"[seed] 技能写入完成（新增 {added} 条）")
 
 
 def _seed_agents(db: SessionLocal):
-    if db.query(Agent).first():
-        return
-    # 约定 model_id: 1 = gpt-4o, 2 = deepseek-chat, 4 = claude-3.5-sonnet
+    existing = {a.name for a in db.query(Agent).all()}
+    skills = {s.name: s.id for s in db.query(Skill).all()}
+    gpt_model = db.query(AIModel).filter(AIModel.model_name == "gpt-4o").first()
+    gpt_model_id = gpt_model.id if gpt_model else None
+    added = 0
     for ag in [
         Agent(name="金融数据分析师", base_model="gpt-4o", model_id=1,
               persona_prompt="你是专业的金融数据分析师，擅长解读市场趋势和财务报表。",
@@ -205,9 +257,21 @@ def _seed_agents(db: SessionLocal):
               persona_prompt="你是一位资深程序员，擅长用 Python/JavaScript/Java 等语言编写高质量的代码。回答简洁，附有代码示例。",
               skill_bindings="Code_Helper", skill_ids="1,2",
               status="published", description="编写和调试代码"),
+        Agent(name="随机音乐", base_model="gpt-4o", model_id=gpt_model_id,
+              persona_prompt="你是音乐推荐助手，负责根据用户请求随机推荐歌曲。",
+              skill_bindings="Random_Music", skill_ids=str(skills["随机音乐推荐"]),
+              status="published", description="随机推荐一首歌曲",
+              fallback_message="暂时无法连接外部曲库，已为你从本地曲库推荐歌曲。"),
+        Agent(name="新闻", base_model="gpt-4o", model_id=gpt_model_id,
+              persona_prompt="你是新闻助手，负责从本地采集数据仓库检索和整理最新新闻。",
+              skill_bindings="News_Search", skill_ids=str(skills["新闻检索"]),
+              status="published", description="检索本地采集库中的最新新闻",
+              fallback_message="新闻数据暂时不可用，请稍后再试。"),
     ]:
-        db.add(ag)
-    print("[seed] 数字员工写入完成")
+        if ag.name not in existing:
+            db.add(ag)
+            added += 1
+    print(f"[seed] 数字员工写入完成（新增 {added} 条）")
 
 
 def _seed_audit_logs(db: SessionLocal):

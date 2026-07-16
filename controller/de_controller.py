@@ -327,6 +327,8 @@ async def _mock_chat(agent: Agent, last_msg: str, skills_map: dict, db, user: Us
         "时间": ["获取当前时间", "当前时间", "时间", "time", "几点", "日期", "date"],
         "计算": ["数据计算器", "计算器", "calculate", "计算", "算一下", "等于"],
         "天气": ["天气查询", "weather", "气温", "温度", "下雨", "晴天"],
+        "音乐": ["随机音乐推荐", "随机音乐", "音乐", "music", "歌曲"],
+        "新闻": ["新闻检索", "新闻", "news", "资讯"],
         "审计": ["审计报告模板", "报告"],
     }
 
@@ -427,6 +429,11 @@ def _extract_args_from_msg(msg: str, skill: Skill) -> dict:
                         break
         elif pname == "logs":
             args[pname] = msg
+        elif pname == "keyword":
+            keyword = msg
+            for token in ["帮我查", "查询", "搜索", "最新", "新闻", "资讯"]:
+                keyword = keyword.replace(token, " ")
+            args[pname] = " ".join(keyword.split())
     return args
 
 

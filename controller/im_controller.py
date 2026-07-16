@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import or_
 from database.session import SessionLocal, get_db
 from schema.api import MessageOut, MessageSend
 from dao.base_dao import list_messages, create_message, log_action
@@ -120,14 +121,18 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
 @im_router.post("/{msg_id}/recall")
 def recall_message(msg_id: str, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """撤回消息 — 2分钟内"""
-    msg = db.query(Message).filter(
-        (Message.msg_id == msg_id) | (Message.id == int(msg_id) if msg_id.isdigit() else 0)
-    ).first()
+    lookup = Message.msg_id == msg_id
+    if msg_id.isdigit():
+        lookup = or_(lookup, Message.id == int(msg_id))
+    msg = db.query(Message).filter(lookup).first()
     if not msg:
         raise HTTPException(status_code=404, detail="消息不存在")
     if msg.sender_id != user.id:
         raise HTTPException(status_code=403, detail="只能撤回自己的消息")
-    elapsed = (datetime.now(timezone.utc) - msg.created_at).total_seconds() if msg.created_at else 999
+    created_at = msg.created_at
+    if created_at and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    elapsed = (datetime.now(timezone.utc) - created_at).total_seconds() if created_at else 999
     if elapsed > 120:
         raise HTTPException(status_code=400, detail="超过2分钟不可撤回")
     msg.status = "recalled"
