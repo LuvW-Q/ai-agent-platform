@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from database.session import SessionLocal, get_db
 from schema.api import AgentOut, AgentCreate
@@ -11,6 +11,8 @@ from dao.base_dao import list_agents, create_agent, get_agent, log_action
 from dao.model_dao import get_model
 from dao.skill_dao import get_skills_by_ids
 from models.agent import Agent
+from models.ai_model import AIModel
+from models.skill import Skill
 from core.security import get_current_user
 from core.rbac import require_role
 from models.user import User
@@ -34,21 +36,47 @@ class AgentUpdateIn(BaseModel):
 
 
 @agent_router.get("")
-def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
-    agents = list_agents(db)
+def list_all(
+    agent_type: str | None = Query(None),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    q = db.query(Agent)
+    if agent_type:
+        q = q.filter(Agent.agent_type == agent_type)
+    agents = q.all()
+
+    # Batch-load models — one query for all referenced model IDs
+    model_ids = {a.model_id for a in agents if a.model_id}
+    model_map: dict[int, str] = {}
+    if model_ids:
+        for m in db.query(AIModel).filter(AIModel.id.in_(list(model_ids))).all():
+            model_map[m.id] = m.name
+
+    # Batch-load skills — one query for all referenced skill IDs
+    all_skill_ids: set[int] = set()
+    for a in agents:
+        if a.skill_ids:
+            for x in a.skill_ids.split(","):
+                if x.strip():
+                    all_skill_ids.add(int(x.strip()))
+    skill_map: dict[int, str] = {}
+    if all_skill_ids:
+        for s in db.query(Skill).filter(Skill.id.in_(list(all_skill_ids))).all():
+            skill_map[s.id] = s.name
+
+    # Assemble response using in-memory dicts — no per-agent queries
     result = []
     for a in agents:
-        model_name = ""
-        if a.model_id:
-            m = get_model(a.model_id, db)
-            if m:
-                model_name = m.name
-        # 获取技能名称
+        model_name = model_map.get(a.model_id) or ""
         skill_names = []
         if a.skill_ids:
-            ids = [int(x) for x in a.skill_ids.split(",") if x.strip()]
-            for s in get_skills_by_ids(ids, db):
-                skill_names.append(s.name)
+            for x in a.skill_ids.split(","):
+                x = x.strip()
+                if x:
+                    sid = int(x)
+                    if sid in skill_map:
+                        skill_names.append(skill_map[sid])
         result.append({
             "id": a.id, "name": a.name, "avatar": a.avatar or "",
             "base_model": a.base_model or "", "model_id": a.model_id,
