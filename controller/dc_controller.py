@@ -11,6 +11,7 @@ from core.security import get_current_user
 from core.rbac import require_role
 from dao.model_dao import get_default_model
 from core.openai_client import OpenAIClient
+from core.url_guard import assert_public_url
 from models.user import User
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.collection_task import CollectionTask
@@ -98,6 +99,8 @@ async def test_source(ds_id: int, db: SessionLocal = Depends(get_db),
     if not ds:
         raise HTTPException(404, "数据源不存在")
     test_url = ds.url.replace("{keyword}", "test") if "{keyword}" in ds.url else ds.url
+    # SSRF 防护：`test_source` 是单点测试，HTTPException 直接传播给调用者
+    assert_public_url(test_url)
     try:
         headers = json.loads(ds.headers) if ds.headers else {}
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
@@ -156,6 +159,9 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
     for src in sources:
         try:
             url = src.url.replace("{keyword}", body.keyword)
+            # SSRF 防护：拦截指向内网/环回地址的数据源。
+            # 单条失败不应中断整批采集，HTTPException 被下方 except 捕获后记录为 error。
+            assert_public_url(url)
             headers = json.loads(src.headers) if src.headers else {}
             async with httpx.AsyncClient(timeout=30) as client:
                 if src.method == "POST":
@@ -223,6 +229,9 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
     d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
     if not d: raise HTTPException(404, "数据不存在")
     if not d.url: raise HTTPException(400, "该数据无来源URL")
+
+    # SSRF 防护：校验目标 URL 不指向私网/环回地址
+    assert_public_url(d.url)
 
     # 抓取目标页面
     try:
@@ -328,6 +337,8 @@ async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
                 try:
                     if not item.url:
                         raise ValueError("该数据无来源URL")
+                    # SSRF 防护：单条失败被外层 except 捕获后记录到任务日志
+                    assert_public_url(item.url)
                     resp = await client.get(
                         item.url,
                         headers={"User-Agent": "Mozilla/5.0"},

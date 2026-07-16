@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from core.security import get_current_user
 from core.rbac import require_role
+from core.url_guard import assert_public_url
 from dao.base_dao import log_action
 from database.session import SessionLocal, get_db
 from models.agent import Agent
@@ -124,6 +125,14 @@ async def test_api(api_id: int, params: str = Query("{}"),
     api = db.query(ApiRegistry).filter(ApiRegistry.id == api_id).first()
     if not api:
         raise HTTPException(404, "接口不存在")
+    # SSRF 防护：在请求前校验目标 URL。HTTPException 直接传播给调用者。
+    if api.method.upper() == "POST":
+        resolved_url = api.base_url
+    else:
+        resolved_url = api.base_url
+        if params and "{params}" in resolved_url:
+            resolved_url = resolved_url.replace("{params}", params)
+    assert_public_url(resolved_url)
     try:
         headers = json.loads(api.headers) if api.headers else {}
         if auth := _build_auth_headers(api):
@@ -133,12 +142,9 @@ async def test_api(api_id: int, params: str = Query("{}"),
                 body = api.body_template or ""
                 if params and "{params}" in body:
                     body = body.replace("{params}", params)
-                resp = await client.post(api.base_url, content=body, headers=headers)
+                resp = await client.post(resolved_url, content=body, headers=headers)
             else:
-                url = api.base_url
-                if params and "{params}" in url:
-                    url = url.replace("{params}", params)
-                resp = await client.get(url, headers=headers, follow_redirects=True,
+                resp = await client.get(resolved_url, headers=headers, follow_redirects=True,
                                         params=_build_query_params(api, params))
         result_text = resp.text[:2000]
         extracted = _extract_response_path(result_text, api.response_path)
