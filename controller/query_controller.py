@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core.security import get_current_user
+from core.rbac import require_role
 from core.openai_client import OpenAIClient
 from dao.model_dao import get_model, get_default_model, list_models as dao_list_models
 from database.session import SessionLocal, get_db
@@ -187,7 +188,8 @@ def available_models(db: SessionLocal = Depends(get_db)):
 
 
 @query_router.post("/nl2sql")
-async def nl2sql(body: QueryIn, db: SessionLocal = Depends(get_db), current: User = Depends(get_current_user)):
+async def nl2sql(body: QueryIn, db: SessionLocal = Depends(get_db),
+                 current: User = Depends(require_role("ROOT", "ADMIN", "AUDIT", "OPS"))):
     """自然语言→SQL：AI模式（有真实Key）+ 关键词降级（占位符Key）"""
     question = body.question.strip()
     if not question:

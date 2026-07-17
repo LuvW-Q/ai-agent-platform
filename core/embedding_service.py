@@ -7,6 +7,9 @@ from __future__ import annotations
 import json, logging
 from typing import Any
 import httpx
+from fastapi import HTTPException
+from core.safe_http import request_public_url
+from core.url_guard import assert_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -14,16 +17,19 @@ logger = logging.getLogger(__name__)
 async def get_embedding(texts: list[str], api_key: str, endpoint: str, model_name: str) -> list[list[float]] | None:
     """调用 OpenAI 协议 embedding 接口"""
     url = f"{endpoint.rstrip('/')}/embeddings"
+    assert_public_url(url)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model_name, "input": texts}
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await request_public_url(client, "POST", url, json=payload, headers=headers)
             if resp.status_code != 200:
                 logger.warning("Embedding failed: %s %s", resp.status_code, resp.text[:300])
                 return None
             data = resp.json()
             return [d["embedding"] for d in sorted(data.get("data", []), key=lambda x: x["index"])]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning("Embedding error: %s", e)
         return None
@@ -42,11 +48,12 @@ async def rerank_documents(
     尝试标准 rerank 格式: POST /rerank {"model":"...", "query":"...", "documents":[...]}
     """
     url = f"{endpoint.rstrip('/')}/rerank"
+    assert_public_url(url)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"model": model_name, "query": query, "documents": documents, "top_n": top_n}
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await request_public_url(client, "POST", url, json=payload, headers=headers)
             if resp.status_code != 200:
                 logger.warning("Rerank failed: %s %s", resp.status_code, resp.text[:200])
                 # 降级：返回原始顺序
@@ -54,6 +61,8 @@ async def rerank_documents(
             data = resp.json()
             results = data.get("results", [])
             return [{"index": r.get("index", 0), "text": documents[r.get("index", 0)] if r.get("index", 0) < len(documents) else "", "score": r.get("relevance_score", 0)} for r in results]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning("Rerank error: %s", e)
         return [{"index": i, "text": d, "score": 0.0} for i, d in enumerate(documents[:top_n])]

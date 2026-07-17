@@ -5,13 +5,18 @@
 
 /* ========== Token 管理 ========== */
 const Token = {
-  get access() { return localStorage.getItem('access_token'); },
-  get refresh() { return localStorage.getItem('refresh_token'); },
+  _access: sessionStorage.getItem('access_token'),
+  get access() { return this._access || sessionStorage.getItem('access_token'); },
+  get refresh() { return null; },
   set(v) {
-    localStorage.setItem('access_token', v.access_token);
-    localStorage.setItem('refresh_token', v.refresh_token);
+    this._access = v.access_token;
+    sessionStorage.setItem('access_token', v.access_token);
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
   },
   clear() {
+    this._access = null;
+    sessionStorage.removeItem('access_token');
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   },
@@ -122,12 +127,11 @@ async function apiPatch(path, body) {
 }
 
 async function tryRefresh() {
-  if (!Token.refresh) return false;
   try {
     const res = await fetch('/api/auth/refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: Token.refresh })
+      body: JSON.stringify({})
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -907,6 +911,7 @@ function fixSidebarNav(aside) {
 
 /* 退出登录 */
 function logout() {
+  fetch('/api/auth/logout', { method: 'POST', keepalive: true }).catch(() => {});
   Token.clear();
   window.location.href = '/login';
 }
@@ -969,7 +974,7 @@ const IM = {
     }
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${location.host}/ws/chat?token=${Token.access}`;
+    const url = `${proto}//${location.host}/ws/chat`;
 
     try {
       this.ws = new WebSocket(url);
@@ -980,6 +985,12 @@ const IM = {
     }
 
     this.ws.onopen = () => {
+      this.ws.send(JSON.stringify({
+        msg_id: this._genMsgId(),
+        msg_type: 'auth',
+        timestamp: new Date().toISOString(),
+        body: { token: Token.access }
+      }));
       this.connected = true;
       this.reconnectAttempts = 0;
       console.log('[IM] WebSocket已连接');
@@ -1101,6 +1112,7 @@ const IM = {
 
 // 强制下线处理
 IM.on('force_logout', (data) => {
+  fetch('/api/auth/logout', { method: 'POST', keepalive: true }).catch(() => {});
   Token.clear();
   alert(data.reason || '账号在其他设备登录，您已被强制下线');
   window.location.href = '/login';

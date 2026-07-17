@@ -10,6 +10,9 @@ from typing import Any
 
 import httpx
 
+from core.safe_http import request_public_url
+from core.url_guard import assert_public_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,6 +87,7 @@ class OpenAIClient:
     ):
         self.api_key = api_key
         self.endpoint = endpoint.rstrip("/")
+        assert_public_url(self.endpoint)
         self.model_name = model_name
         self.temperature = float(temperature)
         self.max_tokens = int(max_tokens)
@@ -184,7 +188,7 @@ class OpenAIClient:
 
         # ---- 发起请求 ----
         try:
-            response = await client.post(self.url, json=payload)
+            response = await request_public_url(client, "POST", self.url, json=payload)
         except httpx.TimeoutException as exc:
             logger.warning("[OpenAIClient] 请求超时: %s", exc)
             raise OpenAITimeoutError(f"请求超时（{self.timeout}s）: {exc}") from exc

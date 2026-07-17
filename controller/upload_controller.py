@@ -27,17 +27,20 @@ def _can_read_message_upload(relative: Path, user: User, db: SessionLocal) -> bo
         return True
 
     file_url = f"/api/uploads/{relative.as_posix()}"
-    message = db.query(Message).filter(Message.file_url == file_url).first()
-    if not message:
-        return False
-    if message.sender_id == user.id or message.receiver_id == user.id:
-        return True
-    if message.group_id is not None:
-        membership = db.query(GroupMember).filter(
-            GroupMember.group_id == message.group_id,
-            GroupMember.user_id == user.id,
-        ).first()
-        return membership is not None
+    messages = db.query(Message).filter(
+        Message.file_url == file_url,
+        Message.sender_id == uploader_id,
+    ).all()
+    for message in messages:
+        if message.sender_id == user.id or message.receiver_id == user.id:
+            return True
+        if message.group_id is not None:
+            membership = db.query(GroupMember).filter(
+                GroupMember.group_id == message.group_id,
+                GroupMember.user_id == user.id,
+            ).first()
+            if membership is not None:
+                return True
     return False
 
 

@@ -13,7 +13,6 @@ from dao.skill_dao import get_skills_by_ids
 from models.agent import Agent
 from models.ai_model import AIModel
 from models.skill import Skill
-from core.security import get_current_user
 from core.rbac import require_role
 from models.user import User
 
@@ -39,7 +38,7 @@ class AgentUpdateIn(BaseModel):
 def list_all(
     agent_type: str | None = Query(None),
     db: SessionLocal = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role("ROOT", "ADMIN", "OPS")),
 ):
     q = db.query(Agent)
     if agent_type:

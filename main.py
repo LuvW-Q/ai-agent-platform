@@ -239,7 +239,7 @@ async def disable_static_cache(request, call_next):
         "default-src 'self' https: data: blob:; "
         f"script-src {script_policy}; "
         "style-src 'self' 'unsafe-inline' https:; "
-        "connect-src 'self' https: wss:; frame-ancestors 'none'; base-uri 'self'"
+        "connect-src 'self' https: ws: wss:; frame-ancestors 'none'; base-uri 'self'"
     )
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

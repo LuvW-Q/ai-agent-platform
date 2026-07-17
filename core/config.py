@@ -24,6 +24,7 @@ class AppConfig(BaseSettings):
     SSRF_ALLOWED_PORTS: str = "80,443"
     SSRF_ALLOWED_HOSTS: str = ""
     SSRF_ALLOW_INTERNAL: bool = False
+    COOKIE_SECURE: bool = False
 
     # 初始化：默认关闭演示账号。生产首次启动必须显式提供管理员密码。
     ENABLE_DEMO_SEED: bool = False

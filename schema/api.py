@@ -24,7 +24,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
 
 class RefreshIn(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
