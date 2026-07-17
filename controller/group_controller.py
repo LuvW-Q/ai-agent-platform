@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.group_auth import require_group_manager, require_group_member, require_group_owner
 from core.ws_manager import ws_manager
 from models.user import User
 from dao.group_dao import (
@@ -45,6 +46,7 @@ def my_groups(db: SessionLocal = Depends(get_db), user: User = Depends(get_curre
 def update_group(group_id: int, body: GroupUpdateIn, db: SessionLocal = Depends(get_db),
                  user: User = Depends(get_current_user)):
     """更新群信息（名称、头像、公告）"""
+    require_group_manager(group_id, user.id, db)
     g = get_group(group_id, db)
     if not g:
         raise HTTPException(404, "群不存在")
@@ -79,15 +81,17 @@ async def create(body: GroupCreateIn, db: SessionLocal = Depends(get_db), user: 
 @group_router.get("/{group_id}/members")
 def members(group_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """群成员列表"""
+    require_group_member(group_id, user.id, db)
     return get_group_members(group_id, db)
 
 
 @group_router.post("/{group_id}/invite")
 async def invite(group_id: int, body: InviteIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """邀请好友进群"""
+    require_group_manager(group_id, user.id, db)
     added = []
     for uid in body.user_ids:
-        if add_member(group_id, uid, "member", db):
+        if add_member(group_id, uid, db, "member"):
             added.append(uid)
             await ws_manager.send_to_user(uid, {
                 "msg_id": str(uuid.uuid4()),
@@ -101,6 +105,9 @@ async def invite(group_id: int, body: InviteIn, db: SessionLocal = Depends(get_d
 @group_router.delete("/{group_id}/members/{user_id}")
 def kick(group_id: int, user_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """踢人出群（仅群主/管理员）"""
+    require_group_manager(group_id, user.id, db)
+    if user_id == user.id:
+        raise HTTPException(400, "不能踢出自己，请使用退出群聊")
     ok = remove_member(group_id, user_id, db)
     if not ok:
         raise HTTPException(400, "无法移除该成员")
@@ -110,6 +117,7 @@ def kick(group_id: int, user_id: int, db: SessionLocal = Depends(get_db), user: 
 @group_router.delete("/{group_id}/leave")
 def leave(group_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """退出群聊"""
+    require_group_member(group_id, user.id, db)
     ok = remove_member(group_id, user.id, db)
     if not ok:
         raise HTTPException(400, "无法退出（您可能是群主）")
@@ -119,6 +127,7 @@ def leave(group_id: int, db: SessionLocal = Depends(get_db), user: User = Depend
 @group_router.delete("/{group_id}")
 def dissolve(group_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """解散群聊（仅群主）"""
+    require_group_owner(group_id, user.id, db)
     ok = dissolve_group(group_id, user.id, db)
     if not ok:
         raise HTTPException(400, "无权限或群不存在")

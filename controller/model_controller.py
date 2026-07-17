@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from database.session import SessionLocal, get_db
 from schema.api import AIModelOut, AIModelCreate, AIModelUpdate
 from dao.model_dao import list_models, get_model, create_model, update_model, delete_model, set_default
-from core.security import get_current_user
 from core.rbac import require_role
 from core.openai_client import OpenAIClient, OpenAIError
+from core.safe_http import request_public_url
+from core.url_guard import assert_public_url
 from dao.base_dao import log_action
 from models.user import User
 from models.ai_model import AIModel
@@ -18,12 +19,14 @@ model_router = APIRouter(prefix="/api/models", tags=["大模型管理"])
 
 
 @model_router.get("", response_model=list[AIModelOut])
-def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def list_all(db: SessionLocal = Depends(get_db),
+             user: User = Depends(require_role("ROOT", "ADMIN", "OPS"))):
     return list_models(db)
 
 
 @model_router.post("", response_model=AIModelOut, status_code=201)
 def create(body: AIModelCreate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
+    assert_public_url(body.endpoint)
     m = AIModel(
         name=body.name, provider=body.provider, api_key=body.api_key,
         model_name=body.model_name, endpoint=body.endpoint,
@@ -38,7 +41,8 @@ def create(body: AIModelCreate, db: SessionLocal = Depends(get_db), user: User =
 
 
 @model_router.get("/{model_id}", response_model=AIModelOut)
-def get_one(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def get_one(model_id: int, db: SessionLocal = Depends(get_db),
+            user: User = Depends(require_role("ROOT", "ADMIN", "OPS"))):
     m = get_model(model_id, db)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -48,6 +52,8 @@ def get_one(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depe
 @model_router.put("/{model_id}", response_model=AIModelOut)
 def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "endpoint" in updates:
+        assert_public_url(updates["endpoint"])
     m = update_model(model_id, updates, db)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -87,9 +93,13 @@ async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: Us
         # image / video 模型不走 chat/completions，直接探测对应端点
         if m.model_type == "image":
             import httpx
+            url = generation_endpoint(m.endpoint, "image")
+            assert_public_url(url)
             async with httpx.AsyncClient(timeout=20) as http:
-                resp = await http.post(
-                    generation_endpoint(m.endpoint, "image"),
+                resp = await request_public_url(
+                    http,
+                    "POST",
+                    url,
                     json={"model": m.model_name, "prompt": "test", "n": 1, "size": "1024x1024"},
                     headers={"Authorization": f"Bearer {m.api_key}"},
                 )
@@ -99,9 +109,13 @@ async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: Us
             return {"success": True, "response": f"图片端点可达 (HTTP {resp.status_code})"}
         if m.model_type == "video":
             import httpx
+            url = generation_endpoint(m.endpoint, "video")
+            assert_public_url(url)
             async with httpx.AsyncClient(timeout=20) as http:
-                resp = await http.post(
-                    generation_endpoint(m.endpoint, "video"),
+                resp = await request_public_url(
+                    http,
+                    "POST",
+                    url,
                     json={"model": m.model_name, "prompt": "test"},
                     headers={"Authorization": f"Bearer {m.api_key}"},
                 )
@@ -126,5 +140,7 @@ async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: Us
         return {"success": True, "response": content}
     except OpenAIError as e:
         return {"success": False, "error": str(e)}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"success": False, "error": f"未知错误: {e}"}

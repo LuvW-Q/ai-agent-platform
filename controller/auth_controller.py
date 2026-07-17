@@ -6,13 +6,14 @@ from __future__ import annotations
 import json
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response, Cookie
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from database.session import SessionLocal, get_db
 from schema.api import RegisterIn, LoginIn, TokenOut, RefreshIn, UserOut
 from service.auth_service import issue_tokens, login, refresh_access, register
 from core.security import get_current_user
 from core.crypto import decrypt, encrypt
+from core.config import config
 from models.user import User
 from models.setting import Setting
 from dao.user_dao import find_user_by_name
@@ -48,6 +49,18 @@ class FaceLoginIn(FaceDescriptorIn):
     username: str = Field(..., min_length=3, max_length=50)
 
 
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        "refresh_token",
+        refresh_token,
+        max_age=config.REFRESH_TOKEN_EXPIRE * 60,
+        httponly=True,
+        secure=config.COOKIE_SECURE,
+        samesite="lax",
+        path="/api/auth",
+    )
+
+
 def _require_face_recognition_enabled(db: SessionLocal) -> None:
     setting = db.query(Setting).filter(Setting.key == "face_recognition_enabled").first()
     if setting is not None and setting.value not in ("true", "1"):
@@ -62,12 +75,13 @@ def do_register(body: RegisterIn, db: SessionLocal = Depends(get_db)):
 
 
 @auth_router.post("/login", response_model=TokenOut)
-def do_login(body: LoginIn, db: SessionLocal = Depends(get_db)):
+def do_login(body: LoginIn, response: Response, db: SessionLocal = Depends(get_db)):
     try:
         access, refresh = login(body, db)
     except HTTPException:
         log_action("login_failed", f"登录失败: {body.username}", body.username, db)
         raise
+    _set_refresh_cookie(response, refresh)
     log_action("login", f"用户登录成功: {body.username}", body.username, db)
     return TokenOut(access_token=access, refresh_token=refresh)
 
@@ -85,7 +99,7 @@ def register_face(body: FaceDescriptorIn, db: SessionLocal = Depends(get_db),
 
 
 @auth_router.post("/face/login", response_model=TokenOut)
-def login_with_face(body: FaceLoginIn, db: SessionLocal = Depends(get_db)):
+def login_with_face(body: FaceLoginIn, response: Response, db: SessionLocal = Depends(get_db)):
     """比对人脸特征；欧氏距离严格小于 0.6 时签发登录令牌。"""
     _require_face_recognition_enabled(db)
     user = find_user_by_name(body.username, db)
@@ -110,6 +124,7 @@ def login_with_face(body: FaceLoginIn, db: SessionLocal = Depends(get_db)):
         raise HTTPException(status_code=401, detail="人脸验证失败")
 
     access, refresh = issue_tokens(user, db)
+    _set_refresh_cookie(response, refresh)
     log_action("face_login", f"用户人脸登录成功: {body.username}", body.username, db)
     return TokenOut(access_token=access, refresh_token=refresh)
 
@@ -158,9 +173,21 @@ def change_password(body: PasswordChangeIn, db: SessionLocal = Depends(get_db),
 
 
 @auth_router.post("/refresh", response_model=TokenOut)
-def do_refresh(body: RefreshIn, db: SessionLocal = Depends(get_db)):
-    new_access = refresh_access(body.refresh_token, db)
-    return TokenOut(access_token=new_access, refresh_token=body.refresh_token)
+def do_refresh(response: Response, body: RefreshIn | None = None,
+               refresh_cookie: str | None = Cookie(None, alias="refresh_token"),
+               db: SessionLocal = Depends(get_db)):
+    token = (body.refresh_token if body else None) or refresh_cookie
+    if not token:
+        raise HTTPException(status_code=401, detail="缺少刷新令牌")
+    new_access = refresh_access(token, db)
+    _set_refresh_cookie(response, token)
+    return TokenOut(access_token=new_access, refresh_token=token)
+
+
+@auth_router.post("/logout")
+def do_logout(response: Response):
+    response.delete_cookie("refresh_token", path="/api/auth")
+    return {"logged_out": True}
 
 
 # ===== 头像上传 =====

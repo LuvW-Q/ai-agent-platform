@@ -7,7 +7,6 @@ from database.session import SessionLocal, get_db
 from schema.api import SkillOut, SkillCreate, SkillUpdate, AICreateSkillIn
 from dao.skill_dao import list_skills, get_skill, create_skill, update_skill, delete_skill
 from dao.model_dao import get_model
-from core.security import get_current_user
 from core.rbac import require_role
 from core.openai_client import OpenAIClient, OpenAIError
 from core.sandbox import sandbox
@@ -23,7 +22,8 @@ skill_router = APIRouter(prefix="/api/skills", tags=["技能管理"])
 
 
 @skill_router.get("", response_model=list[SkillOut])
-def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def list_all(db: SessionLocal = Depends(get_db),
+             user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     return list_skills(db)
 
 
@@ -43,7 +43,8 @@ def create(body: SkillCreate, db: SessionLocal = Depends(get_db),
 
 
 @skill_router.get("/{skill_id}", response_model=SkillOut)
-def get_one(skill_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def get_one(skill_id: int, db: SessionLocal = Depends(get_db),
+            user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     s = get_skill(skill_id, db)
     if not s:
         raise HTTPException(404, "技能不存在")

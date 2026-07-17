@@ -6,6 +6,7 @@ WebSocket聊天控制器
 from __future__ import annotations
 
 import json
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
@@ -17,7 +18,9 @@ from models.user import User
 from models.message import Message
 from models.group_member import GroupMember
 from dao.base_dao import log_action
+from core.group_auth import require_group_member
 from core.sensitive_filter import sensitive_filter
+from core.upload_security import validate_message_file_url
 
 ws_router = APIRouter(tags=["WebSocket"])
 
@@ -53,16 +56,33 @@ def _build_packet(msg_type: str, body: dict, msg_id: str = None) -> dict:
     }
 
 
+async def _receive_initial_token(websocket: WebSocket) -> str | None:
+    try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=5)
+        packet = json.loads(raw)
+    except Exception:
+        return None
+    if isinstance(packet, dict):
+        body = packet.get("body") if isinstance(packet.get("body"), dict) else {}
+        return body.get("token") or packet.get("token")
+    return None
+
+
 @ws_router.websocket("/ws/chat")
-async def chat_websocket(websocket: WebSocket, token: str = Query(...)):
-    """WebSocket聊天端点 — 客户端连接时需传token查询参数"""
-    user = _authenticate(token)
+async def chat_websocket(websocket: WebSocket, token: str | None = Query(None)):
+    """WebSocket聊天端点：优先使用首帧鉴权，兼容旧版 query token。"""
+    accepted = False
+    if not token:
+        await websocket.accept()
+        accepted = True
+        token = await _receive_initial_token(websocket)
+    user = _authenticate(token or "")
     if not user:
         await websocket.close(code=4001, reason="认证失败")
         return
 
     user_id = user.id
-    await ws_manager.connect(user_id, websocket)
+    await ws_manager.connect(user_id, websocket, accepted=accepted)
 
     # 发送上线通知
     await ws_manager.send_to_user(user_id, _build_packet("system", {
@@ -121,6 +141,18 @@ async def _handle_chat(sender: User, msg_id: str, body: dict):
 
         receiver_id = body.get("receiver_id")
         group_id = body.get("group_id")
+        if chat_type not in {"single", "group"}:
+            raise ValueError("不支持的聊天类型")
+        if chat_type == "group":
+            if not group_id:
+                raise ValueError("群聊必须指定 group_id")
+            require_group_member(int(group_id), sender.id, db)
+            receiver_id = None
+        else:
+            if not receiver_id:
+                raise ValueError("单聊必须指定 receiver_id")
+            group_id = None
+        validate_message_file_url(file_url, sender.id)
 
         matches = []
         blocked = False
@@ -276,8 +308,11 @@ async def _handle_typing(user: User, body: dict):
         await ws_manager.send_to_user(receiver_id, packet)
     elif group_id:
         db = SessionLocal()
-        members = db.query(GroupMember).filter(GroupMember.group_id == group_id).all()
-        db.close()
+        try:
+            require_group_member(int(group_id), user.id, db)
+            members = db.query(GroupMember).filter(GroupMember.group_id == group_id).all()
+        finally:
+            db.close()
         for m in members:
             if m.user_id != user.id:
                 await ws_manager.send_to_user(m.user_id, packet)

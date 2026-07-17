@@ -5,7 +5,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from core.security import get_current_user
+from database.session import SessionLocal
 from main import app
+from models.message import Message
 from models.user import User
 
 
@@ -96,5 +98,54 @@ def test_unrelated_user_cannot_download_unsent_message_upload():
         assert forbidden.status_code == 403, forbidden.text
     finally:
         app.dependency_overrides.clear()
+        if uploaded_path:
+            uploaded_path.unlink(missing_ok=True)
+
+
+def test_spoofed_message_cannot_grant_access_to_another_users_upload():
+    app.dependency_overrides[get_current_user] = _stub_user
+    client = TestClient(app)
+    uploaded_path = None
+    spoof_id = None
+    try:
+        png = b"\x89PNG\r\n\x1a\n" + b"owner-only-content"
+        response = client.post(
+            "/api/messages/upload",
+            files={"file": ("owner.png", png, "image/png")},
+        )
+        assert response.status_code == 200, response.text
+        url = response.json()["url"]
+        uploaded_path = Path("uploads") / url.removeprefix("/api/uploads/")
+
+        db = SessionLocal()
+        try:
+            spoof = Message(
+                msg_id="spoof-upload-access",
+                sender_id=9102,
+                receiver_id=9102,
+                content="spoof",
+                msg_type="image",
+                file_url=url,
+                file_name="owner.png",
+                file_size=len(png),
+            )
+            db.add(spoof)
+            db.commit()
+            spoof_id = spoof.id
+        finally:
+            db.close()
+
+        app.dependency_overrides[get_current_user] = _other_user
+        forbidden = client.get(url)
+        assert forbidden.status_code == 403, forbidden.text
+    finally:
+        app.dependency_overrides.clear()
+        db = SessionLocal()
+        try:
+            if spoof_id:
+                db.query(Message).filter(Message.id == spoof_id).delete()
+                db.commit()
+        finally:
+            db.close()
         if uploaded_path:
             uploaded_path.unlink(missing_ok=True)

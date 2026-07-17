@@ -56,6 +56,34 @@ def media_type_for_path(path: Path) -> str:
     return _MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
 
 
+def validate_message_file_url(file_url: str, user_id: int) -> None:
+    """发送消息时校验附件 URL 确属当前用户上传目录。"""
+    if not file_url:
+        return
+    prefix = "/api/uploads/"
+    if not file_url.startswith(prefix):
+        raise HTTPException(400, "附件地址无效")
+    relative = Path(file_url.removeprefix(prefix))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise HTTPException(400, "附件地址无效")
+    parts = relative.parts
+    if len(parts) < 3 or parts[0] != "messages":
+        raise HTTPException(400, "附件地址无效")
+    try:
+        uploader_id = int(parts[1])
+    except (TypeError, ValueError):
+        raise HTTPException(400, "附件地址无效")
+    if uploader_id != user_id:
+        raise HTTPException(403, "只能发送自己上传的附件")
+    target = (UPLOAD_ROOT / relative).resolve()
+    try:
+        target.relative_to(UPLOAD_ROOT)
+    except ValueError:
+        raise HTTPException(400, "附件地址无效")
+    if not target.is_file():
+        raise HTTPException(400, "附件不存在或已失效")
+
+
 def _validate_zip_container(path: Path, extension: str, max_size: int) -> None:
     try:
         with zipfile.ZipFile(path) as archive:

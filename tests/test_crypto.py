@@ -53,6 +53,18 @@ def test_decrypt_plaintext_fallback(monkeypatch):
     assert crypto.decrypt(legacy) == legacy
 
 
+def test_missing_app_secret_key_fails_in_production(monkeypatch):
+    """Production must not fall back to the development Fernet key."""
+    monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "production")
+    from core import crypto
+
+    importlib.reload(crypto)
+
+    with pytest.raises(RuntimeError, match="APP_SECRET_KEY"):
+        crypto.encrypt("sk-test")
+
+
 # ── Model integration test (requires a test database) ─────────────────────────
 
 

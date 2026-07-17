@@ -15,8 +15,14 @@ from dao.base_dao import list_messages, create_message, log_action
 from models.message import Message
 from core.security import get_current_user
 from core.rbac import require_role
+from core.group_auth import require_group_member
 from core.sensitive_filter import sensitive_filter
-from core.upload_security import IMAGE_EXTENSIONS, MESSAGE_EXTENSIONS, save_validated_upload
+from core.upload_security import (
+    IMAGE_EXTENSIONS,
+    MESSAGE_EXTENSIONS,
+    save_validated_upload,
+    validate_message_file_url,
+)
 from models.user import User
 
 im_router = APIRouter(prefix="/api/messages", tags=["IM消息"])
@@ -33,6 +39,7 @@ def message_history(
     """消息漫游 — 获取历史消息，支持分页"""
     q = db.query(Message).filter(Message.status != "recalled")
     if group_id:
+        require_group_member(group_id, user.id, db)
         q = q.filter(Message.group_id == group_id)
     elif peer_id:
         # 单聊：双方之间的消息
@@ -87,6 +94,11 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
 @im_router.post("", response_model=MessageOut, status_code=201)
 def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """通过HTTP发送消息（WebSocket离线时的备选方案）"""
+    if bool(body.group_id) == bool(body.receiver_id):
+        raise HTTPException(status_code=400, detail="必须且只能指定 receiver_id 或 group_id")
+    if body.group_id:
+        require_group_member(body.group_id, user.id, db)
+    validate_message_file_url(body.file_url, user.id)
     # 幂等检查
     if body.msg_id:
         existing = db.query(Message).filter(Message.msg_id == body.msg_id).first()
@@ -102,7 +114,7 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
     msg = Message(
         msg_id=body.msg_id or str(uuid.uuid4()),
         sender_id=user.id,
-        receiver_id=body.receiver_id,
+        receiver_id=None if body.group_id else body.receiver_id,
         group_id=body.group_id,
         content=body.content if blocked else content,
         msg_type=body.msg_type,

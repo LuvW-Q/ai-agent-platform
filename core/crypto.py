@@ -2,8 +2,8 @@
 对称加密工具：用 Fernet 对 API key / auth key 等敏感字段做静态加密。
 
 设计要点：
-- 密钥来自环境变量 ``APP_SECRET_KEY``；未设置时回退到一个**仅用于开发**的硬编码密钥，
-  并打印 warning。生产部署务必设置 ``APP_SECRET_KEY``。
+- 密钥来自环境变量 ``APP_SECRET_KEY``；开发环境未设置时回退到一个仅用于开发的硬编码密钥。
+- 生产环境（APP_ENV/ENVIRONMENT/FASTAPI_ENV=production/prod）未设置时直接拒绝加解密。
 - ``encrypt("")`` 返回 ``""``，``decrypt("")`` 返回 ``""``，
   避免破坏 seed 中 ``auth_key=""`` 这种空字符串约定。
 - ``encrypt(None)`` / ``decrypt(None)`` 都返回 ``None``（防御性）。
@@ -30,14 +30,27 @@ _DEV_KEY = b"MGAx5eSNSRKyEvpe553H9w0lZ8R2wg5yRTEKwmtaYdE="
 
 
 def _get_key() -> bytes:
-    """返回当前应使用的 Fernet 密钥。优先读 env，缺失时回退到 _DEV_KEY 并告警。"""
+    """返回当前应使用的 Fernet 密钥。生产环境禁止默认开发密钥。"""
     k = os.environ.get("APP_SECRET_KEY")
     if not k:
+        env = (
+            os.environ.get("APP_ENV")
+            or os.environ.get("ENVIRONMENT")
+            or os.environ.get("FASTAPI_ENV")
+            or ""
+        ).lower()
+        if env in {"prod", "production"}:
+            raise RuntimeError("生产环境必须配置 APP_SECRET_KEY")
         logger.warning(
             "APP_SECRET_KEY not set; using dev-only key — NOT SAFE for production"
         )
         return _DEV_KEY
-    return k.encode() if isinstance(k, str) else k
+    key = k.encode() if isinstance(k, str) else k
+    try:
+        Fernet(key)
+    except Exception as exc:
+        raise RuntimeError("APP_SECRET_KEY 必须是有效 Fernet key") from exc
+    return key
 
 
 def encrypt(plaintext: str | None) -> str | None:
