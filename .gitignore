@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 .venv/
+.preview-venv/
 venv/
 env/
 ENV/
@@ -32,6 +33,11 @@ uploads/*
 # Logs
 *.log
 
+# Superpowers worktrees & ledger
+.claude/worktrees/
+.superpowers/
+
 # Env
 .env
 .env.*
+!.env.example

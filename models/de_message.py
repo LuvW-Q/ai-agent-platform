@@ -12,6 +12,7 @@ class DEMessage(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    session_id = Column(String(64), nullable=False, default="", index=True)
     role = Column(String(20), nullable=False)  # user/assistant/system
     content = Column(Text, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

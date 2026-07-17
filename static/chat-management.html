@@ -1,91 +1,356 @@
 <!DOCTYPE html>
-<html class="dark" lang="zh-CN"><head>
-<meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>聊天管理 - 数据瞭望系统</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<html class="dark" lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>聊天管理 — 数据瞭望系统</title>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script>tailwind.config={darkMode:"class",theme:{extend:{colors:{"background":"#071425","surface":"#071425","surface-container":"#142031","surface-container-high":"#1f2a3c","surface-container-highest":"#2a3548","surface-variant":"#2a3548","on-surface":"#d7e3fb","on-surface-variant":"#c3c6d7","primary":"#b4c5ff","primary-container":"#0052d9","secondary":"#a6e6ff","secondary-container":"#14d1ff","tertiary":"#ffb59c","error":"#ffb4ab","error-container":"#93000a","outline":"#8d90a0","outline-variant":"#434654","on-background":"#d7e3fb"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},fontFamily:{Inter:["Inter"]}}}}</script>
-<style>body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.material-symbols-outlined{font-variation-settings:'FILL'0,'wght'400,'GRAD'0,'opsz'24;vertical-align:middle}.tab-active{border-bottom:2px solid #b4c5ff;color:#b4c5ff}</style></head>
-<body class="bg-background text-on-background min-h-screen">
+<script>
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "background": "#0b1326", "surface": "#0b1326", "surface-dim": "#0b1326",
+        "surface-bright": "#31394d", "surface-container-lowest": "#060e20",
+        "surface-container-low": "#131b2e", "surface-container": "#171f33",
+        "surface-container-high": "#222a3d", "surface-container-highest": "#2d3449",
+        "surface-variant": "#2d3449", "primary": "#adc6ff",
+        "on-primary": "#002e6a", "primary-container": "#4d8eff",
+        "on-primary-container": "#00285d", "primary-fixed": "#d8e2ff",
+        "primary-fixed-dim": "#adc6ff", "secondary": "#4edea3",
+        "on-secondary": "#003824", "secondary-container": "#00a572",
+        "on-secondary-container": "#00311f", "tertiary": "#ffb786",
+        "error": "#ffb4ab", "on-error": "#690005",
+        "error-container": "#93000a", "on-error-container": "#ffdad6",
+        "outline": "#8c909f", "outline-variant": "#424754",
+        "on-surface": "#dae2fd", "on-surface-variant": "#c2c6d6",
+        "on-background": "#dae2fd", "inverse-surface": "#dae2fd",
+        "inverse-on-surface": "#283044", "inverse-primary": "#005ac2",
+      },
+      borderRadius: { DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem" },
+      fontFamily: {
+        "display-lg": ["Inter"], "body-md": ["Inter"], "headline-lg": ["Inter"],
+        "body-sm": ["Inter"], "headline-md": ["Inter"], "headline-sm": ["Inter"],
+        "label-md": ["JetBrains Mono"], "body-lg": ["Inter"], "label-sm": ["JetBrains Mono"]
+      },
+    }
+  }
+};
+</script>
+<style>
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #424754; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8c909f; }
+  .tab-btn { transition: all 0.2s; }
+  .tab-btn.active { color: #adc6ff; border-bottom-color: #adc6ff; }
+  .modal-overlay { background: rgba(0,0,0,0.55); }
+  .row-sensitive { border-left: 3px solid #ffb4ab; background: rgba(147, 0, 10, 0.12); }
+  .msg-bubble-high { background: rgba(147, 0, 10, 0.18); border: 1px solid #ffb4ab; }
+</style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen">
 <aside></aside>
-<main class="p-6 min-h-screen">
-  <div class="flex items-center justify-between mb-4">
-    <div><h1 class="text-2xl font-bold text-primary">聊天管理</h1><p class="text-sm text-on-surface-variant mt-1">群管理 · 聊天记录 · 群文件管理</p></div>
+
+<main class="min-h-screen p-lg">
+  <!-- Header -->
+  <div class="mb-lg">
+    <h1 class="font-headline-md text-headline-md font-bold text-on-surface">聊天管理</h1>
+    <p class="text-body-sm text-on-surface-variant mt-1">会话列表、对话详情与消息检索 — 高风险会话自动标红</p>
   </div>
-  <div class="flex gap-4 mb-4 border-b border-outline-variant/20 pb-2">
-    <button class="tab-btn tab-active pb-2 px-1 text-sm font-medium" data-tab="groups">群管理</button>
-    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface" data-tab="records">聊天记录</button>
-    <button class="tab-btn pb-2 px-1 text-sm font-medium text-on-surface-variant hover:text-on-surface" data-tab="files">群文件</button>
+
+  <!-- Tabs -->
+  <div class="border-b border-outline-variant mb-lg">
+    <nav class="flex gap-6 -mb-px">
+      <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-primary text-primary" data-tab="convos" onclick="switchTab('convos')">会话列表</button>
+      <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="search" onclick="switchTab('search')">消息检索</button>
+    </nav>
   </div>
-  <div id="tabContent"></div>
+
+  <!-- Tab1: 会话列表 -->
+  <div id="tab-convos" class="tab-panel">
+    <div class="flex items-center justify-between mb-md">
+      <div class="text-xs text-on-surface-variant">点击「查看」打开最近 20 条对话详情；高风险会话自动以红色边框标红。</div>
+      <button onclick="loadConvos()" class="text-xs px-3 py-1.5 bg-primary-container/20 text-primary rounded hover:opacity-80 flex items-center gap-1">
+        <span class="material-symbols-outlined text-sm">refresh</span>刷新
+      </button>
+    </div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-surface-container-high text-on-surface-variant text-xs uppercase">
+          <tr>
+            <th class="px-4 py-3 text-left">用户</th>
+            <th class="px-4 py-3 text-left">最后消息</th>
+            <th class="px-4 py-3 text-left">最后时间</th>
+            <th class="px-4 py-3 text-left">风险标签</th>
+            <th class="px-4 py-3 text-right">操作</th>
+          </tr>
+        </thead>
+        <tbody id="convo-tbody" class="divide-y divide-outline-variant/30">
+          <tr><td colspan="5" class="text-center text-outline py-lg">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tab2: 消息检索 -->
+  <div id="tab-search" class="tab-panel hidden">
+    <div class="flex gap-3 mb-md">
+      <input id="search-input" type="text" placeholder="搜索关键词（前 200 条消息中过滤）..." class="flex-1 bg-surface-container-high/50 border border-outline-variant rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-primary" onkeydown="if(event.key==='Enter')searchMessages()"/>
+      <select id="search-risk" class="bg-surface-container-high/50 border border-outline-variant rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary">
+        <option value="">全部风险</option>
+        <option value="high">高风险</option>
+        <option value="medium">中风险</option>
+        <option value="low">低风险</option>
+      </select>
+      <button onclick="searchMessages()" class="bg-primary text-on-primary px-4 py-2 rounded-xl text-sm font-semibold hover:brightness-110 flex items-center gap-1">
+        <span class="material-symbols-outlined text-sm">search</span>搜索
+      </button>
+      <button onclick="loadAuditCache()" class="bg-surface-container border border-outline-variant text-on-surface-variant px-4 py-2 rounded-xl text-sm font-medium hover:bg-surface-container-high">载入最近 200 条</button>
+    </div>
+    <div id="search-results" class="space-y-2">
+      <div class="text-center text-outline text-sm py-lg">输入关键词或点击「载入最近 200 条」开始</div>
+    </div>
+  </div>
 </main>
+
+<!-- 对话详情 Modal -->
+<div id="detail-modal" class="hidden fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4" onclick="closeDetailModal()">
+  <div class="bg-surface-container border border-outline-variant rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onclick="event.stopPropagation()">
+    <div class="px-md py-sm bg-surface-container-high border-b border-outline-variant flex items-center justify-between">
+      <h2 class="text-sm font-bold text-primary flex items-center gap-2">
+        <span class="material-symbols-outlined text-sm">forum</span>
+        <span id="detail-title">对话详情</span>
+      </h2>
+      <button onclick="closeDetailModal()" class="text-on-surface-variant hover:text-error"><span class="material-symbols-outlined text-sm">close</span></button>
+    </div>
+    <div id="detail-body" class="flex-1 overflow-y-auto p-md space-y-2">
+      <div class="text-center text-outline text-sm py-lg">加载中...</div>
+    </div>
+    <div class="px-md py-sm border-t border-outline-variant flex items-center justify-between">
+      <div class="flex gap-2">
+        <button onclick="exportCurrentConversation()" class="text-xs px-4 py-1.5 bg-primary/20 text-primary rounded-lg hover:opacity-80">导出 CSV</button>
+        <button onclick="deleteCurrentConversation()" class="text-xs px-4 py-1.5 bg-error/20 text-error rounded-lg hover:opacity-80">删除会话</button>
+      </div>
+      <button onclick="closeDetailModal()" class="text-xs px-4 py-1.5 bg-surface-container-high rounded-lg hover:opacity-80">关闭</button>
+    </div>
+  </div>
+</div>
 
 <script src="/static/js/app.js"></script>
 <script>
-let tab='groups';
-document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click',()=>{tab=b.dataset.tab;document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('tab-active'));b.classList.add('tab-active');loadTab();}));
+if (!requireAuth()) throw new Error('redirecting');
 
-async function loadTab() {
-  const el = document.getElementById('tabContent');
-  if (tab==='groups') {
-    const groups = await apiGet('/api/groups');
-    el.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${groups.map(g=>`
-      <div class="bg-surface-container/50 rounded-xl p-4 border border-outline-variant/20">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">groups</span><span class="font-bold">${escapeHtml(g.name)}</span><span class="text-[10px] bg-surface-container-high px-2 py-0.5 rounded">ID:${g.id}</span></div>
-          <button onclick="deleteGroup(${g.id})" class="text-on-surface-variant hover:text-error"><span class="material-symbols-outlined text-sm">delete</span></button>
-        </div>
-        <div class="text-xs text-on-surface-variant">群主ID: ${g.owner_id} · 创建: ${new Date(g.created_at).toLocaleDateString()}</div>
-        <div class="mt-2"><button onclick="loadGroupMembers(${g.id})" class="text-[10px] px-2 py-1 bg-primary-container/20 text-primary rounded hover:opacity-80">查看成员</button></div>
-      </div>`).join('')||'<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无群聊</div>'}</div>`;
-  } else if (tab==='records') {
-    const convs = await apiGet('/api/messages/conversations');
-    el.innerHTML = `<div class="mb-4 flex gap-3">
-      <input id="recSearch" type="text" placeholder="搜索聊天记录..." class="flex-1 bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-4 py-2 text-sm" onkeydown="if(event.key==='Enter')searchRecords()"/>
-      <button onclick="searchRecords()" class="bg-primary-container text-on-primary-container px-4 py-2 rounded-xl text-sm">搜索</button>
-    </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="recResults"><div class="col-span-full text-center text-on-surface-variant text-sm py-8">输入用户名或关键词搜索聊天记录</div></div>`;
-  } else {
-    // 群文件 = 显示所有上传的文件消息
-    try {
-      const res = await fetch('/api/messages/history?limit=200', {headers:{'Authorization':'Bearer '+Token.access}});
-      const msgs = await res.json();
-      const files = msgs.filter(m=>m.file_url||m.file_name);
-      el.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 gap-3">${files.length?files.map(m=>`
-        <div class="bg-surface-container/50 rounded-xl p-4 border border-outline-variant/20">
-          <div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-primary">${m.msg_type==='image'?'image':'description'}</span><span class="text-sm font-medium truncate">${escapeHtml(m.file_name||'文件')}</span></div>
-          <div class="text-[10px] text-on-surface-variant">${m.file_size?Math.round(m.file_size/1024)+'KB':''} · ${escapeHtml(m.sender_name||'')}</div>
-          ${m.file_url?`<a href="${escapeHtml(m.file_url)}" target="_blank" class="text-[10px] text-secondary hover:underline mt-1 block">下载</a>`:''}
-        </div>`).join(''):'<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无群文件</div>'}</div>`;
-    } catch(e) { el.innerHTML = '<div class="text-center py-12 text-on-surface-variant text-sm">加载失败</div>'; }
+let currentTab = 'convos';
+let auditCache = null; // 缓存 /api/smart-audit/messages?limit=200 的结果
+let currentDetailUserId = null;
+
+function switchTab(t) {
+  currentTab = t;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const active = b.dataset.tab === t;
+    b.classList.toggle('active', active);
+    b.classList.toggle('border-primary', active);
+    b.classList.toggle('text-primary', active);
+    b.classList.toggle('border-transparent', !active);
+    b.classList.toggle('text-on-surface-variant', !active);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById('tab-' + t).classList.remove('hidden');
+  if (t === 'convos') loadConvos();
+  if (t === 'search' && !auditCache) loadAuditCache();
+}
+
+const RISK_BADGE = {
+  high:   'bg-error-container/30 text-error border border-error',
+  medium: 'bg-tertiary-container/30 text-tertiary border border-tertiary',
+  low:    'bg-secondary-container/20 text-secondary border border-secondary',
+};
+const RISK_LABEL = { high: '高风险', medium: '中风险', low: '低风险' };
+
+// ===== Tab1: 会话列表 =====
+async function loadConvos() {
+  const tbody = document.getElementById('convo-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="text-center text-outline py-lg">加载中...</td></tr>';
+  try {
+    const convs = await apiGet('/api/messages/admin/conversations?limit=50');
+    if (!convs || !convs.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-outline py-lg">暂无会话</td></tr>';
+      return;
+    }
+    tbody.innerHTML = convs.map(c => {
+      const risk = c.risk_level || 'low';
+      const riskBadge = `<span class="text-[11px] px-2 py-0.5 rounded ${RISK_BADGE[risk] || RISK_BADGE.low}">${RISK_LABEL[risk] || risk}</span>`;
+      const rowCls = (risk === 'high') ? 'row-sensitive' : '';
+      const lastMsg = escapeHtml((c.last_message || '').slice(0, 80));
+      const lastTime = c.last_time ? timeAgo(c.last_time) : '-';
+      return `<tr class="hover:bg-surface-container-high transition-colors ${rowCls}">
+        <td class="px-4 py-3">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-on-surface-variant text-base">person</span>
+            <div>
+              <div class="text-sm font-medium">${escapeHtml(c.username || ('用户' + c.user_id))}</div>
+              <div class="text-[10px] text-outline">ID: ${c.user_id}</div>
+            </div>
+          </div>
+        </td>
+        <td class="px-4 py-3 text-sm text-on-surface-variant max-w-md truncate">${lastMsg}</td>
+        <td class="px-4 py-3 text-xs text-outline">${lastTime}</td>
+        <td class="px-4 py-3">${riskBadge}</td>
+        <td class="px-4 py-3 text-right">
+          <button onclick="openDetailModal(${c.user_id}, ${JSON.stringify(c.username || ('用户' + c.user_id)).replace(/"/g, '"')})" class="text-[11px] px-3 py-1.5 bg-primary/20 text-primary rounded hover:bg-primary/30 transition-all">查看</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    console.error('loadConvos', e);
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-error py-lg">加载失败</td></tr>';
   }
 }
 
-async function deleteGroup(id) { if(!confirm('确认删除该群？'))return; await apiDelete('/api/groups/'+id); loadTab(); }
-async function loadGroupMembers(gid) {
-  const members = await apiGet('/api/groups/'+gid+'/members');
-  const names = members.map(m=>`<div class="flex items-center gap-2 text-xs"><span class="material-symbols-outlined text-sm">person</span>用户ID:${m.user_id} · 角色:${m.role}</div>`).join('');
-  const modal = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick="this.remove()"><div class="bg-surface-container rounded-2xl p-6 w-full max-w-sm" onclick="event.stopPropagation()"><h3 class="text-lg font-bold text-primary mb-3">群成员</h3>${names||'无成员'}<button onclick="this.closest('.fixed').remove()" class="mt-4 w-full py-2 bg-surface-container-high rounded-lg text-sm">关闭</button></div></div>`;
-  document.body.insertAdjacentHTML('beforeend', modal);
-}
-
-async function searchRecords() {
-  const q = document.getElementById('recSearch').value.trim(); if(!q)return;
-  const el = document.getElementById('recResults');
+// ===== 对话详情 Modal =====
+async function openDetailModal(userId, username) {
+  const modal = document.getElementById('detail-modal');
+  const title = document.getElementById('detail-title');
+  const body  = document.getElementById('detail-body');
+  modal.classList.remove('hidden');
+  currentDetailUserId = userId;
+  title.textContent = '对话详情 — ' + (username || ('用户' + userId));
+  body.innerHTML = '<div class="text-center text-outline text-sm py-lg">加载中...</div>';
   try {
-    // Search via audit messages endpoint for simplicity
-    const msgs = await apiGet('/api/smart-audit/messages?limit=50');
-    const filtered = msgs.filter(m=>m.content.toLowerCase().includes(q.toLowerCase()));
-    el.innerHTML = filtered.length ? filtered.map(m=>`
-      <div class="bg-surface-container/50 rounded-lg p-3">
-        <div class="flex items-center justify-between mb-1"><span class="text-xs font-bold">${escapeHtml(m.sender_name||'用户'+m.sender_id)}</span><span class="text-[10px] text-on-surface-variant">${new Date(m.created_at).toLocaleString()}</span></div>
-        <div class="text-xs text-on-surface-variant">${escapeHtml(m.content.substring(0,200))}</div>
-        <span class="text-[10px] px-2 py-0.5 rounded ${m.risk_level==='high'?'bg-error-container/20 text-error':m.risk_level==='medium'?'bg-tertiary-container/20 text-tertiary':'bg-secondary-container/20 text-secondary'}">${m.risk_level}</span>
-      </div>`).join('') : '<div class="col-span-full text-center py-8 text-on-surface-variant text-sm">无匹配结果</div>';
-  } catch(e) { el.innerHTML = '<div class="col-span-full text-center py-8 text-on-surface-variant text-sm">搜索失败</div>'; }
+    const all = await apiGet(`/api/messages/admin/conversations/${userId}/messages`);
+    const msgs = (all || []).slice(-20);
+    if (!msgs.length) {
+      body.innerHTML = '<div class="text-center text-outline text-sm py-lg">该用户暂无消息</div>';
+      return;
+    }
+    body.innerHTML = msgs.map(m => {
+      const risk = m.risk_level || 'low';
+      const bubbleCls = (risk === 'high') ? 'msg-bubble-high' : 'bg-surface-container-high/60';
+      const senderTag = (m.sender_id === userId) ? '本人' : `对方(ID:${m.sender_id})`;
+      return `<div class="${bubbleCls} rounded-lg p-3">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-semibold ${m.sender_id === userId ? 'text-primary' : 'text-on-surface-variant'}">${escapeHtml(m.sender_name || senderTag)}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] px-2 py-0.5 rounded ${RISK_BADGE[risk] || RISK_BADGE.low}">${RISK_LABEL[risk] || risk}</span>
+            <span class="text-[10px] text-outline">${m.created_at ? timeAgo(m.created_at) : ''}</span>
+          </div>
+        </div>
+        <div class="text-sm text-on-surface break-all">${escapeHtml((m.content || '').slice(0, 300))}</div>
+        ${m.matched_words && m.matched_words.length ? `<div class="text-[10px] text-error mt-1">命中: ${escapeHtml(m.matched_words.join(', '))}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('openDetailModal', e);
+    body.innerHTML = '<div class="text-center text-error text-sm py-lg">加载失败</div>';
+  }
 }
 
-if (requireAuth()) loadTab();
+function closeDetailModal() {
+  document.getElementById('detail-modal').classList.add('hidden');
+  currentDetailUserId = null;
+}
+
+async function exportCurrentConversation() {
+  if (currentDetailUserId === null) return;
+  try {
+    const response = await api(`/api/messages/admin/conversations/${currentDetailUserId}/export`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `conversation-${currentDetailUserId}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('会话已导出', 'success');
+  } catch (error) {
+    showToast(error.message || '导出失败', 'error');
+  }
+}
+
+async function deleteCurrentConversation() {
+  if (currentDetailUserId === null || !confirm('确定删除该用户参与的全部消息？此操作不可恢复。')) return;
+  try {
+    await apiDelete(`/api/messages/admin/conversations/${currentDetailUserId}`);
+    closeDetailModal();
+    auditCache = null;
+    await loadConvos();
+    showToast('会话已删除', 'success');
+  } catch (error) {
+    showToast(error.message || '删除失败', 'error');
+  }
+}
+
+// ===== Tab2: 消息检索 =====
+async function loadAuditCache() {
+  const el = document.getElementById('search-results');
+  el.innerHTML = '<div class="text-center text-outline text-sm py-lg">加载中...</div>';
+  try {
+    auditCache = await apiGet('/api/smart-audit/messages?limit=200');
+    renderSearchResults(auditCache || []);
+  } catch(e) {
+    console.error('loadAuditCache', e);
+    el.innerHTML = '<div class="text-center text-error text-sm py-lg">加载失败</div>';
+  }
+}
+
+function searchMessages() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const rk = document.getElementById('search-risk').value;
+  if (!auditCache) { loadAuditCache(); return; }
+  let list = auditCache;
+  if (q) list = list.filter(m => (m.content || '').toLowerCase().includes(q) || (m.sender_name || '').toLowerCase().includes(q));
+  if (rk) list = list.filter(m => (m.risk_level || 'low') === rk);
+  renderSearchResults(list);
+}
+
+function renderSearchResults(list) {
+  const el = document.getElementById('search-results');
+  if (!list.length) {
+    el.innerHTML = '<div class="text-center text-outline text-sm py-lg">无匹配结果</div>';
+    return;
+  }
+  el.innerHTML = list.map(m => {
+    const risk = m.risk_level || 'low';
+    const rowCls = (risk === 'high') ? 'row-sensitive' : '';
+    return `<div class="${rowCls} bg-surface-container/60 border border-outline-variant/40 rounded-lg p-md">
+      <div class="flex items-center justify-between mb-1">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-on-surface-variant text-sm">person</span>
+          <span class="text-sm font-medium">${escapeHtml(m.sender_name || ('用户' + m.sender_id))}</span>
+          <span class="text-[10px] text-outline">ID: ${m.sender_id}${m.receiver_id ? ' → ' + m.receiver_id : ''}${m.group_id ? ' [群'+m.group_id+']' : ''}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] px-2 py-0.5 rounded ${RISK_BADGE[risk] || RISK_BADGE.low}">${RISK_LABEL[risk] || risk}</span>
+          <span class="text-[10px] text-outline">${m.created_at ? timeAgo(m.created_at) : ''}</span>
+          <button onclick="deleteSearchMessage(${m.id})" class="text-[10px] px-2 py-0.5 rounded bg-error/20 text-error">删除</button>
+        </div>
+      </div>
+      <div class="text-sm text-on-surface-variant break-all">${escapeHtml((m.content || '').slice(0, 300))}</div>
+      ${m.matched_words && m.matched_words.length ? `<div class="text-[10px] text-error mt-1">命中: ${escapeHtml(m.matched_words.join(', '))}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function deleteSearchMessage(messageId) {
+  if (!confirm('确定删除这条消息？')) return;
+  try {
+    await apiDelete(`/api/messages/admin/messages/${messageId}`);
+    auditCache = (auditCache || []).filter(message => message.id !== messageId);
+    searchMessages();
+    showToast('消息已删除', 'success');
+  } catch (error) {
+    showToast(error.message || '删除失败', 'error');
+  }
+}
+
+// Initial load
+loadConvos();
 </script>
-</body></html>
+</body>
+</html>

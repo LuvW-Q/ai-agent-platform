@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from database.session import SessionLocal, get_db
 from schema.api import AgentOut, AgentCreate
@@ -11,7 +11,10 @@ from dao.base_dao import list_agents, create_agent, get_agent, log_action
 from dao.model_dao import get_model
 from dao.skill_dao import get_skills_by_ids
 from models.agent import Agent
+from models.ai_model import AIModel
+from models.skill import Skill
 from core.security import get_current_user
+from core.rbac import require_role
 from models.user import User
 
 agent_router = APIRouter(prefix="/api/agents", tags=["数字员工"])
@@ -28,24 +31,52 @@ class AgentUpdateIn(BaseModel):
     fallback_message: str | None = None
     description: str | None = None
     status: str | None = None  # draft/published
+    agent_type: str | None = None  # model/api
+    api_id: int | None = None
 
 
 @agent_router.get("")
-def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
-    agents = list_agents(db)
+def list_all(
+    agent_type: str | None = Query(None),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    q = db.query(Agent)
+    if agent_type:
+        q = q.filter(Agent.agent_type == agent_type)
+    agents = q.all()
+
+    # Batch-load models — one query for all referenced model IDs
+    model_ids = {a.model_id for a in agents if a.model_id}
+    model_map: dict[int, str] = {}
+    if model_ids:
+        for m in db.query(AIModel).filter(AIModel.id.in_(list(model_ids))).all():
+            model_map[m.id] = m.name
+
+    # Batch-load skills — one query for all referenced skill IDs
+    all_skill_ids: set[int] = set()
+    for a in agents:
+        if a.skill_ids:
+            for x in a.skill_ids.split(","):
+                if x.strip():
+                    all_skill_ids.add(int(x.strip()))
+    skill_map: dict[int, str] = {}
+    if all_skill_ids:
+        for s in db.query(Skill).filter(Skill.id.in_(list(all_skill_ids))).all():
+            skill_map[s.id] = s.name
+
+    # Assemble response using in-memory dicts — no per-agent queries
     result = []
     for a in agents:
-        model_name = ""
-        if a.model_id:
-            m = get_model(a.model_id, db)
-            if m:
-                model_name = m.name
-        # 获取技能名称
+        model_name = model_map.get(a.model_id) or ""
         skill_names = []
         if a.skill_ids:
-            ids = [int(x) for x in a.skill_ids.split(",") if x.strip()]
-            for s in get_skills_by_ids(ids, db):
-                skill_names.append(s.name)
+            for x in a.skill_ids.split(","):
+                x = x.strip()
+                if x:
+                    sid = int(x)
+                    if sid in skill_map:
+                        skill_names.append(skill_map[sid])
         result.append({
             "id": a.id, "name": a.name, "avatar": a.avatar or "",
             "base_model": a.base_model or "", "model_id": a.model_id,
@@ -56,13 +87,15 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
             "skill_names": skill_names,
             "fallback_message": a.fallback_message or "系统繁忙，请稍后再试",
             "status": a.status, "description": a.description or "",
+            "agent_type": a.agent_type or ("api" if a.skill_bindings and a.skill_bindings.startswith("api_") else "model"),
+            "api_id": a.api_id,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
     return result
 
 
 @agent_router.post("", status_code=201)
-def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     agent = Agent(
         name=body.name,
         avatar=body.avatar or "",
@@ -74,6 +107,8 @@ def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = D
         fallback_message=body.fallback_message or "系统繁忙，请稍后再试",
         description=body.description,
         status="draft",
+        agent_type=body.agent_type or "model",
+        api_id=body.api_id,
     )
     saved = create_agent(agent, db)
     if not saved:
@@ -85,12 +120,14 @@ def create(body: AgentCreate, db: SessionLocal = Depends(get_db), user: User = D
         "persona_prompt": saved.persona_prompt, "skill_bindings": saved.skill_bindings,
         "skill_ids": saved.skill_ids, "fallback_message": saved.fallback_message,
         "status": saved.status, "description": saved.description,
+        "agent_type": saved.agent_type or "model",
+        "api_id": saved.api_id,
     }
 
 
 @agent_router.put("/{agent_id}")
 def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(get_db),
-                 user: User = Depends(get_current_user)):
+                 user: User = Depends(require_role("ROOT", "ADMIN"))):
     agent = get_agent(agent_id, db)
     if not agent:
         raise HTTPException(status_code=404, detail="数字员工不存在")
@@ -115,6 +152,10 @@ def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(
         agent.description = body.description
     if body.status is not None:
         agent.status = body.status
+    if body.agent_type is not None:
+        agent.agent_type = body.agent_type
+    if body.api_id is not None:
+        agent.api_id = body.api_id
     db.commit()
     db.refresh(agent)
 
@@ -137,11 +178,13 @@ def update_agent(agent_id: int, body: AgentUpdateIn, db: SessionLocal = Depends(
         "persona_prompt": agent.persona_prompt, "skill_bindings": agent.skill_bindings,
         "skill_ids": agent.skill_ids, "fallback_message": agent.fallback_message,
         "status": agent.status, "description": agent.description,
+        "agent_type": agent.agent_type or "model",
+        "api_id": agent.api_id,
     }
 
 
 @agent_router.delete("/{agent_id}")
-def delete_agent(agent_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_agent(agent_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     agent = get_agent(agent_id, db)
     if not agent:
         raise HTTPException(status_code=404, detail="数字员工不存在")

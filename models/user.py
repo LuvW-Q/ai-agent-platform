@@ -2,7 +2,7 @@
 用户模型
 """
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from database.session import Base
 
 
@@ -16,6 +16,7 @@ class User(Base):
     role = Column(String(50), default="user")  # root/audit/ops/user/guest
     avatar = Column(String(500), default="")
     signature = Column(String(500), default="")
+    face_descriptor = Column(Text, default="")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

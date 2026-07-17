@@ -1,30 +1,25 @@
 """
 IM消息路由：消息历史漫游/撤回/文件上传/已读标记
 """
-import os
+import csv
+import io
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy import or_
 from database.session import SessionLocal, get_db
 from schema.api import MessageOut, MessageSend
 from dao.base_dao import list_messages, create_message, log_action
 from models.message import Message
 from core.security import get_current_user
+from core.rbac import require_role
+from core.sensitive_filter import sensitive_filter
+from core.upload_security import IMAGE_EXTENSIONS, MESSAGE_EXTENSIONS, save_validated_upload
 from models.user import User
 
 im_router = APIRouter(prefix="/api/messages", tags=["IM消息"])
-
-# 文件上传目录
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# 允许的文件扩展名白名单
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".pdf", ".doc", ".docx",
-                      ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".md", ".zip", ".rar",
-                      ".mp3", ".mp4", ".wav", ".avi", ".mov"}
-BLOCKED_EXTENSIONS = {".exe", ".bat", ".cmd", ".sh", ".ps1", ".com", ".scr", ".vbs", ".js", ".jar"}
-
 
 @im_router.get("/history", response_model=list[MessageOut])
 def message_history(
@@ -96,15 +91,22 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
     if body.msg_id:
         existing = db.query(Message).filter(Message.msg_id == body.msg_id).first()
         if existing:
+            if existing.status == "blocked":
+                raise HTTPException(status_code=400, detail="消息包含敏感信息，已被拦截")
             return existing
+    content = body.content
+    matches = []
+    blocked = False
+    if body.msg_type == "text":
+        content, blocked, matches = sensitive_filter.inspect(body.content, db)
     msg = Message(
         msg_id=body.msg_id or str(uuid.uuid4()),
         sender_id=user.id,
         receiver_id=body.receiver_id,
         group_id=body.group_id,
-        content=body.content,
+        content=body.content if blocked else content,
         msg_type=body.msg_type,
-        status="sent",
+        status="blocked" if blocked else "sent",
         file_url=body.file_url,
         file_name=body.file_name,
         file_size=body.file_size,
@@ -112,6 +114,17 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
     saved = create_message(msg, db)
     if not saved:
         raise HTTPException(status_code=500, detail="发送失败")
+    if matches:
+        matched_words = "、".join(sorted({rule["word"] for rule in matches}))
+        log_action(
+            "sensitive_message_blocked" if blocked else "sensitive_message_filtered",
+            f"用户 {user.username} 的消息命中敏感规则: {matched_words}",
+            user.username,
+            db,
+            risk_level="high" if blocked else "medium",
+        )
+    if blocked:
+        raise HTTPException(status_code=400, detail="消息包含敏感信息，已被拦截")
     log_action("message_send", f"用户 {user.username} 发送消息", user.username, db)
     return saved
 
@@ -119,14 +132,18 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
 @im_router.post("/{msg_id}/recall")
 def recall_message(msg_id: str, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """撤回消息 — 2分钟内"""
-    msg = db.query(Message).filter(
-        (Message.msg_id == msg_id) | (Message.id == int(msg_id) if msg_id.isdigit() else 0)
-    ).first()
+    lookup = Message.msg_id == msg_id
+    if msg_id.isdigit():
+        lookup = or_(lookup, Message.id == int(msg_id))
+    msg = db.query(Message).filter(lookup).first()
     if not msg:
         raise HTTPException(status_code=404, detail="消息不存在")
     if msg.sender_id != user.id:
         raise HTTPException(status_code=403, detail="只能撤回自己的消息")
-    elapsed = (datetime.now(timezone.utc) - msg.created_at).total_seconds() if msg.created_at else 999
+    created_at = msg.created_at
+    if created_at and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    elapsed = (datetime.now(timezone.utc) - created_at).total_seconds() if created_at else 999
     if elapsed > 120:
         raise HTTPException(status_code=400, detail="超过2分钟不可撤回")
     msg.status = "recalled"
@@ -140,33 +157,21 @@ async def upload_file(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
 ):
-    """文件/图片上传 — 格式白名单校验+大小限制"""
-    # 检查文件扩展名
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext in BLOCKED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"文件类型 {ext} 被禁止上传")
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"不支持的文件类型: {ext}")
-
-    # 读取文件内容并检查大小
-    content = await file.read()
-    is_image = ext in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-    max_size = 10 * 1024 * 1024 if is_image else 100 * 1024 * 1024
-    if len(content) > max_size:
-        limit_mb = 10 if is_image else 100
-        raise HTTPException(status_code=400, detail=f"文件超过{limit_mb}MB限制")
-
-    # 保存文件
-    safe_name = f"{uuid.uuid4().hex}{ext}"
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    with open(file_path, "wb") as f:
-        f.write(content)
+    """文件/图片上传：分块限流并校验真实文件类型。"""
+    extension = Path(file.filename or "").suffix.lower()
+    is_image = extension in IMAGE_EXTENSIONS
+    saved = await save_validated_upload(
+        file,
+        category=f"messages/{user.id}",
+        allowed_extensions=MESSAGE_EXTENSIONS,
+        max_size=10 * 1024 * 1024 if is_image else 100 * 1024 * 1024,
+    )
 
     return JSONResponse({
-        "url": f"/uploads/{safe_name}",
-        "filename": file.filename,
-        "size": len(content),
-        "type": "image" if is_image else "file",
+        "url": f"/api/uploads/{saved.relative_path}",
+        "filename": saved.original_name,
+        "size": saved.size,
+        "type": "image" if saved.is_image else "file",
     })
 
 
@@ -225,3 +230,176 @@ def conversations(db: SessionLocal = Depends(get_db), user: User = Depends(get_c
                 "status": m.status,
             })
     return convos
+
+
+# ==================== 管理员会话管理 ====================
+
+
+def _classify_risk(content: str, db) -> tuple[str, list[str]]:
+    """根据 SensitiveFilter 单例对消息内容进行风险分级（数据库驱动）
+
+    映射:
+      - action="block" 命中 → high
+      - action="replace" 命中（filtered != content）→ medium
+      - 无命中 → low
+    """
+    if not content:
+        return ("low", [])
+    filtered, blocked = sensitive_filter.filter(content, db)
+    if blocked:
+        return ("high", [])
+    if filtered != content:
+        return ("medium", ["***"])
+    return ("low", [])
+
+
+@im_router.get("/admin/conversations")
+def admin_conversations(
+    limit: int = Query(50, ge=1, le=500),
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT", "AUDIT")),
+):
+    """管理员查看所有用户最近会话（按用户聚合，含风险标签）
+
+    返回最近活跃会话：按 sender_id 聚合取该用户最新一条消息，
+    根据该消息内容判断风险等级，前端按 risk_level=='high' 标红整行。
+    """
+    from sqlalchemy import func
+
+    # 子查询：每个 sender 最近一条消息时间
+    subq = (
+        db.query(
+            Message.sender_id.label("uid"),
+            func.max(Message.created_at).label("last_time"),
+        )
+        .filter(Message.sender_id.isnot(None))
+        .group_by(Message.sender_id)
+        .subquery()
+    )
+
+    # 用 join 取每个 sender 的最新一条消息
+    last_msgs = (
+        db.query(Message)
+        .join(subq, (Message.sender_id == subq.c.uid) & (Message.created_at == subq.c.last_time))
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    convs = []
+    for m in last_msgs:
+        sender = db.query(User).filter(User.id == m.sender_id).first() if m.sender_id else None
+        risk, _matched = _classify_risk(m.content, db)
+        convs.append({
+            "user_id": m.sender_id,
+            "username": (sender.nickname or sender.username) if sender else f"用户{m.sender_id}",
+            "peer_id": m.receiver_id,
+            "group_id": m.group_id,
+            "last_message": (m.content or "")[:100],
+            "last_time": m.created_at.isoformat() if m.created_at else None,
+            "risk_level": risk,
+            "is_sensitive": risk == "high",
+        })
+    return convs
+
+
+def _admin_message_rows(user_id: int, db: SessionLocal):
+    return (
+        db.query(Message)
+        .filter(or_(Message.sender_id == user_id, Message.receiver_id == user_id))
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+
+
+def _serialize_admin_message(message: Message, db: SessionLocal) -> dict:
+    sender = db.query(User).filter(User.id == message.sender_id).first()
+    risk_level, matched_words = _classify_risk(message.content, db)
+    return {
+        "id": message.id,
+        "msg_id": message.msg_id or "",
+        "sender_id": message.sender_id,
+        "sender_name": (sender.nickname or sender.username) if sender else "",
+        "receiver_id": message.receiver_id,
+        "group_id": message.group_id,
+        "content": message.content,
+        "msg_type": message.msg_type,
+        "status": message.status,
+        "risk_level": risk_level,
+        "matched_words": matched_words,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
+
+
+@im_router.get("/admin/conversations/{user_id}/messages")
+def admin_conversation_messages(
+    user_id: int,
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT", "AUDIT")),
+):
+    """管理员下钻查看指定用户参与的完整消息记录。"""
+    if db.query(User).filter(User.id == user_id).first() is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return [_serialize_admin_message(message, db) for message in _admin_message_rows(user_id, db)]
+
+
+@im_router.get("/admin/conversations/{user_id}/export")
+def export_admin_conversation(
+    user_id: int,
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT", "AUDIT")),
+):
+    """将指定用户参与的全部消息导出为 UTF-8 BOM CSV。"""
+    if db.query(User).filter(User.id == user_id).first() is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["消息ID", "发送者ID", "接收者ID", "群组ID", "类型", "状态", "内容", "发送时间"])
+    for message in _admin_message_rows(user_id, db):
+        writer.writerow([
+            message.id,
+            message.sender_id,
+            message.receiver_id or "",
+            message.group_id or "",
+            message.msg_type,
+            message.status,
+            message.content,
+            message.created_at.isoformat() if message.created_at else "",
+        ])
+    log_action("conversation_export", f"导出用户 {user_id} 的会话", user.username, db)
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="conversation-{user_id}.csv"'},
+    )
+
+
+@im_router.delete("/admin/conversations/{user_id}")
+def delete_admin_conversation(
+    user_id: int,
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT")),
+):
+    """超级管理员删除指定用户参与的全部消息。"""
+    messages = _admin_message_rows(user_id, db)
+    for message in messages:
+        db.delete(message)
+    db.commit()
+    log_action("conversation_delete", f"删除用户 {user_id} 的会话，共 {len(messages)} 条消息", user.username, db)
+    return {"deleted": len(messages)}
+
+
+@im_router.delete("/admin/messages/{message_id}")
+def delete_admin_message(
+    message_id: int,
+    db: SessionLocal = Depends(get_db),
+    user: User = Depends(require_role("ROOT")),
+):
+    """超级管理员删除单条消息。"""
+    message = db.query(Message).filter(Message.id == message_id).first()
+    if message is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    db.delete(message)
+    db.commit()
+    log_action("message_delete", f"删除消息 {message_id}", user.username, db)
+    return {"deleted": True}

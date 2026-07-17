@@ -3,10 +3,10 @@
 """
 from __future__ import annotations
 
-import json, re
+import json, re, sqlite3, time
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import text
 from core.security import get_current_user
 from core.openai_client import OpenAIClient
 from dao.model_dao import get_model, get_default_model, list_models as dao_list_models
@@ -53,8 +53,105 @@ DB_SCHEMA = """Tables:
 - workflows(id, name, description, status, created_at)
 """
 
+_QUERYABLE_COLUMNS: dict[str, frozenset[str]] = {
+    "users": frozenset({
+        "id", "username", "nickname", "email", "role", "avatar", "signature",
+        "is_active", "created_at", "updated_at",
+    }),
+    "messages": frozenset({
+        "id", "msg_id", "sender_id", "receiver_id", "group_id", "content",
+        "msg_type", "status", "is_read", "file_url", "file_name", "file_size",
+        "recall_at", "created_at",
+    }),
+    "agents": frozenset({
+        "id", "name", "avatar", "base_model", "model_id", "persona_prompt",
+        "skill_ids", "fallback_message", "status", "description", "created_at",
+    }),
+    "ai_models": frozenset({
+        "id", "name", "provider", "model_name", "endpoint", "context_length",
+        "model_type", "is_default", "is_active", "temperature", "max_tokens",
+    }),
+    "skills": frozenset({"id", "name", "skill_type", "description", "status", "created_at"}),
+    "data_sources": frozenset({
+        "id", "resource_id", "name", "status", "frequency", "endpoint", "protocol",
+        "created_at",
+    }),
+    "audit_logs": frozenset({
+        "id", "event_type", "risk_level", "description", "operator", "created_at",
+    }),
+    "knowledge_bases": frozenset({
+        "id", "name", "description", "embedding_model_id", "rerank_model_id",
+        "doc_count", "created_at",
+    }),
+    "collected_data": frozenset({
+        "id", "source_name", "keyword", "title", "url", "content", "summary",
+        "sentiment", "saved", "created_at",
+    }),
+    "groups": frozenset({"id", "name", "owner_id", "avatar", "announcement", "created_at"}),
+    "group_members": frozenset({"id", "group_id", "user_id", "role", "joined_at"}),
+    "friendships": frozenset({"id", "user_id", "friend_id", "created_at"}),
+    "friend_requests": frozenset({
+        "id", "from_user_id", "to_user_id", "status", "message", "created_at",
+    }),
+    "roles": frozenset({"id", "name", "code", "description", "is_active"}),
+    "ds_configs": frozenset({
+        "id", "name", "url", "method", "parse_type", "parse_rule", "status", "created_at",
+    }),
+    "clean_rules": frozenset({"id", "name", "rule_type", "status", "created_at"}),
+    "workflows": frozenset({"id", "name", "description", "status", "created_at"}),
+}
+
+_BLOCKED_SQL_FUNCTIONS = frozenset({"load_extension", "readfile", "writefile"})
+_QUERY_ROW_LIMIT = 100
+_QUERY_TIMEOUT_SECONDS = 2.0
+
+
+def _execute_readonly_select(db, sql: str) -> tuple[list[str], list[dict]]:
+    """Execute a model-produced SELECT under SQLite table/column authorization."""
+    database_name = db.get_bind().url.database
+    if not database_name or database_name == ":memory:":
+        raise RuntimeError("智能问数只允许使用基于文件的 SQLite 只读执行器")
+
+    database_uri = Path(database_name).resolve().as_uri() + "?mode=ro"
+    raw_connection = sqlite3.connect(database_uri, uri=True, timeout=_QUERY_TIMEOUT_SECONDS)
+    deadline = time.monotonic() + _QUERY_TIMEOUT_SECONDS
+
+    def authorize(action, arg1, arg2, database_name, trigger_name):
+        if action == sqlite3.SQLITE_SELECT:
+            return sqlite3.SQLITE_OK
+        if action == sqlite3.SQLITE_READ:
+            allowed_columns = _QUERYABLE_COLUMNS.get(arg1 or "")
+            if allowed_columns is not None and (arg2 == "" or arg2 in allowed_columns):
+                return sqlite3.SQLITE_OK
+            return sqlite3.SQLITE_DENY
+        if action == sqlite3.SQLITE_FUNCTION:
+            function_name = (arg2 or arg1 or "").lower()
+            if function_name not in _BLOCKED_SQL_FUNCTIONS:
+                return sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_DENY
+
+    try:
+        raw_connection.execute("PRAGMA query_only = ON")
+        raw_connection.set_authorizer(authorize)
+        raw_connection.set_progress_handler(
+            lambda: 1 if time.monotonic() > deadline else 0,
+            10_000,
+        )
+        cursor = raw_connection.execute(sql)
+        if cursor.description is None:
+            raise ValueError("智能问数只允许返回结果集的 SELECT 查询")
+        columns = [item[0] for item in cursor.description]
+        raw_rows = cursor.fetchmany(_QUERY_ROW_LIMIT + 1)
+        rows = [dict(zip(columns, row)) for row in raw_rows[:_QUERY_ROW_LIMIT]]
+        return columns, rows
+    finally:
+        raw_connection.set_progress_handler(None, 0)
+        raw_connection.set_authorizer(None)
+        raw_connection.close()
+
 # 关键词降级模板（无 AI 时使用）
 QUERY_TEMPLATES = [
+    {"keywords": ["近 7 天", "近7天", "新闻", "采集"], "sql": "SELECT date(created_at) AS day, COUNT(*) AS news_count FROM collected_data WHERE created_at >= datetime('now', '-7 days') GROUP BY date(created_at) ORDER BY day", "label": "近7天新闻采集量"},
     {"keywords": ["数据源", "多少", "数量", "data source", "count", "total"], "sql": "SELECT COUNT(*) AS total FROM data_sources", "label": "数据源总数"},
     {"keywords": ["数据源", "列表", "list", "data source", "show"], "sql": "SELECT name, status, protocol, endpoint FROM data_sources ORDER BY created_at DESC", "label": "数据源列表"},
     {"keywords": ["数据源", "活跃", "active", "running"], "sql": "SELECT COUNT(*) AS active_total FROM data_sources WHERE status='active'", "label": "活跃数据源"},
@@ -168,11 +265,13 @@ def _parse_and_execute(ai_text: str, question: str, db) -> QueryOut:
         return QueryOut(sql=sql, explanation="安全拦截：只允许 SELECT 查询", rows=[])
 
     # 禁止危险关键字
-    dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "EXEC", "--", ";"]
+    dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "CREATE", "EXEC"]
     upper_sql = sql.upper()
     for d in dangerous:
         if d in upper_sql.split():
             return QueryOut(sql=sql, explanation=f"安全拦截：SQL 包含禁止的 {d} 操作", rows=[])
+    if ";" in sql or "--" in sql or "/*" in sql or "*/" in sql:
+        return QueryOut(sql=sql, explanation="安全拦截：SQL 不允许注释或多语句分隔符", rows=[])
 
     # 添加 LIMIT
     if "LIMIT" not in upper_sql:
@@ -182,19 +281,11 @@ def _parse_and_execute(ai_text: str, question: str, db) -> QueryOut:
     import time
     t0 = time.time()
     try:
-        result = db.execute(text(sql))
-        columns = list(result.keys())
-        rows = [dict(zip(columns, row)) for row in result]
+        columns, rows = _execute_readonly_select(db, sql)
         elapsed_ms = round((time.time() - t0) * 1000, 1)
 
-        # 计算总行数（去掉LIMIT的COUNT）
+        # 只读执行器强制限制为 100 行；总数表示本次安全返回的记录数。
         total_count = len(rows)
-        count_sql = f"SELECT COUNT(*) AS cnt FROM ({sql.rstrip(';').replace(' LIMIT 100','').replace(' LIMIT 50','').replace(' LIMIT 10','').replace(' LIMIT 20','')}) AS subq"
-        try:
-            cr = db.execute(text(count_sql))
-            total_count = cr.scalar() or len(rows)
-        except Exception:
-            total_count = len(rows)
 
         # 生成图表数据
         chart_data = _build_chart_data(rows, columns, chart_type)
@@ -219,9 +310,7 @@ def _keyword_nl2sql(question: str, db) -> QueryOut:
         import time
         t0 = time.time()
         try:
-            result = db.execute(text(best["sql"]))
-            cols = list(result.keys())
-            rows = [dict(zip(cols, row)) for row in result]
+            cols, rows = _execute_readonly_select(db, best["sql"])
             elapsed_ms = round((time.time() - t0) * 1000, 1)
             total_count = len(rows)
             chart_type = _infer_chart(rows, cols, question)
@@ -239,9 +328,8 @@ def _keyword_nl2sql(question: str, db) -> QueryOut:
     for hint, tbl in table_hints.items():
         if hint in q:
             try:
-                result = db.execute(text(f"SELECT * FROM {tbl} LIMIT 10"))
-                cols = list(result.keys())
-                rows = [dict(zip(cols, row)) for row in result]
+                sql = f"SELECT * FROM {tbl} LIMIT 10"
+                cols, rows = _execute_readonly_select(db, sql)
                 return QueryOut(sql=f"SELECT * FROM {tbl} LIMIT 10",
                                 explanation=f"{tbl} 表前10条", rows=rows, chart_type="table")
             except Exception:

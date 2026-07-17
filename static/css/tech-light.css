@@ -476,11 +476,33 @@ button[class*="bg-secondary"] {
 }
 
 .app-top-nav-scroll {
-  scrollbar-width: none;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.58) rgba(219, 234, 254, 0.55);
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
 }
 
 .app-top-nav-scroll::-webkit-scrollbar {
-  display: none;
+  display: block;
+  height: 6px;
+}
+
+.app-top-nav-scroll::-webkit-scrollbar-track {
+  background: rgba(219, 234, 254, 0.55);
+  border-radius: 999px;
+}
+
+.app-top-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.58);
+  border-radius: 999px;
+}
+
+.app-top-nav-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.82);
 }
 
 .app-top-nav nav a,
@@ -493,6 +515,10 @@ button[class*="bg-secondary"] {
   align-items: center !important;
   gap: 10px !important;
   line-height: 1 !important;
+}
+
+.app-top-nav-scroll a.app-menu-filtered-out {
+  display: none !important;
 }
 
 .app-top-nav a[class*="bg-secondary-container"] {
@@ -761,6 +787,28 @@ main.app-page-fluid > *:not([data-app-page-hero]) {
   min-height: 0;
 }
 
+main[data-page="dashboard"] > [data-app-page-hero],
+main[data-page="dashboard"] > div:not([data-app-page-hero]) {
+  width: min(100%, 1600px);
+  margin-inline: auto;
+}
+
+main[data-page="dashboard"] > div:not([data-app-page-hero]) {
+  padding: 0 !important;
+}
+
+main[data-page="dashboard"] .grid > *,
+main[data-page="dashboard"] #sentiment-chart,
+main[data-page="dashboard"] #risk-chart {
+  min-width: 0;
+}
+
+main[data-page="dashboard"] #sentiment-chart,
+main[data-page="dashboard"] #risk-chart {
+  max-width: 100%;
+  margin-inline: auto;
+}
+
 .app-page-hero {
   display: flex;
   align-items: center;
@@ -911,7 +959,8 @@ main.app-page-fluid > *:not([data-app-page-hero]) {
 .app-table-wrap {
   border-radius: 20px;
   border: 1px solid var(--tl-border) !important;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: rgba(255, 255, 255, 0.82) !important;
   box-shadow: var(--tl-shadow-sm);
 }
@@ -997,5 +1046,17 @@ main[data-page="messages"] [id*="message"] {
   .app-page-actions-inner {
     width: 100%;
     justify-content: flex-start !important;
+  }
+}
+
+@media (max-width: 640px) {
+  main.app-page:not(.app-page-fluid) {
+    max-width: 100%;
+    padding: 88px 12px 28px 12px !important;
+    overflow-x: hidden;
+  }
+
+  .app-table {
+    min-width: 720px;
   }
 }

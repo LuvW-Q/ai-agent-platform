@@ -3,11 +3,17 @@
 <html class="dark" lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>智能数据瞭望系统 - 审计大屏</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<title>智能数据瞭望系统 - 数智大屏</title>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<!-- ECharts + GL + Wordcloud CDNs -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js" integrity="sha384-Jrlf45MaPztb6IIPdhM8IBz9mpGKZIEaia3gSoonwudLUQOO9YF2DsbsdM2pJKPw" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.1.0/dist/echarts-gl.min.js" integrity="sha384-RSPZ3vSNVFJnUBsUVMnD0qizvywfxO1bcpIeS9dg5sseJ+Daf08BIyMCZMX+rmLl" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js" integrity="sha384-U1KEY0DDCF4Dq6Yx1J+EZ5Hnj8X5bMn52OAcJB8C4OiAWeU4iJhJ/Tv5KhTqu8zZ" crossorigin="anonymous"></script>
 <!-- Theme Config -->
 <script id="tailwind-config">
       tailwind.config = {
@@ -130,6 +136,13 @@
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
+        .stat-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.5);
+        }
     </style>
 </head>
 <body class="font-body-md text-body-md h-screen w-screen selection:bg-primary-container selection:text-on-primary-container">
@@ -166,366 +179,321 @@
 <!-- Sidebar Navigation (Fixed) -->
 <aside></aside>
 <!-- Main Content Canvas -->
-<main class=" pt-20 p-8 h-full overflow-hidden relative">
+<main class="pt-20 p-6 h-full overflow-hidden relative">
 <!-- Background Animation Effect -->
 
-<div class="grid grid-cols-12 gap-6 h-full pb-8">
-<!-- Left Column: Key Stats & Trends -->
-<div class="col-span-3 flex flex-col gap-6">
-<!-- Real-time Stats Cards -->
-<div class="grid grid-rows-3 gap-4 flex-1">
-<div class="glass-panel p-6 rounded-xl relative overflow-hidden group" style="border-left:4px solid #b4c5ff">
-<p class="text-on-surface-variant text-sm mb-2">今日消息总量</p>
-<div class="flex items-end justify-between">
-<h2 id="screen-messages" class="text-display-lg font-display-lg text-primary glow-text">124,892</h2>
-<span class="text-secondary text-sm font-label-mono mb-2">+12.5%</span>
-</div>
-<div class="h-12 mt-4">
-<canvas class="w-full h-full" id="sparkline-1"></canvas>
-</div>
-</div>
-<div class="glass-panel p-6 rounded-xl relative overflow-hidden" style="border-left:4px solid #a6e6ff">
-<p class="text-on-surface-variant text-sm mb-2">活跃用户数</p>
-<div class="flex items-end justify-between">
-<h2 id="screen-users" class="text-display-lg font-display-lg text-secondary glow-text">15,403</h2>
-<span class="text-primary text-sm font-label-mono mb-2">+3.2%</span>
-</div>
-<div class="h-12 mt-4 flex items-center gap-1">
-<div class="flex-1 bg-surface-container h-1 rounded-full overflow-hidden">
-<div class="bg-secondary h-full" style="width:78%"></div>
-</div>
-<span class="text-[10px] text-on-surface-variant">78% 负载</span>
-</div>
-</div>
-<div class="glass-panel p-6 rounded-xl relative overflow-hidden" style="border-left:4px solid #ffb59c">
-<p class="text-on-surface-variant text-sm mb-2">数据采集趋势</p>
-<div class="h-32 mt-2">
-<canvas class="w-full h-full" id="sparkline-2"></canvas>
-</div>
-</div>
-</div>
-</div>
-<!-- Center Column: Core Visualizer -->
-<div class="col-span-6 flex flex-col gap-6">
-<div class="glass-panel rounded-xl flex-1 relative flex flex-col items-center justify-center overflow-hidden">
-<div class="absolute top-6 left-8 flex flex-col">
-<h3 class="text-headline-sm font-headline-sm text-primary mb-1">核心风险预警球</h3>
-<p class="text-xs text-on-surface-variant">实时计算全域舆情指数</p>
-</div>
-<div class="relative w-full h-[500px] flex items-center justify-center">
-<!-- 3D Risk Globe -->
-<canvas id="risk-globe-canvas" width="400" height="400" class="absolute z-10" style="filter:drop-shadow(0 0 40px rgba(180,197,255,0.3))"></canvas>
-<!-- Floating HUD Overlay -->
-<div class="absolute bottom-8 flex gap-8">
-<div class="text-center px-4 py-2 border-r border-outline-variant/30">
-<p class="text-[10px] uppercase text-on-surface-variant">安全风险</p>
-<p class="text-xl font-bold text-error">CRITICAL</p>
-</div>
-<div class="text-center px-4 py-2 border-r border-outline-variant/30">
-<p class="text-[10px] uppercase text-on-surface-variant">处理时延</p>
-<p class="text-xl font-bold text-secondary">42ms</p>
-</div>
-<div class="text-center px-4 py-2">
-<p class="text-[10px] uppercase text-on-surface-variant">信任评分</p>
-<p id="screen-trust" class="text-xl font-bold text-primary">98.4</p>
-</div>
-</div>
-</div>
-<!-- Scan Line Overlay -->
-<div class="absolute inset-0 scan-line opacity-20 pointer-events-none"></div>
-</div>
-</div>
-<!-- Right Column: Audit & Emotional Analysis -->
-<div class="col-span-3 flex flex-col gap-6 h-full overflow-hidden">
-<!-- Audit Distribution Card -->
-<div class="glass-panel p-6 rounded-xl">
-<h3 class="text-headline-sm font-headline-sm text-primary mb-4">审计分级分布</h3>
-<div class="space-y-4">
-<div class="flex items-center justify-between">
-<span class="text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-error"></span>高风险</span>
-<span class="font-label-mono text-on-surface"><span id="screen-audit-high">14 (5%)</span></span>
-</div>
-<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
-<div class="bg-error h-full" style="width: 5%"></div>
-</div>
-<div class="flex items-center justify-between">
-<span class="text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-tertiary"></span>中风险</span>
-<span class="font-label-mono text-on-surface"><span id="screen-audit-medium">82 (28%)</span></span>
-</div>
-<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
-<div class="bg-tertiary h-full" style="width: 28%"></div>
-</div>
-<div class="flex items-center justify-between">
-<span class="text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary"></span>低风险</span>
-<span class="font-label-mono text-on-surface"><span id="screen-audit-low">196 (67%)</span></span>
-</div>
-<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
-<div class="bg-primary h-full" style="width: 67%"></div>
-</div>
-</div>
-</div>
-<!-- Emotional Tendency Ring -->
-<div class="glass-panel p-6 rounded-xl flex flex-col items-center">
-<h3 class="text-headline-sm font-headline-sm text-primary mb-6 self-start">情感倾向分析</h3>
-<div class="relative w-32 h-32 mb-6">
-<svg class="w-full h-full transform -rotate-90">
-<circle class="text-surface-container-high" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" stroke-width="8"></circle>
-<circle class="text-secondary drop-shadow-[0_0_8px_rgba(76,214,255,0.4)]" cx="64" cy="64" fill="transparent" r="56" stroke="currentColor" stroke-dasharray="351.8" stroke-dashoffset="105.5" stroke-width="8"></circle>
-</svg>
-<div class="absolute inset-0 flex flex-col items-center justify-center">
-<span id="screen-sentiment" class="text-2xl font-bold text-secondary">70%</span>
-<span class="text-[10px] text-on-surface-variant">正面倾向</span>
-</div>
-</div>
-<div class="flex gap-4 text-xs">
-<div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-secondary"></span> 正向</div>
-<div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-outline"></span> 一般</div>
-<div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-error"></span> 负向</div>
-</div>
-</div>
-<!-- Recent Risk Scrolling List -->
-<div class="glass-panel p-6 rounded-xl flex-1 flex flex-col min-h-0">
-<div class="flex items-center justify-between mb-4">
-<h3 class="text-headline-sm font-headline-sm text-primary">实时风险事件</h3>
-<span class="material-symbols-outlined text-error animate-pulse">emergency</span>
-</div>
-<div class="flex-1 overflow-hidden scrolling-list relative">
-<div class="space-y-4 absolute w-full top-0" id="risk-scroll">
-<div class="p-3 bg-error/10 border-l-2 border-error rounded-r-lg">
-<div class="flex justify-between items-center mb-1">
-<span class="text-error font-bold text-xs uppercase">Security Alert</span>
-<span class="text-[10px] text-on-surface-variant font-label-mono">14:22:01</span>
-</div>
-<p class="text-xs text-on-surface leading-snug">检测到异常大流量数据导出行为：员工 ID_9921</p>
-</div>
-<div class="p-3 bg-surface-container-high border-l-2 border-tertiary rounded-r-lg">
-<div class="flex justify-between items-center mb-1">
-<span class="text-tertiary font-bold text-xs uppercase">Audit Warning</span>
-<span class="text-[10px] text-on-surface-variant font-label-mono">14:19:54</span>
-</div>
-<p class="text-xs text-on-surface leading-snug">审计流程中断：节点 [数据脱敏] 响应超时</p>
-</div>
-<div class="p-3 bg-surface-container-high border-l-2 border-primary rounded-r-lg">
-<div class="flex justify-between items-center mb-1">
-<span class="text-primary font-bold text-xs uppercase">System Notification</span>
-<span class="text-[10px] text-on-surface-variant font-label-mono">14:15:30</span>
-</div>
-<p class="text-xs text-on-surface leading-snug">全域采集节点更新完成，接入率 99.8%</p>
-</div>
-<!-- More clones for scrolling effect -->
-<div class="p-3 bg-error/10 border-l-2 border-error rounded-r-lg">
-<div class="flex justify-between items-center mb-1">
-<span class="text-error font-bold text-xs uppercase">Access Violation</span>
-<span class="text-[10px] text-on-surface-variant font-label-mono">14:12:12</span>
-</div>
-<p class="text-xs text-on-surface leading-snug">越权访问尝试：外部 IP 182.16.0.45 探测管理后台</p>
-</div>
-</div>
-</div>
-</div>
-</div>
+<div class="grid grid-cols-2 gap-6 h-full pb-4">
+    <!-- Left Column: 3D Globe -->
+    <div class="glass-panel rounded-xl relative flex flex-col overflow-hidden">
+        <div class="absolute top-4 left-6 z-10">
+            <h3 class="text-headline-sm font-headline-sm text-primary mb-1 flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary">public</span>
+                全球采集源分布
+            </h3>
+            <p class="text-xs text-on-surface-variant">实时展示各国采集节点分布</p>
+        </div>
+        <div id="globe-chart" class="w-full h-full"></div>
+        <!-- Scan Line Overlay -->
+        <div class="absolute inset-0 scan-line opacity-10 pointer-events-none"></div>
+        <!-- Bottom HUD -->
+        <div class="absolute bottom-4 left-0 right-0 flex justify-center gap-8 z-10 pointer-events-none">
+            <div class="text-center px-4 py-2 bg-surface-container/60 rounded-lg backdrop-blur-sm border border-outline-variant/30">
+                <p class="text-[10px] uppercase text-on-surface-variant font-label-mono">采集源</p>
+                <p id="globe-source-count" class="text-xl font-bold text-secondary font-label-mono">0</p>
+            </div>
+            <div class="text-center px-4 py-2 bg-surface-container/60 rounded-lg backdrop-blur-sm border border-outline-variant/30">
+                <p class="text-[10px] uppercase text-on-surface-variant font-label-mono">活跃节点</p>
+                <p id="globe-active-count" class="text-xl font-bold text-primary font-label-mono">0</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Stat Cards Top + Wordcloud Bottom -->
+    <div class="flex flex-col gap-6 h-full">
+        <!-- Top: Stat Cards -->
+        <div class="grid grid-cols-3 gap-4">
+            <div class="glass-panel stat-card p-5 rounded-xl relative overflow-hidden" style="border-left:4px solid #b4c5ff">
+                <div class="flex items-start justify-between mb-2">
+                    <p class="text-on-surface-variant text-xs uppercase tracking-wider font-label-mono">采集总量</p>
+                    <span class="material-symbols-outlined text-primary text-2xl opacity-70">cloud_download</span>
+                </div>
+                <h2 id="stat-total-collected" class="text-display-lg font-display-lg text-primary glow-text font-label-mono" data-value="0">0</h2>
+                <p class="text-[10px] text-on-surface-variant mt-2">CollectedData · saved=true</p>
+            </div>
+            <div class="glass-panel stat-card p-5 rounded-xl relative overflow-hidden" style="border-left:4px solid #a6e6ff">
+                <div class="flex items-start justify-between mb-2">
+                    <p class="text-on-surface-variant text-xs uppercase tracking-wider font-label-mono">活跃数字员工</p>
+                    <span class="material-symbols-outlined text-secondary text-2xl opacity-70">smart_toy</span>
+                </div>
+                <h2 id="stat-active-agents" class="text-display-lg font-display-lg text-secondary glow-text font-label-mono" data-value="0">0</h2>
+                <p class="text-[10px] text-on-surface-variant mt-2">Agent · status=published</p>
+            </div>
+            <div class="glass-panel stat-card p-5 rounded-xl relative overflow-hidden" style="border-left:4px solid #ffb59c">
+                <div class="flex items-start justify-between mb-2">
+                    <p class="text-on-surface-variant text-xs uppercase tracking-wider font-label-mono">消息总数</p>
+                    <span class="material-symbols-outlined text-tertiary text-2xl opacity-70">forum</span>
+                </div>
+                <h2 id="stat-total-messages" class="text-display-lg font-display-lg text-tertiary glow-text font-label-mono" data-value="0">0</h2>
+                <p class="text-[10px] text-on-surface-variant mt-2">Message · total rows</p>
+            </div>
+        </div>
+
+        <!-- Bottom: Wordcloud + Recent Messages -->
+        <div class="grid grid-cols-12 gap-4 flex-1 min-h-0">
+            <!-- Wordcloud -->
+            <div class="glass-panel rounded-xl col-span-7 flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-outline-variant/20 flex items-center justify-between">
+                    <h3 class="text-headline-sm font-headline-sm text-primary flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary">label</span>
+                        关键词词云
+                    </h3>
+                    <span class="text-[10px] text-on-surface-variant font-label-mono uppercase">Top 50 keywords</span>
+                </div>
+                <div id="wordcloud-chart" class="flex-1 w-full"></div>
+            </div>
+            <!-- Recent Messages -->
+            <div class="glass-panel rounded-xl col-span-5 flex flex-col overflow-hidden">
+                <div class="p-4 border-b border-outline-variant/20 flex items-center justify-between">
+                    <h3 class="text-headline-sm font-headline-sm text-primary flex items-center gap-2">
+                        <span class="material-symbols-outlined text-secondary">forum</span>
+                        实时消息流
+                    </h3>
+                    <span class="text-[10px] text-on-surface-variant font-label-mono uppercase">Last 20</span>
+                </div>
+                <div id="recent-messages" class="flex-1 overflow-hidden scrolling-list relative p-3">
+                    <div class="space-y-2 absolute w-full top-0" id="message-scroll">
+                        <p class="text-xs text-on-surface-variant p-2">加载中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 </main>
 <script src="/static/js/app.js"></script>
 <script>
 if (!requireAuth()) throw new Error('redirecting');
 
-// Simple sparkline drawing
-function drawSparkline(id, color) {
-    const canvas = document.getElementById(id);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    // 使用固定趋势数据替代随机数，真实场景应连接时序数据库
-    const data = [15, 18, 22, 28, 25, 32, 38, 35, 30, 27, 33, 40];
+let globeChart = null;
+let wordcloudChart = null;
 
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
+// ===== Source name -> lat/lng mapping (mock geocoding for 3D globe scatter) =====
+const SOURCE_GEO = {
+    "百度新闻搜索":      { lat: 39.9042, lng: 116.4074, country: "中国" },
+    "百度新闻":          { lat: 39.9042, lng: 116.4074, country: "中国" },
+    "新浪新闻搜索":      { lat: 31.2304, lng: 121.4737, country: "中国" },
+    "新浪新闻":          { lat: 31.2304, lng: 121.4737, country: "中国" },
+    "36氪RSS":           { lat: 39.9042, lng: 116.4074, country: "中国" },
+    "36氪":              { lat: 39.9042, lng: 116.4074, country: "中国" },
+    "知乎热门":          { lat: 39.9042, lng: 116.4074, country: "中国" },
+    "必应新闻搜索":      { lat: 47.6062, lng: -122.3321, country: "美国" },
+    "default":           { lat: 0, lng: 0, country: "全球" },
+};
 
-    ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.moveTo(0, canvas.height - data[0]);
+function geoFor(name) {
+    return SOURCE_GEO[name] || SOURCE_GEO["default"];
+}
 
-    const step = canvas.width / (data.length - 1);
-    for(let i = 1; i < data.length; i++) {
-        ctx.lineTo(i * step, canvas.height - data[i]);
+// ===== Animated number counter =====
+function animateNumber(el, target) {
+    if (!el) return;
+    const start = parseInt(el.dataset.value || '0', 10);
+    const duration = 800;
+    const t0 = performance.now();
+    el.dataset.value = target;
+    function step(now) {
+        const p = Math.min(1, (now - t0) / duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const val = Math.floor(start + (target - start) * eased);
+        el.textContent = fmtNum(val);
+        if (p < 1) requestAnimationFrame(step);
     }
-    ctx.stroke();
-
-    // Gradient fill
-    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    grad.addColorStop(0, color.replace('1)', '0.2)'));
-    grad.addColorStop(1, 'transparent');
-    ctx.lineTo((data.length - 1) * step, canvas.height);
-    ctx.lineTo(0, canvas.height);
-    ctx.fillStyle = grad;
-    ctx.fill();
+    requestAnimationFrame(step);
 }
 
-// Risk list scrolling animation
-let scrollEl = document.getElementById('risk-scroll');
-let currentScroll = 0;
-let scrollAnimating = false;
-function animateScroll() {
-    if (!scrollAnimating || !scrollEl) return;
-    currentScroll -= 0.5;
-    if (Math.abs(currentScroll) >= scrollEl.offsetHeight / 2) {
-        currentScroll = 0;
+// ===== 3D Globe (ECharts GL geo3D + scatter3D) =====
+function renderGlobe(sourceStats) {
+    const dom = document.getElementById('globe-chart');
+    if (!dom) return;
+    if (!globeChart) globeChart = window.echarts.init(dom);
+
+    // Group source_stats by country/region to get aggregate values
+    const pointsByGeo = {};
+    (sourceStats || []).forEach(s => {
+        const g = geoFor(s.name);
+        const key = `${g.lat.toFixed(2)},${g.lng.toFixed(2)}`;
+        if (!pointsByGeo[key]) pointsByGeo[key] = { ...g, value: 0, name: s.name };
+        pointsByGeo[key].value += s.value;
+    });
+    const scatterData = Object.values(pointsByGeo).map(p => ({
+        name: p.name,
+        value: [p.lng, p.lat, p.value],
+    }));
+
+    const option = {
+        backgroundColor: 'transparent',
+        geo3D: {
+            map: 'world',
+            shading: 'lambert',
+            light: {
+                main: { intensity: 1.2, shadow: false, alpha: 30 },
+                ambient: { intensity: 0.6 },
+            },
+            itemStyle: {
+                color: '#0c1a35',
+                borderColor: '#3b4a66',
+                borderWidth: 0.4,
+                opacity: 0.95,
+            },
+            label: { show: false },
+            emphasis: { label: { show: false } },
+            regionHeight: 2,
+            viewControl: {
+                autoRotate: true,
+                autoRotateSpeed: 6,
+                distance: 130,
+                alpha: 25,
+                beta: 40,
+            },
+        },
+        series: [{
+            type: 'scatter3D',
+            coordinateSystem: 'geo3D',
+            data: scatterData,
+            symbol: 'circle',
+            symbolSize: (val) => Math.max(8, Math.min(30, 8 + (val[2] || 0) / 3)),
+            itemStyle: {
+                color: '#4cd6ff',
+                opacity: 0.95,
+                borderColor: '#ffffff',
+                borderWidth: 1,
+            },
+            label: {
+                show: true,
+                position: 'right',
+                formatter: (p) => `${p.data.name}: ${p.data.value[2]}`,
+                color: '#d7e3fb',
+                fontSize: 11,
+                backgroundColor: 'rgba(20,32,49,0.7)',
+                padding: [2, 6],
+                borderRadius: 3,
+            },
+            emphasis: {
+                itemStyle: { color: '#ffb59c' },
+                label: { color: '#ffb59c' },
+            },
+        }],
+    };
+    globeChart.setOption(option, true);
+}
+
+// ===== Wordcloud =====
+function renderWordcloud(items) {
+    const dom = document.getElementById('wordcloud-chart');
+    if (!dom) return;
+    if (!wordcloudChart) wordcloudChart = window.echarts.init(dom);
+
+    const data = (items || []).slice(0, 50).map(it => ({
+        name: it.name,
+        value: it.value,
+    }));
+
+    const palette = ['#b4c5ff', '#4cd6ff', '#a6e6ff', '#ffb59c', '#dbe1ff', '#b7eaff'];
+
+    const option = {
+        backgroundColor: 'transparent',
+        tooltip: { show: true, formatter: (p) => `${p.name}: ${p.value}` },
+        series: [{
+            type: 'wordCloud',
+            shape: 'circle',
+            left: 'center',
+            top: 'center',
+            width: '90%',
+            height: '90%',
+            sizeRange: [14, 56],
+            rotationRange: [-45, 45],
+            rotationStep: 15,
+            gridSize: 8,
+            drawOutOfBound: false,
+            textStyle: {
+                color: () => palette[Math.floor(Math.random() * palette.length)],
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: 'bold',
+            },
+            emphasis: {
+                textStyle: { color: '#ffffff', textShadowBlur: 10, textShadowColor: '#4cd6ff' },
+            },
+            data: data,
+        }],
+    };
+    wordcloudChart.setOption(option, true);
+}
+
+// ===== Recent message scroll =====
+let msgEl = null;
+let msgScroll = 0;
+let msgAnimating = false;
+function animateMsgScroll() {
+    if (!msgAnimating || !msgEl) return;
+    msgScroll -= 0.4;
+    if (Math.abs(msgScroll) >= msgEl.offsetHeight / 2) {
+        msgScroll = 0;
     }
-    scrollEl.style.transform = `translateY(${currentScroll}px)`;
-    requestAnimationFrame(animateScroll);
+    msgEl.style.transform = `translateY(${msgScroll}px)`;
+    requestAnimationFrame(animateMsgScroll);
 }
 
-
-// ===== 3D Risk Globe =====
-function drawRiskGlobe(trustScore, threatCount) {
-  const canvas = document.getElementById('risk-globe-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const cx = 200, cy = 200, r = 140;
-  ctx.clearRect(0, 0, 400, 400);
-
-  // Globe base gradient
-  const grad = ctx.createRadialGradient(cx - 20, cy - 30, r * 0.1, cx, cy, r);
-  const riskPct = Math.min(1, threatCount / 20); // threatCount越高越红
-  const r_val = Math.floor(180 + 75 * riskPct);
-  const g_val = Math.floor(210 - 180 * riskPct);
-  const b_val = Math.floor(255 - 200 * riskPct);
-  grad.addColorStop(0, `rgba(${r_val},${g_val},${b_val},0.9)`);
-  grad.addColorStop(0.5, `rgba(${Math.floor(r_val*0.6)},${Math.floor(g_val*0.5)},${b_val},0.6)`);
-  grad.addColorStop(1, `rgba(${Math.floor(r_val*0.2)},${Math.floor(g_val*0.2)},${b_val},0.2)`);
-
-  // Main sphere
-  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = grad; ctx.fill();
-  ctx.strokeStyle = 'rgba(180,197,255,0.3)'; ctx.lineWidth = 2; ctx.stroke();
-
-  // Grid lines (latitude)
-  for (let i = 1; i <= 5; i++) {
-    const lat = r * (i / 6);
-    const hw = Math.sqrt(r * r - lat * lat);
-    ctx.beginPath(); ctx.ellipse(cx, cy, hw, r * 0.15, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(180,197,255,0.08)'; ctx.lineWidth = 0.5; ctx.stroke();
-  }
-  // Grid lines (longitude)
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI;
-    ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.quadraticCurveTo(cx + r * Math.sin(angle) * 1.8, cy, cx, cy + r);
-    ctx.strokeStyle = 'rgba(180,197,255,0.08)'; ctx.lineWidth = 0.5; ctx.stroke();
-  }
-
-  // Threat hotspots (red dots based on threat count)
-  const hotspots = [
-    {x: 0.3, y: -0.4}, {x: -0.4, y: 0.2}, {x: 0.5, y: 0.3}, {x: -0.3, y: -0.5}, {x: 0.1, y: 0.6}
-  ];
-  for (let i = 0; i < Math.min(threatCount, hotspots.length); i++) {
-    const h = hotspots[i];
-    const hx = cx + h.x * r * 0.7;
-    const hy = cy + h.y * r * 0.7;
-    const pulse = 4 + Math.sin(Date.now() / 1000 + i) * 2;
-    const glow = ctx.createRadialGradient(hx, hy, 0, hx, hy, pulse * 4);
-    glow.addColorStop(0, 'rgba(255,80,80,0.9)');
-    glow.addColorStop(0.3, 'rgba(255,80,80,0.4)');
-    glow.addColorStop(1, 'rgba(255,80,80,0)');
-    ctx.beginPath(); ctx.arc(hx, hy, pulse * 4, 0, Math.PI * 2);
-    ctx.fillStyle = glow; ctx.fill();
-    ctx.beginPath(); ctx.arc(hx, hy, pulse, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff4d4d'; ctx.fill();
-  }
-
-  // Trust score ring
-  const scoreAngle = (trustScore / 100) * Math.PI * 2;
-  ctx.beginPath(); ctx.arc(cx, cy, r + 8, -Math.PI / 2, -Math.PI / 2 + scoreAngle);
-  ctx.strokeStyle = trustScore > 80 ? '#4edea3' : trustScore > 50 ? '#ffb786' : '#ffb4ab';
-  ctx.lineWidth = 4; ctx.shadowBlur = 12; ctx.shadowColor = trustScore > 80 ? '#4edea3' : '#ffb786';
-  ctx.stroke(); ctx.shadowBlur = 0;
-
-  // Center text
-  ctx.fillStyle = '#d7e3fb'; ctx.font = 'bold 28px Inter'; ctx.textAlign = 'center';
-  ctx.fillText(Math.round(trustScore), cx, cy - 5);
-  ctx.font = '12px Inter'; ctx.fillStyle = '#8d90a0';
-  ctx.fillText('信任评分', cx, cy + 20);
+function renderMessages(msgs) {
+    msgEl = document.getElementById('message-scroll');
+    if (!msgEl) return;
+    if (!msgs || !msgs.length) {
+        msgEl.innerHTML = '<p class="text-xs text-on-surface-variant p-2">暂无消息</p>';
+        return;
+    }
+    const html = msgs.map(m => {
+        const time = m.time ? new Date(m.time).toLocaleString('zh-CN', { hour12: false }) : '--:--:--';
+        return `<div class="p-3 bg-surface-container-high/40 border-l-2 border-primary rounded-r-lg">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-primary font-bold text-[10px] uppercase font-label-mono">Message</span>
+                <span class="text-[10px] text-on-surface-variant font-label-mono">${time}</span>
+            </div>
+            <p class="text-xs text-on-surface leading-snug">${escapeHtml(m.content || '')}</p>
+        </div>`;
+    }).join('');
+    msgEl.innerHTML = html + html;
+    msgAnimating = true;
+    if (!window._msgScrollStarted) {
+        window._msgScrollStarted = true;
+        animateMsgScroll();
+    }
 }
 
-// Animate globe
-let globeAnimId = null;
-function startGlobeAnimation(trust, threats) {
-  if (globeAnimId) cancelAnimationFrame(globeAnimId);
-  function animate() {
-    drawRiskGlobe(trust, threats);
-    globeAnimId = requestAnimationFrame(animate);
-  }
-  animate();
-}
-
-
-// Load audit logs from API and render into risk-scroll
-async function loadAuditLogs() {
+// ===== Load screen-data API =====
+async function loadScreenData() {
     try {
-        const logs = await apiGet('/api/audit/logs');
-        if (!logs || !logs.length) return;
-        scrollEl = document.getElementById('risk-scroll');
-        if (!scrollEl) return;
+        const data = await apiGet('/api/dashboard/screen-data');
 
-        const riskStyles = {
-            high:   { bg: 'bg-error/10', border: 'border-error', text: 'text-error' },
-            medium: { bg: 'bg-surface-container-high', border: 'border-tertiary', text: 'text-tertiary' },
-            low:    { bg: 'bg-surface-container-high', border: 'border-primary', text: 'text-primary' },
-        };
+        // Stat cards (animated)
+        animateNumber(document.getElementById('stat-total-collected'), data.total_collected || 0);
+        animateNumber(document.getElementById('stat-active-agents'), data.active_agents || 0);
+        animateNumber(document.getElementById('stat-total-messages'), data.total_messages || 0);
 
-        const html = logs.map(log => {
-            const s = riskStyles[log.risk_level] || riskStyles.low;
-            const time = log.created_at ? new Date(log.created_at).toLocaleTimeString('zh-CN', { hour12: false }) : '--:--:--';
-            return `<div class="p-3 ${s.bg} border-l-2 ${s.border} rounded-r-lg">
-                <div class="flex justify-between items-center mb-1">
-                    <span class="${s.text} font-bold text-xs uppercase">${escapeHtml(log.event_type)}</span>
-                    <span class="text-[10px] text-on-surface-variant font-label-mono">${time}</span>
-                </div>
-                <p class="text-xs text-on-surface leading-snug">${escapeHtml(log.description)}</p>
-            </div>`;
-        }).join('');
+        // Globe HUD
+        const sc = document.getElementById('globe-source-count');
+        const ac = document.getElementById('globe-active-count');
+        if (sc) sc.textContent = (data.source_stats || []).length;
+        if (ac) ac.textContent = (data.source_stats || []).reduce((sum, s) => sum + s.value, 0);
 
-        scrollEl.innerHTML = html;
-        // Duplicate for smooth infinite scroll
-        scrollEl.innerHTML += scrollEl.innerHTML;
-        // Start animation
-        scrollAnimating = true;
-        animateScroll();
-    } catch (e) { /* 静默 */ }
-}
+        // 3D Globe
+        renderGlobe(data.source_stats);
 
-// Load metrics from backend API
-async function loadMetrics() {
-    const m = await apiGet('/api/dashboard/metrics');
+        // Wordcloud
+        renderWordcloud(data.wordcloud);
 
-    document.getElementById('screen-messages').textContent = fmtNum(m.today_messages);
-    document.getElementById('screen-users').textContent = fmtNum(m.active_users);
-    document.getElementById('screen-trust').textContent = m.trust_score;
-    startGlobeAnimation(m.trust_score, m.active_threats);
-
-    const total = m.audit_high + m.audit_medium + m.audit_low;
-    const highPct = Math.round(m.audit_high / total * 100);
-    const medPct = Math.round(m.audit_medium / total * 100);
-    const lowPct = Math.round(m.audit_low / total * 100);
-
-    document.getElementById('screen-audit-high').textContent = `${m.audit_high} (${highPct}%)`;
-    document.getElementById('screen-audit-medium').textContent = `${m.audit_medium} (${medPct}%)`;
-    document.getElementById('screen-audit-low').textContent = `${m.audit_low} (${lowPct}%)`;
-
-    // Update audit progress bars widths
-    const highBar = document.querySelector('.bg-error.h-full');
-    const medBar = document.querySelector('.bg-tertiary.h-full');
-    const lowBar = document.querySelector('.bg-primary.h-full');
-    if (highBar) highBar.style.width = highPct + '%';
-    if (medBar) medBar.style.width = medPct + '%';
-    if (lowBar) lowBar.style.width = lowPct + '%';
-
-    // Update sentiment ring SVG
-    document.getElementById('screen-sentiment').textContent = `${m.sentiment_positive}%`;
-    const sentimentCircle = document.querySelector('svg circle:nth-of-type(2)');
-    if (sentimentCircle) {
-        sentimentCircle.setAttribute('stroke-dashoffset', 351.8 * (1 - m.sentiment_positive / 100));
+        // Recent messages
+        renderMessages(data.recent_messages);
+    } catch (e) {
+        console.error('[screen] load failed', e);
     }
 }
 
@@ -534,7 +502,7 @@ loadSidebarUser();
 
 // Update sidebar nav links
 const navMap = {
-    '数据治理': '/dashboard',
+    '数据治理': '/data-governance',
     '权限管理': '/permissions',
     '员工编排': '/agents',
     '审计管理': '/audit',
@@ -555,19 +523,21 @@ document.querySelectorAll('aside a, aside div').forEach(el => {
     }
 });
 
-window.onload = () => {
-    drawSparkline('sparkline-1', '#b4c5ff');
-    drawSparkline('sparkline-2', '#ffb59c');
-    // 从API加载审计日志并启动滚动动画
-    loadAuditLogs();
-};
+function initializeScreen() {
+    loadScreenData();
+    // Poll every 30s
+    setInterval(loadScreenData, 30000);
+}
 
-// Resize observer for sparklines
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeScreen, { once: true });
+} else {
+    initializeScreen();
+}
+
 window.onresize = () => {
-    drawSparkline('sparkline-1', '#b4c5ff');
-    drawSparkline('sparkline-2', '#ffb59c');
+    if (globeChart) globeChart.resize();
+    if (wordcloudChart) wordcloudChart.resize();
 };
-
-loadMetrics();
 </script>
 </body></html>

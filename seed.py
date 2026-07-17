@@ -4,6 +4,9 @@
 """
 from __future__ import annotations
 
+import json
+import random
+
 from database.session import SessionLocal
 from models.role import Role
 from models.agent import Agent
@@ -14,13 +17,19 @@ from models.audit_log import AuditLog
 from models.sensitive_word import SensitiveWord
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.menu import Menu
+from models.setting import Setting
+from models.api_registry import ApiRegistry
+from models.permission import FunctionPoint, RoleFunctionPermission
 from core.security import hash_password
+from core.config import config
+from core.crypto import encrypt
 
 
 def run_seed():
     db = SessionLocal()
     try:
         _seed_roles(db)
+        _seed_function_permissions(db)
         _seed_users(db)
         _seed_ai_models(db)
         _seed_skills(db)
@@ -28,12 +37,16 @@ def run_seed():
         _seed_audit_logs(db)
         _seed_sensitive_words(db)
         _seed_sources_and_rules(db)
+        _seed_collected_data(db)
         _seed_menus(db)
+        _seed_api_registries(db)
+        _seed_settings(db)
         db.commit()
         print("[seed] 种子数据写入完成")
     except Exception as e:
         db.rollback()
         print(f"[seed] 种子数据写入失败: {e}")
+        raise
     finally:
         db.close()
 
@@ -52,36 +65,90 @@ def _seed_roles(db: SessionLocal):
     print("[seed] 角色写入完成")
 
 
+def _seed_function_permissions(db: SessionLocal):
+    functions = [
+        ("数据治理", "data_governance", "/data-governance", "查看,编辑,删除"),
+        ("数字大屏", "digital_screen", "/screen", "查看"),
+        ("员工编排", "agent_orchestration", "/agents", "查看,创建,发布"),
+        ("权限管理", "permission_management", "/permissions", "查看,编辑"),
+        ("审计管理", "audit_management", "/audit", "查看,导出"),
+        ("IM控制台", "im_console", "/im", "查看,发送"),
+        ("智能问数", "smart_query", "/query", "查看"),
+        ("模型管理", "model_management", "/models", "查看,编辑"),
+        ("技能管理", "skill_management", "/skills", "查看,编辑"),
+        ("数字员工管理", "agent_management", "/agent-management", "查看,编辑"),
+        ("数字员工", "digital_employee", "/employees", "查看"),
+        ("个人设置", "personal_settings", "/settings", "查看,编辑"),
+    ]
+    existing_functions = {row.code for row in db.query(FunctionPoint).all()}
+    for name, code, _resource, _actions in functions:
+        if code not in existing_functions:
+            db.add(FunctionPoint(name=name, code=code, description=f"{name}功能点"))
+    db.flush()
+
+    role_scopes = {
+        "ROOT": {code for _name, code, _resource, _actions in functions},
+        "AUDIT": {"digital_screen", "audit_management", "personal_settings"},
+        "OPS": {"data_governance", "digital_screen", "smart_query", "personal_settings"},
+        "USER": {"digital_screen", "im_console", "smart_query", "digital_employee", "personal_settings"},
+        "GUEST": {"digital_screen"},
+    }
+    db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.function_code == "data_governance",
+        RoleFunctionPermission.resource == "/dashboard",
+    ).update({"resource": "/data-governance"}, synchronize_session=False)
+    db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.role_code == "USER",
+        RoleFunctionPermission.function_code == "agent_management",
+    ).delete(synchronize_session=False)
+    existing_bindings = {
+        (row.role_code, row.function_code, row.resource)
+        for row in db.query(RoleFunctionPermission).all()
+    }
+    for role_code, codes in role_scopes.items():
+        for _name, code, resource, actions in functions:
+            key = (role_code, code, resource)
+            if code in codes and key not in existing_bindings:
+                db.add(RoleFunctionPermission(
+                    role_code=role_code,
+                    function_code=code,
+                    resource=resource,
+                    actions=actions,
+                ))
+    print("[seed] 功能点与权限绑定写入完成")
+
+
 def _seed_users(db: SessionLocal):
-    if db.query(User).filter(User.username == "admin").first():
+    known_roles = {"root": "ROOT", "audit": "AUDIT", "ops": "OPS", "user": "USER", "guest": "GUEST"}
+    for user in db.query(User).all():
+        normalized = known_roles.get((user.role or "").lower())
+        if normalized and user.role != normalized:
+            user.role = normalized
+    if db.query(User).filter(User.username == config.INITIAL_ADMIN_USERNAME).first():
         return
+
+    password = config.INITIAL_ADMIN_PASSWORD or ""
+    if len(password) < 12:
+        raise RuntimeError(
+            "首次启动必须通过 INITIAL_ADMIN_PASSWORD 提供至少 12 位的管理员密码"
+        )
     admin = User(
-        username="admin",
-        password_hash=hash_password("admin123"),
+        username=config.INITIAL_ADMIN_USERNAME,
+        password_hash=hash_password(password),
         nickname="Admin_Core",
-        email="admin@dataoutlook.cn",
+        email=config.INITIAL_ADMIN_EMAIL,
         role="ROOT",
         avatar="",
-        signature="系统默认管理员",
+        signature="系统管理员",
         is_active=True,
     )
     db.add(admin)
-    for u in [
-        ("demo", "demo123456", "Demo用户", "demo@dataoutlook.cn", "USER"),
-        ("zhang_san", "zhang123456", "张三", "zhang_san@dataoutlook.cn", "USER"),
-        ("li_si", "li123456", "李四", "li_si@dataoutlook.cn", "AUDIT"),
-    ]:
-        if not db.query(User).filter(User.username == u[0]).first():
-            db.add(User(
-                username=u[0], password_hash=hash_password(u[1]),
-                nickname=u[2], email=u[3], role=u[4], avatar="", signature="", is_active=True,
-            ))
-    print("[seed] 用户写入完成")
+    print("[seed] 初始管理员写入完成")
 
 
 def _seed_ai_models(db: SessionLocal):
-    if db.query(AIModel).first():
-        return
+    existing = {m.model_name for m in db.query(AIModel).all()}
+    added = 0
     for m in [
         AIModel(name="GPT-4o", provider="OpenAI", api_key="sk-placeholder", model_name="gpt-4o",
                 endpoint="https://api.openai.com/v1", context_length=128000, model_type="chat",
@@ -96,14 +163,25 @@ def _seed_ai_models(db: SessionLocal):
                 model_name="claude-3-5-sonnet-20241022", endpoint="https://api.anthropic.com/v1",
                 context_length=200000, model_type="chat", is_default=False, is_active=True,
                 temperature=0.7, max_tokens=4096),
+        AIModel(name="DALL-E 3", provider="OpenAI", api_key="sk-placeholder",
+                model_name="dall-e-3", endpoint="https://api.openai.com/v1",
+                context_length=4096, model_type="image", is_default=False, is_active=True),
+        AIModel(name="Stable Diffusion", provider="StabilityAI", api_key="sk-placeholder",
+                model_name="stable-diffusion-xl", endpoint="https://api.stability.ai/v1",
+                context_length=4096, model_type="image", is_default=False, is_active=True),
     ]:
-        db.add(m)
-    print("[seed] AI 模型写入完成")
+        if m.model_name not in existing:
+            db.add(m)
+            added += 1
+    if added:
+        print(f"[seed] AI 模型写入完成（新增 {added} 条）")
+    else:
+        print("[seed] AI 模型无变更")
 
 
 def _seed_skills(db: SessionLocal):
-    if db.query(Skill).first():
-        return
+    existing = {s.name for s in db.query(Skill).all()}
+    added = 0
     for s in [
         Skill(name="获取当前时间", skill_type="function_call",
               description="返回当前服务器时间和日期",
@@ -147,20 +225,43 @@ def _seed_skills(db: SessionLocal):
 """,
               parameters='{"type": "object", "properties": {"city": {"type": "string", "description": "城市名(英文)"}}, "required": ["city"]}',
               status="active"),
+        Skill(name="随机音乐推荐", skill_type="builtin",
+              description="从内置曲库随机推荐一首歌曲，不依赖外部接口",
+              config='{"handler": "random_music"}',
+              parameters='{"type": "object", "properties": {}}',
+              status="active"),
+        Skill(name="新闻检索", skill_type="builtin",
+              description="从本地采集数据仓库检索最新新闻",
+              config='{"handler": "news_search"}',
+              parameters='{"type": "object", "properties": {"keyword": {"type": "string", "description": "可选的新闻关键词"}}}',
+              status="active"),
         Skill(name="审计报告模板", skill_type="prompt",
               description="生成标准审计报告的提示词模板",
               config="你是一位专业的审计报告专家。请根据以下审计日志信息，生成一份结构化的审计报告，包括：\n1. 审计概况\n2. 风险事件汇总\n3. 高风险事项\n4. 建议措施\n\n审计日志：{logs}\n请用中文输出报告。",
               parameters='{"type": "object", "properties": {"logs": {"type": "string", "description": "审计日志内容"}}, "required": ["logs"]}',
               status="active"),
     ]:
-        db.add(s)
-    print("[seed] 技能写入完成")
+        if s.name not in existing:
+            db.add(s)
+            added += 1
+    db.flush()
+    builtin_handlers = {
+        "数据计算器": "calculator",
+        "天气查询": "weather",
+    }
+    for skill_name, handler in builtin_handlers.items():
+        skill = db.query(Skill).filter(Skill.name == skill_name).one()
+        skill.skill_type = "builtin"
+        skill.config = json.dumps({"handler": handler}, ensure_ascii=False)
+    print(f"[seed] 技能写入完成（新增 {added} 条）")
 
 
 def _seed_agents(db: SessionLocal):
-    if db.query(Agent).first():
-        return
-    # 约定 model_id: 1 = gpt-4o, 2 = deepseek-chat, 4 = claude-3.5-sonnet
+    existing = {a.name for a in db.query(Agent).all()}
+    skills = {s.name: s.id for s in db.query(Skill).all()}
+    gpt_model = db.query(AIModel).filter(AIModel.model_name == "gpt-4o").first()
+    gpt_model_id = gpt_model.id if gpt_model else None
+    added = 0
     for ag in [
         Agent(name="金融数据分析师", base_model="gpt-4o", model_id=1,
               persona_prompt="你是专业的金融数据分析师，擅长解读市场趋势和财务报表。",
@@ -186,9 +287,21 @@ def _seed_agents(db: SessionLocal):
               persona_prompt="你是一位资深程序员，擅长用 Python/JavaScript/Java 等语言编写高质量的代码。回答简洁，附有代码示例。",
               skill_bindings="Code_Helper", skill_ids="1,2",
               status="published", description="编写和调试代码"),
+        Agent(name="随机音乐", base_model="gpt-4o", model_id=gpt_model_id,
+              persona_prompt="你是音乐推荐助手，负责根据用户请求随机推荐歌曲。",
+              skill_bindings="Random_Music", skill_ids=str(skills["随机音乐推荐"]),
+              status="published", description="随机推荐一首歌曲",
+              fallback_message="暂时无法连接外部曲库，已为你从本地曲库推荐歌曲。"),
+        Agent(name="新闻", base_model="gpt-4o", model_id=gpt_model_id,
+              persona_prompt="你是新闻助手，负责从本地采集数据仓库检索和整理最新新闻。",
+              skill_bindings="News_Search", skill_ids=str(skills["新闻检索"]),
+              status="published", description="检索本地采集库中的最新新闻",
+              fallback_message="新闻数据暂时不可用，请稍后再试。"),
     ]:
-        db.add(ag)
-    print("[seed] 数字员工写入完成")
+        if ag.name not in existing:
+            db.add(ag)
+            added += 1
+    print(f"[seed] 数字员工写入完成（新增 {added} 条）")
 
 
 def _seed_audit_logs(db: SessionLocal):
@@ -223,20 +336,54 @@ def _seed_sensitive_words(db: SessionLocal):
 
 
 def _seed_sources_and_rules(db: SessionLocal):
-    if not db.query(DataSourceConfig).first():
-        for src in [
-            DataSourceConfig(name="百度新闻搜索", url="https://news.baidu.com/ns?word={keyword}&tn=news",
-                             method="GET", parse_type="selector", parse_rule=".result",
-                             headers='{"User-Agent":"Mozilla/5.0"}'),
-            DataSourceConfig(name="新浪新闻搜索", url="https://search.sina.com.cn/news?q={keyword}",
-                             method="GET", parse_type="selector", parse_rule=".box-result",
-                             headers='{"User-Agent":"Mozilla/5.0"}'),
-            DataSourceConfig(name="必应新闻搜索", url="https://www.bing.com/news/search?q={keyword}",
-                             method="GET", parse_type="crawl4ai", parse_rule="",
-                             headers='{"User-Agent":"Mozilla/5.0"}'),
-        ]:
-            db.add(src)
-        print("[seed] 数据采集源写入完成")
+    source_specs = [
+        {
+            "name": "百度新闻首页",
+            "url": "https://news.baidu.com/",
+            "method": "GET",
+            "parse_type": "selector",
+            "parse_rule": ".hotnews a, .ulist a",
+            "headers": '{"User-Agent":"Mozilla/5.0"}',
+            "template": "baidu",
+        },
+        {
+            "name": "36氪RSS",
+            "url": "https://36kr.com/feed",
+            "method": "GET",
+            "parse_type": "rss",
+            "parse_rule": "item",
+            "headers": '{"User-Agent":"Mozilla/5.0"}',
+            "template": "rss",
+        },
+        {
+            "name": "中国新闻网即时新闻",
+            "url": "https://www.chinanews.com.cn/scroll-news/news1.html",
+            "method": "GET",
+            "parse_type": "selector",
+            "parse_rule": ".dd_bt a",
+            "headers": '{"User-Agent":"Mozilla/5.0"}',
+            "template": "custom",
+        },
+    ]
+    legacy_names = {"百度新闻搜索", "知乎热门", "Hacker News"}
+    existing_by_template = {
+        source.template: source
+        for source in db.query(DataSourceConfig).filter(
+            DataSourceConfig.template.in_(["baidu", "rss", "custom"])
+        ).all()
+    }
+    changed = 0
+    for spec in source_specs:
+        source = existing_by_template.get(spec["template"])
+        if source is None:
+            db.add(DataSourceConfig(**spec))
+            changed += 1
+        elif source.name in legacy_names or source.name == spec["name"]:
+            for key, value in spec.items():
+                setattr(source, key, value)
+            changed += 1
+    if changed:
+        print(f"[seed] 数据采集源写入或校准完成（{changed} 条）")
     if not db.query(CleanRule).first():
         for rule in [
             CleanRule(name="去除HTML标签", rule_type="remove_html", config="{}"),
@@ -251,23 +398,33 @@ def _seed_sources_and_rules(db: SessionLocal):
 
 
 def _seed_menus(db: SessionLocal):
-    """初始化菜单表，按角色分权限"""
-    if db.query(Menu).first():
-        return
+    """初始化菜单表，按角色分权限（增量写入：已有菜单不覆盖）"""
+    legacy_employee_menu = db.query(Menu).filter(
+        Menu.path == "/agent-management",
+        Menu.name == "数字员工",
+    ).first()
+    if legacy_employee_menu and "USER" in (legacy_employee_menu.role_codes or ""):
+        legacy_employee_menu.path = "/employees"
+        legacy_employee_menu.role_codes = "USER,AUDIT,OPS,ROOT"
+        db.flush()
+    existing_paths = {m.path for m in db.query(Menu).all()}
 
     # 用户侧可见（普通用户 /USER）
     user_menus = [
         Menu(name="智能对话", icon="forum", path="/de", sort_order=1, role_codes="USER,AUDIT,OPS,ROOT"),
         Menu(name="智能问数", icon="terminal", path="/query", sort_order=2, role_codes="USER,AUDIT,OPS,ROOT"),
-        Menu(name="数字员工", icon="precision_manufacturing", path="/agent-management", sort_order=3, role_codes="USER,AUDIT,OPS,ROOT"),
+        Menu(name="数字员工", icon="precision_manufacturing", path="/employees", sort_order=3, role_codes="USER,AUDIT,OPS,ROOT"),
+        Menu(name="创意工坊", icon="palette", path="/creative", sort_order=14, role_codes="ROOT,OPS,USER"),
     ]
     # 管理侧可见（AUDIT / OPS / ROOT）
     admin_menus = [
         Menu(name="控制台", icon="database", path="/dashboard", sort_order=10, role_codes="ROOT,AUDIT,OPS"),
+        Menu(name="数据治理", icon="storage", path="/data-governance", sort_order=10, role_codes="ROOT,OPS"),
         Menu(name="数字大屏", icon="monitoring", path="/screen", sort_order=11, role_codes="ROOT,AUDIT,OPS,USER,GUEST"),
         Menu(name="模型管理", icon="model_training", path="/models", sort_order=12, role_codes="ROOT,OPS"),
         Menu(name="技能管理", icon="extension", path="/skills", sort_order=13, role_codes="ROOT,OPS"),
         Menu(name="员工编排", icon="smart_toy", path="/agents", sort_order=14, role_codes="ROOT,OPS"),
+        Menu(name="员工管理", icon="precision_manufacturing", path="/agent-management", sort_order=14, role_codes="ROOT,OPS"),
         Menu(name="工作流", icon="account_tree", path="/workflows", sort_order=15, role_codes="ROOT,OPS"),
         Menu(name="RAG 管理", icon="book_4", path="/rag", sort_order=16, role_codes="ROOT,OPS"),
         Menu(name="权限管理", icon="admin_panel_settings", path="/permissions", sort_order=17, role_codes="ROOT"),
@@ -281,6 +438,119 @@ def _seed_menus(db: SessionLocal):
     common_menus = [
         Menu(name="系统设置", icon="settings", path="/settings", sort_order=99, role_codes="ROOT,AUDIT,OPS,USER"),
     ]
-    for m in user_menus + admin_menus + common_menus:
-        db.add(m)
-    print("[seed] 菜单写入完成")
+    # 接口管理（B线）— 接口注册表 + 接口型数字员工
+    api_menus = [
+        Menu(name="接口管理", icon="api", path="/api-registry", sort_order=24, role_codes="ROOT,OPS"),
+    ]
+    added = 0
+    for m in user_menus + admin_menus + common_menus + api_menus:
+        if m.path not in existing_paths:
+            db.add(m)
+            added += 1
+    if added:
+        print(f"[seed] 菜单写入完成（新增 {added} 条）")
+    else:
+        print("[seed] 菜单无变更")
+
+
+def _seed_api_registries(db: SessionLocal):
+    """初始化接口注册表样本：让接口管理页一启动就有数据可展示"""
+    if db.query(ApiRegistry).first():
+        return
+    for api in [
+        ApiRegistry(name="高德地图地理编码", code="gaode_geocode",
+                    base_url="https://restapi.amap.com/v3/geocode/geo?{params}",
+                    method="GET", headers='{"Content-Type":"application/json"}',
+                    response_path="geocodes",
+                    auth_type="query", auth_key="",
+                    description="将地址转为经纬度坐标"),
+        ApiRegistry(name="天气查询（wttr.in）", code="wttr",
+                    base_url="https://wttr.in/{params}?format=j1",
+                    method="GET", headers='{"User-Agent":"Mozilla/5.0"}',
+                    response_path="current_condition",
+                    auth_type="none", auth_key="",
+                    description="全球城市天气快速查询"),
+        ApiRegistry(name="GitHub 用户信息", code="github_user",
+                    base_url="https://api.github.com/users/{params}",
+                    method="GET", headers='{"Accept":"application/vnd.github+json"}',
+                    response_path="name",
+                    auth_type="none", auth_key="",
+                    description="根据 GitHub 用户名拉取公开资料"),
+    ]:
+        db.add(api)
+    print("[seed] 接口注册表样本写入完成")
+
+
+def _seed_settings(db: SessionLocal):
+    """初始化系统设置默认值"""
+    defaults = [
+        Setting(key="system_name", value="智能数据瞭望系统", description="系统名称"),
+        Setting(key="database_url", value=encrypt(config.SQLITE_URL), description="数据库连接（修改后重启生效）"),
+        Setting(key="log_retention_days", value="30", description="日志保留天数"),
+        Setting(key="default_model_id", value="1", description="默认模型ID"),
+        Setting(key="sensitive_threshold", value="0.6", description="敏感词匹配阈值"),
+        Setting(key="voice_enabled", value="true", description="语音播报开关"),
+        Setting(key="face_recognition_enabled", value="true", description="人脸识别开关"),
+        Setting(key="collection_rate_limit", value="10", description="采集频率限制(次/分钟)"),
+        Setting(key="external_api_key", value="", description="外链 API 全局密钥"),
+    ]
+    existing_keys = {setting.key for setting in db.query(Setting).all()}
+    added = 0
+    for s in defaults:
+        if s.key not in existing_keys:
+            db.add(s)
+            added += 1
+    print(f"[seed] 系统设置写入完成（新增 {added} 条）")
+
+
+def _seed_collected_data(db: SessionLocal):
+    """补充采集数据样本，让仪表盘 total_collected 有数据可展示"""
+    if not db.query(CollectedData).filter(CollectedData.saved == True).first():
+        kw_pool = ["数据治理", "人工智能", "大模型", "安全", "云计算", "物联网"]
+        for i, d in enumerate([
+            CollectedData(source_name="百度新闻搜索", keyword="人工智能", title="人工智能技术发展现状与未来趋势",
+                          url="https://example.com/ai-trends", summary="人工智能在各行业加速渗透，预计2026年规模突破万亿",
+                          keywords_extracted=json.dumps(kw_pool, ensure_ascii=False),
+                          sentiment="positive", saved=True, source_id=1),
+            CollectedData(source_name="新浪新闻搜索", keyword="数据治理", title="数据治理成为企业数字化转型核心环节",
+                          url="https://example.com/data-governance", summary="数据治理体系逐步完善，提升企业数据资产价值",
+                          keywords_extracted=json.dumps(["数据治理", "数字化转型", "数据资产"], ensure_ascii=False),
+                          sentiment="positive", saved=True, source_id=2),
+            CollectedData(source_name="必应新闻搜索", keyword="信息安全", title="全球信息安全事件回顾：风险与应对",
+                          url="https://example.com/security", summary="数据泄露事件频发，企业强化安全防御体系",
+                          keywords_extracted=json.dumps(["信息安全", "风险", "数据泄露"], ensure_ascii=False),
+                          sentiment="negative", saved=True, source_id=3),
+            CollectedData(source_name="百度新闻搜索", keyword="联邦学习", title="联邦学习在隐私计算中的应用",
+                          url="https://example.com/federated-learning", summary="联邦学习推动数据要素流通与隐私保护平衡",
+                          keywords_extracted=json.dumps(["联邦学习", "隐私计算", "数据要素"], ensure_ascii=False),
+                          sentiment="neutral", saved=True, source_id=1),
+            CollectedData(source_name="新浪新闻搜索", keyword="智慧城市", title="智慧城市建设进入新阶段",
+                          url="https://example.com/smart-city", summary="数据驱动城市治理，迈向精细化运营",
+                          keywords_extracted=json.dumps(["智慧城市", "城市治理", "数据驱动"], ensure_ascii=False),
+                          sentiment="positive", saved=True, source_id=2),
+        ], start=1):
+            if not db.query(CollectedData).filter(CollectedData.url == d.url).first():
+                db.add(d)
+        print("[seed] 采集数据样本写入完成")
+
+    # 大屏扩展样本：30 条带 keywords_extracted 的采集数据，确保数智大屏有词云内容
+    if db.query(CollectedData).filter(CollectedData.saved == True).count() < 30:
+        sample_sources = ["百度新闻", "新浪新闻", "36氪"]
+        sample_keywords = json.dumps(
+            ["数据治理", "人工智能", "大模型", "安全", "云计算", "物联网"],
+            ensure_ascii=False,
+        )
+        for i in range(30):
+            cd = CollectedData(
+                source_name=random.choice(sample_sources),
+                keyword="AI",
+                title=f"AI行业动态第{i+1}条",
+                content=f"这是AI行业动态第{i+1}条的内容摘要，涵盖数据治理、大模型、安全、云计算等核心议题。",
+                summary=f"AI行业第{i+1}条摘要",
+                keywords_extracted=sample_keywords,
+                sentiment=random.choice(["positive", "neutral", "negative"]),
+                saved=True,
+                deep_collected=True,
+            )
+            db.add(cd)
+        print("[seed] 采集样本数据写入完成（30 条大屏数据）")

@@ -6,11 +6,13 @@ from database.session import SessionLocal, get_db
 from schema.api import AIModelOut, AIModelCreate, AIModelUpdate
 from dao.model_dao import list_models, get_model, create_model, update_model, delete_model, set_default
 from core.security import get_current_user
+from core.rbac import require_role
 from core.openai_client import OpenAIClient, OpenAIError
 from dao.base_dao import log_action
 from models.user import User
 from models.ai_model import AIModel
 import asyncio
+from core.generation_api import generation_endpoint
 
 model_router = APIRouter(prefix="/api/models", tags=["大模型管理"])
 
@@ -21,7 +23,7 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
 
 
 @model_router.post("", response_model=AIModelOut, status_code=201)
-def create(body: AIModelCreate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create(body: AIModelCreate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = AIModel(
         name=body.name, provider=body.provider, api_key=body.api_key,
         model_name=body.model_name, endpoint=body.endpoint,
@@ -44,7 +46,7 @@ def get_one(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depe
 
 
 @model_router.put("/{model_id}", response_model=AIModelOut)
-def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     m = update_model(model_id, updates, db)
     if not m:
@@ -54,7 +56,7 @@ def update(model_id: int, body: AIModelUpdate, db: SessionLocal = Depends(get_db
 
 
 @model_router.delete("/{model_id}")
-def delete(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = get_model(model_id, db)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -67,7 +69,7 @@ def delete(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depen
 
 
 @model_router.post("/{model_id}/default", response_model=AIModelOut)
-def set_as_default(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def set_as_default(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     m = set_default(model_id, db)
     if not m:
         raise HTTPException(404, "模型不存在")
@@ -76,12 +78,38 @@ def set_as_default(model_id: int, db: SessionLocal = Depends(get_db), user: User
 
 
 @model_router.post("/{model_id}/test")
-async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
-    """测试模型可用性"""
+async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
+    """测试模型可用性（按 type 分发 image/video/chat）"""
     m = get_model(model_id, db)
     if not m:
         raise HTTPException(404, "模型不存在")
     try:
+        # image / video 模型不走 chat/completions，直接探测对应端点
+        if m.model_type == "image":
+            import httpx
+            async with httpx.AsyncClient(timeout=20) as http:
+                resp = await http.post(
+                    generation_endpoint(m.endpoint, "image"),
+                    json={"model": m.model_name, "prompt": "test", "n": 1, "size": "1024x1024"},
+                    headers={"Authorization": f"Bearer {m.api_key}"},
+                )
+            if resp.status_code == 401:
+                return {"success": False, "error": "API Key 无效或权限不足"}
+            # 多数兼容端点在 prompt 异常时会返回 4xx，但只要 HTTP 通即可视为可达
+            return {"success": True, "response": f"图片端点可达 (HTTP {resp.status_code})"}
+        if m.model_type == "video":
+            import httpx
+            async with httpx.AsyncClient(timeout=20) as http:
+                resp = await http.post(
+                    generation_endpoint(m.endpoint, "video"),
+                    json={"model": m.model_name, "prompt": "test"},
+                    headers={"Authorization": f"Bearer {m.api_key}"},
+                )
+            if resp.status_code == 401:
+                return {"success": False, "error": "API Key 无效或权限不足"}
+            return {"success": True, "response": f"视频端点可达 (HTTP {resp.status_code})"}
+
+        # chat / embedding / rerank 走标准 chat/completions
         client = OpenAIClient(
             api_key=m.api_key,
             endpoint=m.endpoint,

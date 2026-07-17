@@ -66,4 +66,6 @@ def get_current_user(token: str = Depends(extract_token), db=Depends(get_db)):
     user = find_user_by_name(username, db)
     if user is None:
         raise HTTPException(status_code=404, detail="用户不存在")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已停用")
     return user

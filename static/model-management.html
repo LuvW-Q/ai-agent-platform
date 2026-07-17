@@ -2,7 +2,9 @@
 <html class="dark" lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<title>模型管理 - 数据瞭望系统</title>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
@@ -64,6 +66,8 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
     <select id="typeFilter" onchange="filterModels()" class="bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm focus:border-secondary-container transition-all">
       <option value="">全部类型</option>
       <option value="chat">对话</option>
+      <option value="image">图片生成</option>
+      <option value="video">视频生成</option>
       <option value="embedding">嵌入</option>
       <option value="rerank">重排序</option>
     </select>
@@ -124,8 +128,10 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
       <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="text-xs text-on-surface-variant block mb-1">类型</label>
-          <select id="mType" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm">
+          <select id="mType" onchange="onTypeChange()" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm">
             <option value="chat">对话</option>
+            <option value="image">图片生成</option>
+            <option value="video">视频生成</option>
             <option value="embedding">嵌入</option>
             <option value="rerank">重排序</option>
           </select>
@@ -138,6 +144,8 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
           <label class="text-xs text-on-surface-variant block mb-1">Max Tokens</label>
           <input id="mMaxTokens" type="number" value="2048" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
         </div>
+      </div>
+      <div id="typeExtra" class="hidden">
       </div>
       <div>
         <label class="text-xs text-on-surface-variant block mb-1">Temperature</label>
@@ -178,8 +186,8 @@ async function loadModels() {
 function renderTable() {
   const tbody = document.getElementById('modelTableBody');
   tbody.innerHTML = models.map(m => {
-    const typeLabel = { chat: '对话', embedding: '嵌入', rerank: '重排序' }[m.model_type] || m.model_type;
-    const typeColor = { chat: 'text-secondary-container', embedding: 'text-tertiary', rerank: 'text-primary-fixed-dim' }[m.model_type] || '';
+    const typeLabel = { chat: '对话', image: '图片生成', video: '视频生成', embedding: '嵌入', rerank: '重排序' }[m.model_type] || m.model_type;
+    const typeColor = { chat: 'text-secondary-container', image: 'text-tertiary', video: 'text-primary-fixed-dim', embedding: 'text-tertiary', rerank: 'text-primary-fixed-dim' }[m.model_type] || '';
     return `<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30 transition-colors">
       <td class="px-4 py-3">
         <div class="flex items-center gap-2">
@@ -217,8 +225,8 @@ function filterModels() {
   );
   const tbody = document.getElementById('modelTableBody');
   tbody.innerHTML = filtered.length ? filtered.map(m => {
-    const typeLabel = { chat: '对话', embedding: '嵌入', rerank: '重排序' }[m.model_type] || m.model_type;
-    const typeColor = { chat: 'text-secondary-container', embedding: 'text-tertiary', rerank: 'text-primary-fixed-dim' }[m.model_type] || '';
+    const typeLabel = { chat: '对话', image: '图片生成', video: '视频生成', embedding: '嵌入', rerank: '重排序' }[m.model_type] || m.model_type;
+    const typeColor = { chat: 'text-secondary-container', image: 'text-tertiary', video: 'text-primary-fixed-dim', embedding: 'text-tertiary', rerank: 'text-primary-fixed-dim' }[m.model_type] || '';
     return `<tr class="border-b border-outline-variant/10 hover:bg-surface-container-high/30 transition-colors">
       <td class="px-4 py-3"><div class="flex items-center gap-2"><span class="font-medium text-on-surface">${escapeHtml(m.name)}</span>${m.is_default ? '<span class="text-[10px] bg-secondary-container/20 text-secondary-container px-1.5 py-0.5 rounded">默认</span>' : ''}</div></td>
       <td class="px-4 py-3 text-sm text-on-surface-variant">${escapeHtml(m.provider)}</td>
@@ -239,10 +247,12 @@ function openCreateModal() {
   editId = null;
   document.getElementById('modalTitle').textContent = '添加模型';
   ['mName','mProvider','mModelName','mApiKey','mEndpoint'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('mApiKey').placeholder = 'sk-...';
   document.getElementById('mType').value = 'chat';
   document.getElementById('mContext').value = '4096';
   document.getElementById('mMaxTokens').value = '2048';
   document.getElementById('mTemp').value = '0.7';
+  onTypeChange();
   const modal = document.getElementById('modelModal');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
@@ -256,13 +266,14 @@ function editModel(id) {
   document.getElementById('mName').value = m.name;
   document.getElementById('mProvider').value = m.provider;
   document.getElementById('mModelName').value = m.model_name;
-  document.getElementById('mApiKey').value = m.api_key || '';
+  document.getElementById('mApiKey').value = '';
   document.getElementById('mApiKey').placeholder = '留空则不修改';
   document.getElementById('mEndpoint').value = m.endpoint;
   document.getElementById('mType').value = m.model_type;
   document.getElementById('mContext').value = m.context_length;
   document.getElementById('mMaxTokens').value = m.max_tokens;
   document.getElementById('mTemp').value = m.temperature;
+  onTypeChange();
   const modal = document.getElementById('modelModal');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
@@ -274,11 +285,51 @@ function closeModal() {
   modal.classList.remove('flex');
 }
 
+function onTypeChange() {
+  const extra = document.getElementById('typeExtra');
+  const t = document.getElementById('mType').value;
+  if (t === 'image') {
+    extra.innerHTML = `<div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">图片尺寸</label>
+        <select id="mSize" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm">
+          <option value="1024x1024">1024×1024</option>
+          <option value="1024x1792">1024×1792</option>
+          <option value="1792x1024">1792×1024</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">生成数量</label>
+        <input id="mN" type="number" value="1" min="1" max="10" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
+      </div>
+    </div>`;
+    extra.classList.remove('hidden');
+  } else if (t === 'video') {
+    extra.innerHTML = `<div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">视频时长(秒)</label>
+        <input id="mDuration" type="number" value="5" min="1" max="60" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm"/>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">分辨率</label>
+        <select id="mResolution" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm">
+          <option value="720p">720p</option>
+          <option value="1080p">1080p</option>
+        </select>
+      </div>
+    </div>`;
+    extra.classList.remove('hidden');
+  } else {
+    extra.innerHTML = '';
+    extra.classList.add('hidden');
+  }
+}
+
 async function saveModel() {
+  const apiKey = document.getElementById('mApiKey').value.trim();
   const data = {
     name: document.getElementById('mName').value.trim(),
     provider: document.getElementById('mProvider').value.trim() || 'openai',
-    api_key: document.getElementById('mApiKey').value.trim() || 'sk-placeholder',
     model_name: document.getElementById('mModelName').value.trim(),
     endpoint: document.getElementById('mEndpoint').value.trim() || 'https://api.openai.com/v1',
     context_length: parseInt(document.getElementById('mContext').value) || 4096,
@@ -287,6 +338,8 @@ async function saveModel() {
     max_tokens: parseInt(document.getElementById('mMaxTokens').value) || 2048,
   };
   if (!data.name || !data.model_name) { showToast('请填写名称和模型ID', 'error'); return; }
+  if (!editId && !apiKey) { showToast('请填写 API Key', 'error'); return; }
+  if (apiKey) data.api_key = apiKey;
   try {
     if (editId) {
       await apiPut(`/api/models/${editId}`, data);

@@ -4,9 +4,9 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>智能数据瞭望系统 - 登录</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
       tailwind.config = {
@@ -218,12 +218,16 @@
 </div>
 <span class="font-body-md text-body-md text-on-surface-variant group-hover:text-on-surface">记住登录状态</span>
 </label>
-<a class="font-body-md text-body-md text-primary hover:underline underline-offset-4 decoration-primary/30" href="#">忘记密码?</a>
+<button type="button" onclick="showToast('密码找回尚未接入，请联系系统管理员重置密码', 'info')" class="font-body-md text-body-md text-primary hover:underline underline-offset-4 decoration-primary/30">忘记密码?</button>
 </div>
 <!-- Submit Button -->
 <button class="w-full py-lg bg-primary-container text-on-primary rounded-lg font-headline-sm text-headline-sm font-bold shadow-[0_8px_20px_-4px_rgba(0,82,217,0.4)] hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-sm" id="submitBtn" type="submit">
 <span class="material-symbols-outlined">login</span>
                     登 录
+                </button>
+<button class="w-full py-md border border-secondary-container/40 bg-secondary-container/10 text-secondary rounded-lg font-body-md text-body-md font-bold hover:bg-secondary-container/20 transition-all flex items-center justify-center gap-sm" id="faceLoginBtn" onclick="openFaceModal()" type="button">
+<span class="material-symbols-outlined">face</span>
+                    人脸识别登录
                 </button>
 <!-- Login/Register Toggle -->
 <div class="mt-md text-center">
@@ -250,16 +254,207 @@
                 © 2024 智能数据瞭望系统 企业级数据治理与审计平台
             </p>
 <div class="mt-sm flex justify-center gap-md font-caption text-caption text-outline/50">
-<a class="hover:text-primary transition-colors" href="#">隐私协议</a>
+<button type="button" onclick="showToast('隐私协议页面尚未提供', 'info')" class="hover:text-primary transition-colors">隐私协议</button>
 <span>|</span>
-<a class="hover:text-primary transition-colors" href="#">服务条款</a>
+<button type="button" onclick="showToast('服务条款页面尚未提供', 'info')" class="hover:text-primary transition-colors">服务条款</button>
 <span>|</span>
-<a class="hover:text-primary transition-colors" href="#">安全合规</a>
+<button type="button" onclick="showToast('安全合规说明页面尚未提供', 'info')" class="hover:text-primary transition-colors">安全合规</button>
 </div>
 </footer>
 </main>
+<!-- 浏览器仅负责提取特征；加密保存与比对由后端完成。 -->
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js" integrity="sha384-gzn2n++arkvyhdNLmUf1s6F5NZ8iAbZ7FhIt+Zw7Jlf1n/vNTmZ3+cYr7S4ogyco" crossorigin="anonymous"></script>
+<div id="faceModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="faceModalTitle">
+  <section class="glass-panel w-full max-w-xl rounded-xl p-lg">
+    <div class="mb-md flex items-start justify-between gap-md">
+      <div>
+        <h2 id="faceModalTitle" class="text-headline-sm font-bold text-on-surface">人脸识别登录</h2>
+        <p class="mt-xs text-caption text-on-surface-variant">浏览器提取 128 维特征，后端加密保存并完成身份比对。</p>
+      </div>
+      <button type="button" onclick="closeFaceModal()" class="text-on-surface-variant hover:text-primary" aria-label="关闭人脸识别">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <div class="relative aspect-video overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
+      <video id="faceVideo" class="h-full w-full object-cover" autoplay muted playsinline></video>
+      <div id="faceLoading" class="absolute inset-0 flex items-center justify-center bg-surface-container-lowest/90 text-center text-body-md text-on-surface-variant">正在加载人脸模型…</div>
+    </div>
+    <div id="faceStatus" class="mt-md rounded-lg border border-outline-variant/50 bg-surface-container-low p-md text-body-md text-on-surface-variant">
+      输入账号后打开摄像头。首次注册需填写当前账号密码完成身份认证。
+    </div>
+    <div class="mt-md grid grid-cols-1 gap-sm sm:grid-cols-2">
+      <button id="faceRegisterBtn" type="button" onclick="registerFace()" class="rounded-lg border border-primary/40 bg-primary-container/20 px-lg py-md text-body-md font-bold text-primary hover:bg-primary-container/30 disabled:opacity-40">认证并注册人脸</button>
+      <button id="faceVerifyBtn" type="button" onclick="loginWithFace()" class="rounded-lg bg-secondary-container px-lg py-md text-body-md font-bold text-on-secondary-container hover:brightness-110 disabled:opacity-40">刷脸登录</button>
+    </div>
+  </section>
+</div>
 <script src="/static/js/app.js"></script>
 <script>
+        const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+        let faceModelsReady = false;
+        let faceModelsPromise = null;
+        let faceStream = null;
+        let faceRecognitionEnabled = true;
+
+        async function loadPublicFaceSetting() {
+            try {
+                const response = await fetch('/api/settings/public');
+                if (!response.ok) return;
+                const settings = await response.json();
+                const setting = settings.find(item => item.key === 'face_recognition_enabled');
+                faceRecognitionEnabled = !setting || setting.value === 'true' || setting.value === '1';
+                if (!faceRecognitionEnabled) {
+                    const button = document.getElementById('faceLoginBtn');
+                    button.disabled = true;
+                    button.classList.add('opacity-40', 'cursor-not-allowed');
+                    button.innerHTML = '<span class="material-symbols-outlined">face</span>人脸识别已关闭';
+                }
+            } catch (error) {}
+        }
+
+        function setFaceStatus(message, tone = 'normal') {
+            const status = document.getElementById('faceStatus');
+            status.textContent = message;
+            status.className = 'mt-md rounded-lg border bg-surface-container-low p-md text-body-md ' + (
+                tone === 'success' ? 'border-secondary-container/60 text-secondary' :
+                tone === 'error' ? 'border-error/60 text-error' :
+                'border-outline-variant/50 text-on-surface-variant'
+            );
+        }
+
+        function setFaceButtonsDisabled(disabled) {
+            document.getElementById('faceRegisterBtn').disabled = disabled;
+            document.getElementById('faceVerifyBtn').disabled = disabled;
+        }
+
+        async function loadFaceModels() {
+            if (faceModelsReady) return;
+            if (!window.faceapi) throw new Error('face-api.js 加载失败，请检查网络');
+            if (!faceModelsPromise) {
+                faceModelsPromise = Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL)
+                ]).then(() => {
+                    faceModelsReady = true;
+                }).catch(error => {
+                    faceModelsPromise = null;
+                    throw error;
+                });
+            }
+            await faceModelsPromise;
+        }
+
+        async function openFaceModal() {
+            if (!faceRecognitionEnabled) {
+                showToast('管理员已关闭人脸识别', 'error');
+                return;
+            }
+            const username = document.getElementById('usernameInput').value.trim();
+            if (!username) {
+                showToast('请先填写登录账号', 'error');
+                return;
+            }
+            const modal = document.getElementById('faceModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setFaceButtonsDisabled(true);
+            document.getElementById('faceLoading').classList.remove('hidden');
+            setFaceStatus('正在加载模型并申请摄像头权限…');
+            try {
+                await loadFaceModels();
+                faceStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                const video = document.getElementById('faceVideo');
+                video.srcObject = faceStream;
+                await video.play();
+                document.getElementById('faceLoading').classList.add('hidden');
+                setFaceButtonsDisabled(false);
+                setFaceStatus('摄像头已就绪。请正对镜头，保持光线充足。');
+            } catch (error) {
+                document.getElementById('faceLoading').textContent = '摄像头或模型加载失败';
+                setFaceStatus(error.message, 'error');
+            }
+        }
+
+        function closeFaceModal() {
+            if (faceStream) {
+                faceStream.getTracks().forEach(track => track.stop());
+                faceStream = null;
+            }
+            const video = document.getElementById('faceVideo');
+            video.srcObject = null;
+            const modal = document.getElementById('faceModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function captureFaceDescriptor() {
+            if (!faceModelsReady || !faceStream) throw new Error('摄像头尚未就绪');
+            setFaceButtonsDisabled(true);
+            setFaceStatus('正在检测人脸并计算 128 维特征…');
+            try {
+                const result = await faceapi
+                    .detectSingleFace(document.getElementById('faceVideo'), new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+                if (!result) throw new Error('未检测到清晰的单张人脸，请调整位置后重试');
+                if (result.descriptor.length !== 128) throw new Error('人脸特征维度不是 128，无法继续');
+                return Array.from(result.descriptor);
+            } finally {
+                setFaceButtonsDisabled(false);
+            }
+        }
+
+        async function authenticateForFaceRegistration(username) {
+            if (Token.exists()) return;
+            const password = document.getElementById('passwordInput').value;
+            if (!password) throw new Error('首次注册人脸前请填写当前账号密码');
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || '账号密码认证失败');
+            Token.set(data);
+        }
+
+        async function registerFace() {
+            const username = document.getElementById('usernameInput').value.trim();
+            try {
+                const descriptor = await captureFaceDescriptor();
+                await authenticateForFaceRegistration(username);
+                await apiPost('/api/auth/face/register', { descriptor });
+                Token.clear();
+                setFaceStatus(`账号“${username}”的人脸特征已加密保存，可直接刷脸登录。`, 'success');
+                showToast('人脸特征注册成功', 'success');
+            } catch (error) {
+                setFaceStatus(error.message, 'error');
+            }
+        }
+
+        async function loginWithFace() {
+            const username = document.getElementById('usernameInput').value.trim();
+            try {
+                const descriptor = await captureFaceDescriptor();
+                const response = await fetch('/api/auth/face/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, descriptor })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || '人脸登录失败');
+                Token.set(data);
+                setFaceStatus('人脸验证通过，正在进入系统…', 'success');
+                showToast('人脸登录成功', 'success');
+                closeFaceModal();
+                const target = await resolveLandingPage();
+                window.location.href = target;
+            } catch (error) {
+                setFaceStatus(error.message, 'error');
+            }
+        }
+
         // Password Visibility Toggle
         function togglePassword() {
             const input = document.getElementById('passwordInput');
@@ -425,14 +620,14 @@
                     if (res.ok) {
                         Token.set(data);
                         showToast('登录成功，正在跳转...', 'success');
-                        // 获取用户信息判断角色
+                        // 获取服务端返回的精确角色后再决定入口
                         try {
-                          const profile = await fetch('/api/auth/profile', { headers: { 'Authorization': 'Bearer ' + Token.access } }).then(r => r.json());
-                          const adminRoles = ['ROOT', 'AUDIT', 'OPS'];
-                          const target = adminRoles.includes(profile.role) ? '/dashboard' : '/de';
+                          const target = await resolveLandingPage();
                           setTimeout(() => window.location.href = target, 800);
                         } catch(e) {
-                          setTimeout(() => window.location.href = '/dashboard', 800);
+                          showToast(e.message || '登录成功，但未能获取用户角色', 'error');
+                          btn.disabled = false;
+                          btn.innerHTML = '<span class="material-symbols-outlined">login</span> 登 录';
                         }
                     } else {
                         showToast(data.detail || '登录失败', 'error');
@@ -447,9 +642,18 @@
             }
         });
 
-        // 如果已登录，直接跳转
-        if (Token.exists()) {
-            window.location.href = '/dashboard';
+        async function resolveLandingPage() {
+            const profile = await apiGet('/api/auth/profile');
+            const adminRoles = ['ROOT', 'AUDIT', 'OPS'];
+            return adminRoles.includes(profile.role) ? '/dashboard' : '/de';
         }
+
+        // 已登录时仍需读取角色，避免普通用户误入管理后台
+        if (Token.exists()) {
+            resolveLandingPage()
+                .then(target => { window.location.href = target; })
+                .catch(error => showToast(error.message || '登录状态校验失败', 'error'));
+        }
+        loadPublicFaceSetting();
     </script>
 </body></html>

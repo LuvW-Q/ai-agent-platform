@@ -2,12 +2,17 @@
 页面路由：返回各HTML页面
 """
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import os
 
 page_router = APIRouter(tags=["页面"])
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+
+
+@page_router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
 
 
 @page_router.get("/", include_in_schema=False)
@@ -23,6 +28,12 @@ def login_page():
 
 @page_router.get("/dashboard", include_in_schema=False)
 def dashboard_page():
+    """管理控制台首页"""
+    return FileResponse(os.path.join(STATIC_DIR, "im-console.html"))
+
+
+@page_router.get("/data-governance", include_in_schema=False)
+def data_governance_page():
     """数据治理"""
     return FileResponse(os.path.join(STATIC_DIR, "data-governance.html"))
 
@@ -105,6 +116,12 @@ def de_chat_page():
     return FileResponse(os.path.join(STATIC_DIR, "de-chat.html"))
 
 
+@page_router.get("/employees", include_in_schema=False)
+def employee_directory_page():
+    """用户侧数字员工目录与对话入口。"""
+    return FileResponse(os.path.join(STATIC_DIR, "de-chat.html"))
+
+
 @page_router.get("/rag", include_in_schema=False)
 def rag_page():
     """RAG 知识库管理"""
@@ -139,3 +156,15 @@ def admin_login_page():
 def chat_mgmt_page():
     """聊天管理"""
     return FileResponse(os.path.join(STATIC_DIR, "chat-management.html"))
+
+
+@page_router.get("/creative", include_in_schema=False)
+def creative_page():
+    """创意工坊"""
+    return FileResponse(os.path.join(STATIC_DIR, "creative-workshop.html"))
+
+
+@page_router.get("/api-registry", include_in_schema=False)
+def api_registry_page():
+    """接口管理"""
+    return FileResponse(os.path.join(STATIC_DIR, "api-registry.html"))

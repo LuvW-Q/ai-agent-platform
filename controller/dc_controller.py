@@ -4,14 +4,21 @@
 from __future__ import annotations
 
 import json, re, uuid
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urljoin
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
+from core.rbac import require_role
 from dao.model_dao import get_default_model
 from core.openai_client import OpenAIClient
+from core.url_guard import assert_public_url
+from core.safe_http import request_public_url
+from core.sensitive_filter import sensitive_filter
+from dao.base_dao import log_action
 from models.user import User
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
+from models.collection_task import CollectionTask
 from pydantic import BaseModel
 import httpx
 from bs4 import BeautifulSoup
@@ -28,6 +35,7 @@ class DSCreateIn(BaseModel):
     body: str = ""
     parse_type: str = "selector"
     parse_rule: str = ""
+    template: str = ""
 
 
 class DSUpdateIn(BaseModel):
@@ -38,6 +46,7 @@ class DSUpdateIn(BaseModel):
     body: str | None = None
     parse_type: str | None = None
     parse_rule: str | None = None
+    template: str | None = None
     status: str | None = None
 
 
@@ -60,30 +69,70 @@ def list_sources(db: SessionLocal = Depends(get_db), user: User = Depends(get_cu
 
 
 @dc_router.post("/sources", status_code=201)
-def create_source(body: DSCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_source(body: DSCreateIn, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     ds = DataSourceConfig(**body.model_dump())
     db.add(ds)
     db.commit()
     db.refresh(ds)
+    log_action("collection_source_create", f"创建采集源: {ds.name}", user.username, db)
     return {"id": ds.id, "name": ds.name}
 
 
 @dc_router.put("/sources/{ds_id}")
 def update_source(ds_id: int, body: DSUpdateIn, db: SessionLocal = Depends(get_db),
-                  user: User = Depends(get_current_user)):
+                  user: User = Depends(require_role("ROOT", "ADMIN"))):
     ds = db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).first()
     if not ds: raise HTTPException(404, "数据源不存在")
     for k, v in body.model_dump().items():
         if v is not None: setattr(ds, k, v)
     db.commit()
+    log_action("collection_source_update", f"更新采集源: {ds.name}", user.username, db)
     return {"updated": True}
 
 
 @dc_router.delete("/sources/{ds_id}")
-def delete_source(ds_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
-    db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).delete()
+def delete_source(ds_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
+    source = db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).first()
+    if source is None:
+        raise HTTPException(404, "数据源不存在")
+    name = source.name
+    db.delete(source)
     db.commit()
+    log_action("collection_source_delete", f"删除采集源: {name}", user.username, db, risk_level="medium")
     return {"deleted": True}
+
+
+@dc_router.post("/sources/{ds_id}/test")
+async def test_source(ds_id: int, db: SessionLocal = Depends(get_db),
+                      user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
+    """测试数据源连接：访问URL 并返回状态码与摘要"""
+    ds = db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).first()
+    if not ds:
+        raise HTTPException(404, "数据源不存在")
+    test_url = ds.url.replace("{keyword}", "test") if "{keyword}" in ds.url else ds.url
+    # SSRF 防护：`test_source` 是单点测试，HTTPException 直接传播给调用者
+    assert_public_url(test_url)
+    try:
+        headers = json.loads(ds.headers) if ds.headers else {}
+        async with httpx.AsyncClient(timeout=15) as client:
+            if ds.method.upper() == "POST":
+                req_body = ds.body.replace("{keyword}", "test") if ds.body else ""
+                resp = await request_public_url(
+                    client, "POST", test_url, content=req_body, headers=headers
+                )
+            else:
+                resp = await request_public_url(client, "GET", test_url, headers=headers)
+        return {
+            "success": 200 <= resp.status_code < 400,
+            "status_code": resp.status_code,
+            "elapsed_ms": int(resp.elapsed.total_seconds() * 1000),
+            "length": len(resp.content),
+            "content_type": resp.headers.get("content-type", ""),
+        }
+    except httpx.TimeoutException:
+        return {"success": False, "error": "请求超时（15s）", "status_code": None}
+    except Exception as e:
+        return {"success": False, "error": str(e), "status_code": None}
 
 
 # ============ 清洗规则 CRUD ============
@@ -93,7 +142,7 @@ def list_rules(db: SessionLocal = Depends(get_db), user: User = Depends(get_curr
 
 
 @dc_router.post("/rules", status_code=201)
-def create_rule(body: CleanRuleIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create_rule(body: CleanRuleIn, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     r = CleanRule(**body.model_dump())
     db.add(r)
     db.commit()
@@ -102,7 +151,7 @@ def create_rule(body: CleanRuleIn, db: SessionLocal = Depends(get_db), user: Use
 
 
 @dc_router.delete("/rules/{rule_id}")
-def delete_rule(rule_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_rule(rule_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     db.query(CleanRule).filter(CleanRule.id == rule_id).delete()
     db.commit()
     return {"deleted": True}
@@ -111,7 +160,7 @@ def delete_rule(rule_id: int, db: SessionLocal = Depends(get_db), user: User = D
 # ============ 数据采集 ============
 @dc_router.post("/crawl")
 async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+                   user: User = Depends(require_role("ROOT", "ADMIN"))):
     """执行采集：按关键词搜索数据源，抓取并清洗"""
     sources = db.query(DataSourceConfig).filter(
         DataSourceConfig.id.in_(body.source_ids), DataSourceConfig.status == "active"
@@ -123,34 +172,77 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
     for src in sources:
         try:
             url = src.url.replace("{keyword}", body.keyword)
+            # SSRF 防护：拦截指向内网/环回地址的数据源。
+            # 单条失败不应中断整批采集，HTTPException 被下方 except 捕获后记录为 error。
+            assert_public_url(url)
             headers = json.loads(src.headers) if src.headers else {}
             async with httpx.AsyncClient(timeout=30) as client:
                 if src.method == "POST":
                     req_body = src.body.replace("{keyword}", body.keyword) if src.body else ""
-                    resp = await client.post(url, content=req_body, headers=headers)
+                    resp = await request_public_url(
+                        client, "POST", url, content=req_body, headers=headers
+                    )
                 else:
-                    resp = await client.get(url, headers=headers, follow_redirects=True)
+                    resp = await request_public_url(client, "GET", url, headers=headers)
+                resp.raise_for_status()
                 html = resp.text
         except Exception as e:
             results.append({"source": src.name, "error": str(e), "items": []})
             continue
 
         # 解析
-        items = _parse_content(html, src.parse_type, src.parse_rule)
+        items = _parse_content(html, src.parse_type, src.parse_rule, str(resp.url))
 
         # 清洗
         cleaned = [_apply_clean_rules(item, rules) for item in items]
 
         # 创建临时结果（不自动保存）
+        result_items = []
+        sensitive_counts = {"high": 0, "medium": 0}
+        matched_words: set[str] = set()
         for item in cleaned:
+            title = item.get("title", "").strip()
+            content = item.get("content", "").strip()
+            if not title and content:
+                title = content[:200]
+            if not content and title:
+                content = title
+            if not title or not content:
+                continue
+            keywords = [body.keyword.strip()] if body.keyword.strip() else [title[:20]]
+            _filtered, blocked, matches = sensitive_filter.inspect(f"{title}\n{content}", db)
+            if matches:
+                sensitive_counts["high" if blocked else "medium"] += 1
+                matched_words.update(rule["word"] for rule in matches)
             cd = CollectedData(
                 source_id=src.id, source_name=src.name, keyword=body.keyword,
-                title=item.get("title", ""), url=item.get("url", ""), content=item.get("content", "")[:5000],
+                title=title, url=item.get("url", ""), content=content[:5000],
+                summary=content[:200],
+                keywords_extracted=json.dumps(keywords, ensure_ascii=False),
             )
             db.add(cd)
+            db.flush()
+            result_items.append({
+                "id": cd.id, "title": item.get("title", ""),
+                "url": item.get("url", ""), "content": item.get("content", ""),
+                "saved": cd.saved,
+            })
         db.commit()
 
-        results.append({"source": src.name, "count": len(cleaned), "items": cleaned[:10]})
+        if matched_words:
+            high = sensitive_counts["high"]
+            medium = sensitive_counts["medium"]
+            log_action(
+                "collected_data_sensitive",
+                f"采集源 [{src.name}] 命中敏感规则 {high + medium} 条（高风险 {high}，中风险 {medium}）："
+                + "、".join(sorted(matched_words)),
+                user.username,
+                db,
+                risk_level="high" if high else "medium",
+            )
+
+        results.append({"source": src.name, "source_id": src.id,
+                        "count": len(result_items), "items": result_items[:10]})
 
     return {"keyword": body.keyword, "results": results}
 
@@ -167,7 +259,7 @@ def list_warehouse(keyword: str = Query(None), db: SessionLocal = Depends(get_db
 
 @dc_router.post("/warehouse/{data_id}/save")
 def save_to_warehouse(data_id: int, db: SessionLocal = Depends(get_db),
-                      user: User = Depends(get_current_user)):
+                      user: User = Depends(require_role("ROOT", "ADMIN"))):
     d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
     if not d: raise HTTPException(404, "数据不存在")
     d.saved = True
@@ -177,16 +269,22 @@ def save_to_warehouse(data_id: int, db: SessionLocal = Depends(get_db),
 
 @dc_router.post("/warehouse/{data_id}/deep-collect")
 async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
-                       user: User = Depends(get_current_user)):
+                       user: User = Depends(require_role("ROOT", "ADMIN"))):
     """深度采集：访问数据URL，AI 解析摘要+实体"""
     d = db.query(CollectedData).filter(CollectedData.id == data_id).first()
     if not d: raise HTTPException(404, "数据不存在")
     if not d.url: raise HTTPException(400, "该数据无来源URL")
 
+    # SSRF 防护：校验目标 URL 不指向私网/环回地址
+    assert_public_url(d.url)
+
     # 抓取目标页面
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(d.url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+            resp = await request_public_url(
+                client, "GET", d.url, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            resp.raise_for_status()
             full_text = resp.text
     except Exception as e:
         raise HTTPException(500, f"抓取失败: {e}")
@@ -199,6 +297,16 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
 
     d.content = body_text
     d.deep_collected = True
+    _filtered, blocked, matches = sensitive_filter.inspect(body_text, db)
+    if matches:
+        log_action(
+            "deep_collected_data_sensitive",
+            f"深度采集数据 [{d.title or d.id}] 命中敏感规则: "
+            + "、".join(sorted({rule["word"] for rule in matches})),
+            user.username,
+            db,
+            risk_level="high" if blocked else "medium",
+        )
 
     # AI 摘要 + 实体提取
     chat_model = get_default_model(db)
@@ -238,15 +346,219 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
 
 
 @dc_router.delete("/warehouse/{data_id}")
-def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_warehouse(data_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
     db.query(CollectedData).filter(CollectedData.id == data_id).delete()
     db.commit()
     return {"deleted": True}
 
 
+# ============ 批量深度采集 + 任务进度日志 ============
+async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
+    """后台执行批量深度采集。
+
+    使用独立的 SessionLocal：请求的 db 在响应返回后会关闭，
+    因此后台任务必须自己管理会话生命周期。
+    """
+    db = SessionLocal()
+    try:
+        task = db.query(CollectionTask).filter(CollectionTask.id == task_id).first()
+        if not task:
+            return
+
+        # 超时检测：处理服务重启导致的孤儿任务
+        # （任务状态仍为 running 但已超过 30 分钟未更新）
+        if task.status == "running" and task.updated_at is not None:
+            updated = task.updated_at
+            if updated.tzinfo is None:
+                updated = updated.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - updated
+            if age > timedelta(minutes=30):
+                task.status = "failed"
+                task.log += "任务超时（超过30分钟无更新）\n"
+                db.commit()
+                return
+
+        task.status = "running"
+        db.commit()
+
+        completed = 0
+        failed = 0
+        sensitive_count = 0
+        async with httpx.AsyncClient(timeout=30) as client:
+            for item_id in item_ids:
+                item = db.query(CollectedData).filter(CollectedData.id == item_id).first()
+                if not item:
+                    failed += 1
+                    task.log += f"[FAIL] item_id={item_id} 数据不存在\n"
+                    db.commit()
+                    continue
+                label = item.title or (item.url[:50] if item.url else "未知条目")
+                try:
+                    if not item.url:
+                        raise ValueError("该数据无来源URL")
+                    # SSRF 防护：单条失败被外层 except 捕获后记录到任务日志
+                    assert_public_url(item.url)
+                    resp = await request_public_url(
+                        client,
+                        "GET",
+                        item.url,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                    )
+                    resp.raise_for_status()
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for tag in soup(["script", "style", "nav", "footer", "header"]):
+                        tag.decompose()
+                    body_text = soup.get_text(separator="\n", strip=True)[:8000]
+                    item.content = body_text
+                    item.deep_collected = True
+                    _filtered, blocked, matches = sensitive_filter.inspect(body_text, db)
+                    if matches:
+                        sensitive_count += 1
+                        task.log += (
+                            f"[RISK] {label}... 命中敏感规则，"
+                            f"等级={'high' if blocked else 'medium'}\n"
+                        )
+                    completed += 1
+                    task.completed_count = completed
+                    task.log += f"[OK] {label}... 深度采集完成\n"
+                except Exception as e:
+                    failed += 1
+                    task.log += f"[FAIL] {label}... 错误: {str(e)}\n"
+                db.commit()
+
+        if task.total_count == 0:
+            task.status = "completed"
+            task.log += "无可深度采集的数据，任务直接结束\n"
+        elif failed == 0:
+            task.status = "completed"
+            task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
+        else:
+            task.status = "failed"
+            task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
+        db.commit()
+        if sensitive_count:
+            log_action(
+                "batch_deep_collected_sensitive",
+                f"批量深度采集任务 {task.id} 有 {sensitive_count} 条数据命中敏感规则",
+                "collection_service",
+                db,
+                risk_level="high",
+            )
+    finally:
+        db.close()
+
+
+@dc_router.post("/batch-deep-collect")
+async def batch_deep_collect(body: CrawlIn, background_tasks: BackgroundTasks,
+                              db: SessionLocal = Depends(get_db),
+                              user: User = Depends(require_role("ROOT", "ADMIN"))):
+    """批量深度采集：创建任务后立即返回，后台异步执行采集循环。
+
+    请求处理器仅完成：选取目标条目、100 条上限检查、创建任务行、入队后台任务。
+    实际的 httpx 抓取循环由 _run_batch_deep_collect 在响应返回后执行。
+    """
+    source_ids_str = ",".join(str(s) for s in body.source_ids) if body.source_ids else ""
+
+    # 选取需要深度采集的目标：仓库中已保存且未深度采集
+    q = db.query(CollectedData).filter(
+        CollectedData.saved == True,
+        CollectedData.deep_collected == False,
+    )
+    if body.keyword:
+        q = q.filter(CollectedData.keyword == body.keyword)
+    if body.source_ids:
+        q = q.filter(CollectedData.source_id.in_(body.source_ids))
+    items_to_collect = q.all()
+
+    # 批量上限检查：100 条
+    if len(items_to_collect) > 100:
+        raise HTTPException(422, "批量大小超过上限 100")
+
+    task = CollectionTask(
+        keyword=body.keyword,
+        source_ids=source_ids_str,
+        status="pending",
+        total_count=len(items_to_collect),
+        completed_count=0,
+        log=f"开始批量深度采集: keyword={body.keyword}, source_ids={source_ids_str or 'all'}\n待采集条数: {len(items_to_collect)}\n",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # 只传 id，避免 SQLAlchemy 对象在请求会话关闭后失效
+    item_ids = [it.id for it in items_to_collect]
+    background_tasks.add_task(_run_batch_deep_collect, task.id, item_ids)
+
+    return {
+        "task_id": task.id,
+        "status": "pending",
+        "total": task.total_count,
+        "completed": 0,
+    }
+
+
+@dc_router.get("/tasks")
+def list_tasks(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出最近的采集任务（最多20条，按创建时间倒序）"""
+    tasks = db.query(CollectionTask).order_by(CollectionTask.created_at.desc()).limit(20).all()
+    return [
+        {
+            "id": t.id,
+            "keyword": t.keyword,
+            "source_ids": t.source_ids,
+            "total_count": t.total_count,
+            "completed_count": t.completed_count,
+            "status": t.status,
+            "log": t.log,
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+            "updated_at": t.updated_at.isoformat() if t.updated_at else "",
+        }
+        for t in tasks
+    ]
+
+
+@dc_router.get("/tasks/{task_id}")
+def get_task(task_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+    """查询单个采集任务详情"""
+    task = db.query(CollectionTask).filter(CollectionTask.id == task_id).first()
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    return {
+        "id": task.id,
+        "keyword": task.keyword,
+        "source_ids": task.source_ids,
+        "total_count": task.total_count,
+        "completed_count": task.completed_count,
+        "status": task.status,
+        "log": task.log,
+        "created_at": task.created_at.isoformat() if task.created_at else "",
+        "updated_at": task.updated_at.isoformat() if task.updated_at else "",
+    }
+
+
 # ============ 辅助函数 ============
-def _parse_content(html: str, parse_type: str, parse_rule: str) -> list[dict]:
+def _parse_content(html: str, parse_type: str, parse_rule: str, base_url: str = "") -> list[dict]:
     items = []
+    if parse_type == "rss":
+        feed = BeautifulSoup(html, "xml")
+        for entry in feed.find_all(["item", "entry"]):
+            title_node = entry.find("title")
+            description_node = entry.find("description") or entry.find("summary") or entry.find("content")
+            link_node = entry.find("link")
+            link = ""
+            if link_node is not None:
+                link = link_node.get("href", "") or link_node.get_text(strip=True)
+            title = title_node.get_text(strip=True) if title_node else ""
+            description_html = description_node.get_text() if description_node else ""
+            content = BeautifulSoup(description_html, "html.parser").get_text(" ", strip=True)
+            items.append({
+                "title": title,
+                "content": content or title,
+                "url": urljoin(base_url, link),
+            })
+        return items
+
     soup = BeautifulSoup(html, "html.parser")
 
     if parse_type == "crawl4ai" or not parse_rule:
@@ -254,7 +566,7 @@ def _parse_content(html: str, parse_type: str, parse_rule: str) -> list[dict]:
         for tag in soup(["script", "style", "nav", "footer"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)[:5000]
-        items.append({"title": soup.title.string if soup.title else "", "content": text, "url": ""})
+        items.append({"title": soup.title.string if soup.title else "", "content": text, "url": base_url})
     elif parse_type == "xpath":
         try:
             from lxml import etree
@@ -262,18 +574,18 @@ def _parse_content(html: str, parse_type: str, parse_rule: str) -> list[dict]:
             elements = tree.xpath(parse_rule)
             for el in elements:
                 items.append({"title": el.text_content()[:200] if hasattr(el, "text_content") else str(el),
-                              "content": str(el), "url": ""})
+                              "content": str(el), "url": base_url})
         except ImportError:
             items.append({"title": "XPath需要lxml库", "content": html[:2000], "url": ""})
     else:
         # CSS 选择器
         elements = soup.select(parse_rule) if parse_rule else [soup]
         for el in elements:
-            link = el.find("a")
+            link = el if el.name == "a" else el.find("a")
             items.append({
                 "title": el.get_text(strip=True)[:200],
                 "content": el.get_text(strip=True)[:2000],
-                "url": link.get("href", "") if link else "",
+                "url": urljoin(base_url, link.get("href", "")) if link else base_url,
             })
     return items
 

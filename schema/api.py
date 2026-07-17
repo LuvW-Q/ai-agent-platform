@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
 
 
 # ===== 认证相关 =====
@@ -79,6 +80,8 @@ class AgentCreate(BaseModel):
     skill_ids: str = ""
     fallback_message: str = "系统繁忙，请稍后再试"
     description: str = ""
+    agent_type: str = "model"       # model=对话型, api=接口型
+    api_id: int | None = None       # 关联 api_registries.id
 
 
 # ===== IM消息 =====
@@ -189,6 +192,11 @@ class DashboardMetrics(BaseModel):
     audit_low: int
     sentiment_positive: int
     trust_score: float
+    # 新字段
+    active_agents: int = 0       # 已发布的数字员工数
+    total_collected: int = 0     # 采集数据总量
+    online_users: int = 0        # 在线用户数（简化：7天内活跃即可）
+    risk_distribution: str = ""  # JSON: {"high":x, "medium":y, "low":z}
 
 
 # ===== 大模型管理 =====
@@ -200,7 +208,7 @@ class AIModelOut(BaseModel):
     model_name: str
     endpoint: str
     context_length: int
-    model_type: str  # chat/embedding/rerank
+    model_type: str  # chat/image/video/embedding/rerank
     is_default: bool
     is_active: bool
     temperature: str
@@ -214,7 +222,7 @@ class AIModelCreate(BaseModel):
     model_name: str
     endpoint: str = "https://api.openai.com/v1"
     context_length: int = 4096
-    model_type: str = "chat"  # chat/embedding/rerank
+    model_type: Literal["chat", "image", "video", "embedding", "rerank"] = "chat"
     temperature: str = "0.7"
     max_tokens: int = 2048
 
@@ -225,7 +233,7 @@ class AIModelUpdate(BaseModel):
     model_name: str | None = None
     endpoint: str | None = None
     context_length: int | None = None
-    model_type: str | None = None
+    model_type: Literal["chat", "image", "video", "embedding", "rerank"] | None = None
     is_active: bool | None = None
     temperature: str | None = None
     max_tokens: int | None = None
@@ -307,9 +315,11 @@ class DEChatIn(BaseModel):
     agent_id: int
     messages: list[ChatMessage]
     group_id: int | None = None  # 群聊场景
+    session_id: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9._-]*$")
 
 class DEChatOut(BaseModel):
     reply: str
     skill_calls: list[dict] = []
     agent_id: int
     agent_name: str = ""
+    session_id: str = ""

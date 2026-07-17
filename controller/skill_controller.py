@@ -8,8 +8,11 @@ from schema.api import SkillOut, SkillCreate, SkillUpdate, AICreateSkillIn
 from dao.skill_dao import list_skills, get_skill, create_skill, update_skill, delete_skill
 from dao.model_dao import get_model
 from core.security import get_current_user
+from core.rbac import require_role
 from core.openai_client import OpenAIClient, OpenAIError
 from core.sandbox import sandbox
+from core.builtin_skills import execute_builtin_skill
+from core.safe_http import request_public_url
 from core.circuit_breaker import circuit_breaker
 from dao.base_dao import log_action
 from models.user import User
@@ -25,7 +28,8 @@ def list_all(db: SessionLocal = Depends(get_db), user: User = Depends(get_curren
 
 
 @skill_router.post("", response_model=SkillOut, status_code=201)
-def create(body: SkillCreate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def create(body: SkillCreate, db: SessionLocal = Depends(get_db),
+           user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     s = Skill(
         name=body.name, skill_type=body.skill_type,
         description=body.description, config=body.config,
@@ -47,7 +51,8 @@ def get_one(skill_id: int, db: SessionLocal = Depends(get_db), user: User = Depe
 
 
 @skill_router.put("/{skill_id}", response_model=SkillOut)
-def update(skill_id: int, body: SkillUpdate, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def update(skill_id: int, body: SkillUpdate, db: SessionLocal = Depends(get_db),
+           user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     s = update_skill(skill_id, updates, db)
     if not s:
@@ -57,7 +62,8 @@ def update(skill_id: int, body: SkillUpdate, db: SessionLocal = Depends(get_db),
 
 
 @skill_router.delete("/{skill_id}")
-def delete(skill_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def delete(skill_id: int, db: SessionLocal = Depends(get_db),
+           user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     s = get_skill(skill_id, db)
     if not s:
         raise HTTPException(404, "技能不存在")
@@ -70,7 +76,8 @@ def delete(skill_id: int, db: SessionLocal = Depends(get_db), user: User = Depen
 
 
 @skill_router.post("/ai-create")
-async def ai_create(body: AICreateSkillIn, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+async def ai_create(body: AICreateSkillIn, db: SessionLocal = Depends(get_db),
+                    user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """AI创建技能：选模型→选类型→输入描述→生成参数"""
     m = get_model(body.model_id, db)
     if not m:
@@ -131,7 +138,8 @@ async def ai_create(body: AICreateSkillIn, db: SessionLocal = Depends(get_db), u
 
 
 @skill_router.post("/{skill_id}/test")
-async def test_skill(skill_id: int, test_args: dict = None, db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+async def test_skill(skill_id: int, test_args: dict = None, db: SessionLocal = Depends(get_db),
+                     user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     """测试技能"""
     s = get_skill(skill_id, db)
     if not s:
@@ -145,6 +153,12 @@ async def test_skill(skill_id: int, test_args: dict = None, db: SessionLocal = D
     args = test_args or {}
 
     try:
+        if s.skill_type == "builtin":
+            config = json.loads(s.config) if s.config else {}
+            result = execute_builtin_skill(config.get("handler", ""), args, db)
+            circuit_breaker.record_success(skill_id)
+            return {"success": True, "result": result}
+
         if s.skill_type == "function_call":
             # 在沙箱中执行函数
             result = sandbox.execute_function(s.config, "execute", args)
@@ -162,7 +176,7 @@ async def test_skill(skill_id: int, test_args: dict = None, db: SessionLocal = D
             if not server_url:
                 return {"success": False, "error": "MCP配置缺少server_url"}
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(server_url, json=args)
+                resp = await request_public_url(client, "POST", server_url, json=args)
                 result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
                 circuit_breaker.record_success(skill_id)
                 return {"success": True, "result": result, "status_code": resp.status_code}

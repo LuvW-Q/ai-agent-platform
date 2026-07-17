@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>接口管理 — 数据瞭望系统</title>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "background": "#0b1326", "surface": "#0b1326", "surface-dim": "#0b1326",
+          "surface-bright": "#31394d", "surface-container-lowest": "#060e20",
+          "surface-container-low": "#131b2e", "surface-container": "#171f33",
+          "surface-container-high": "#222a3d", "surface-container-highest": "#2d3449",
+          "surface-variant": "#2d3449", "primary": "#adc6ff",
+          "on-primary": "#002e6a", "primary-container": "#4d8eff",
+          "on-primary-container": "#00285d", "primary-fixed": "#d8e2ff",
+          "primary-fixed-dim": "#adc6ff", "secondary": "#4edea3",
+          "on-secondary": "#003824", "secondary-container": "#00a572",
+          "on-secondary-container": "#00311f", "tertiary": "#ffb786",
+          "error": "#ffb4ab", "on-error": "#690005",
+          "error-container": "#93000a", "on-error-container": "#ffdad6",
+          "outline": "#8c909f", "outline-variant": "#424754",
+          "on-surface": "#dae2fd", "on-surface-variant": "#c2c6d6",
+          "on-background": "#dae2fd", "inverse-surface": "#dae2fd",
+          "inverse-on-surface": "#283044", "inverse-primary": "#005ac2",
+        },
+        borderRadius: { DEFAULT: "0.125rem", lg: "0.25rem", xl: "0.5rem", full: "0.75rem" },
+        fontFamily: {
+          "display-lg": ["Inter"], "body-md": ["Inter"], "headline-lg": ["Inter"],
+          "body-sm": ["Inter"], "headline-md": ["Inter"], "headline-sm": ["Inter"],
+          "label-md": ["JetBrains Mono"], "body-lg": ["Inter"], "label-sm": ["JetBrains Mono"]
+        },
+      }
+    }
+  };
+</script>
+<style>
+  .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+  .fill-icon { font-variation-settings: 'FILL' 1; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #424754; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8c909f; }
+  .tab-btn { transition: all 0.2s; }
+  .tab-btn.active { color: #adc6ff; border-bottom-color: #adc6ff; }
+  .modal-overlay { background: rgba(0,0,0,0.5); }
+  .app-table th, .app-table td { padding: 12px 16px; }
+</style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen">
+<aside></aside>
+<main class="min-h-screen p-lg">
+  <!-- Page Header -->
+  <div class="mb-lg">
+    <h1 class="font-headline-md text-headline-md font-bold text-on-surface">接口管理</h1>
+    <p class="text-body-sm text-on-surface-variant mt-1">注册外部 API、在线测试并一键生成接口型数字员工</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="border-b border-outline-variant mb-lg">
+    <nav class="flex gap-6 -mb-px">
+      <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-primary text-primary active" data-tab="registry" onclick="switchTab('registry')">接口列表</button>
+      <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="test" onclick="switchTab('test')">在线测试</button>
+    </nav>
+  </div>
+
+  <!-- Tab1: 接口列表 -->
+  <div id="tab-registry" class="tab-panel">
+    <div class="flex items-center justify-between mb-md">
+      <div class="relative">
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">search</span>
+        <input id="api-search" class="bg-surface-container border border-outline-variant rounded-xl pl-10 pr-4 py-2 text-sm w-72 outline-none focus:border-primary" placeholder="搜索名称或编码..." oninput="debounceSearch(this.value)"/>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-on-surface-variant" id="api-count">共 0 个接口</span>
+        <button class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110 transition-all" onclick="openApiModal()">
+          <span class="material-symbols-outlined text-sm">add</span> 新增接口
+        </button>
+      </div>
+    </div>
+    <div class="bg-surface-container border border-outline-variant rounded-xl overflow-hidden">
+      <table class="w-full app-table">
+        <thead>
+          <tr class="bg-surface-container-high text-xs text-on-surface-variant uppercase tracking-wider">
+            <th class="text-left px-4 py-3 font-semibold">ID</th>
+            <th class="text-left px-4 py-3 font-semibold">名称</th>
+            <th class="text-left px-4 py-3 font-semibold">编码</th>
+            <th class="text-left px-4 py-3 font-semibold">Base URL</th>
+            <th class="text-left px-4 py-3 font-semibold">方法</th>
+            <th class="text-left px-4 py-3 font-semibold">认证</th>
+            <th class="text-left px-4 py-3 font-semibold">描述</th>
+            <th class="text-left px-4 py-3 font-semibold">操作</th>
+          </tr>
+        </thead>
+        <tbody id="api-tbody" class="divide-y divide-outline-variant/30">
+          <tr><td colspan="8" class="text-center text-outline py-lg">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tab2: 在线测试 -->
+  <div id="tab-test" class="tab-panel hidden">
+    <div class="bg-surface-container border border-outline-variant rounded-xl p-lg">
+      <div class="grid grid-cols-12 gap-4 mb-md">
+        <div class="col-span-5">
+          <label class="text-xs text-on-surface-variant block mb-1">选择接口</label>
+          <select id="test-api-select" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary" onchange="onTestApiChange()">
+            <option value="">-- 选择接口 --</option>
+          </select>
+        </div>
+        <div class="col-span-7">
+          <label class="text-xs text-on-surface-variant block mb-1">参数 (JSON 字符串，将替换 {params} 占位符)</label>
+          <input id="test-params" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary font-mono" placeholder='{"keyword":"AI"}' value="{}"/>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mb-md">
+        <button class="flex items-center gap-1 px-4 py-2 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110 transition-all" onclick="runTestApi()">
+          <span class="material-symbols-outlined text-sm">play_arrow</span> 发起测试
+        </button>
+        <button class="flex items-center gap-1 px-4 py-2 border border-outline-variant text-sm rounded-xl hover:bg-surface-container-high transition-all" onclick="clearTestResult()">
+          <span class="material-symbols-outlined text-sm">clear</span> 清空结果
+        </button>
+      </div>
+      <div class="grid grid-cols-12 gap-4">
+        <div class="col-span-6">
+          <div class="text-xs text-on-surface-variant mb-2">原始响应</div>
+          <textarea id="test-raw" class="w-full bg-surface-container-high border border-outline-variant rounded-xl p-3 text-xs font-mono outline-none min-h-[300px] resize-y" placeholder="原始响应..."></textarea>
+        </div>
+        <div class="col-span-6">
+          <div class="text-xs text-on-surface-variant mb-2">提取结果（JSONPath提取）</div>
+          <textarea id="test-extract" class="w-full bg-surface-container-high border border-outline-variant rounded-xl p-3 text-xs font-mono outline-none min-h-[300px] resize-y" placeholder="提取后的内容..."></textarea>
+        </div>
+      </div>
+      <div id="test-meta" class="text-xs text-on-surface-variant mt-3"></div>
+    </div>
+  </div>
+</main>
+
+<!-- API Modal -->
+<div id="api-modal" class="fixed inset-0 z-50 hidden modal-overlay flex items-center justify-center" onclick="if(event.target===this)closeApiModal()">
+  <div class="bg-surface-container border border-outline-variant rounded-xl p-lg w-full max-w-2xl mx-4 shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+    <h3 class="text-lg font-bold text-on-surface mb-md" id="api-modal-title">新增接口</h3>
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <input id="api-name" class="bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" placeholder="名称 *"/>
+      <input id="api-code" class="bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" placeholder="编码 (唯一) *"/>
+    </div>
+    <input id="api-base-url" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary font-mono" placeholder="Base URL * (可含 {params} 占位符)"/>
+    <div class="grid grid-cols-3 gap-3 mb-3">
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">HTTP 方法</label>
+        <select id="api-method" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="DELETE">DELETE</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">认证类型</label>
+        <select id="api-auth-type" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary">
+          <option value="query">query (URL参数)</option>
+          <option value="header">header (Bearer)</option>
+          <option value="none">none</option>
+        </select>
+      </div>
+      <input id="api-auth-key" class="bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary mt-4" placeholder="认证密钥可替换占位符)" rows="3"></textarea>
+    </div>
+    <input id="api-response-path" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary font-mono" placeholder="响应提取路径 (JSONPath, 如 data.result)"/>
+    <textarea id="api-headers" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary font-mono" placeholder='请求头 JSON (如 {"Content-Type":"application/json"})' rows="2"></textarea>
+    <textarea id="api-body-template" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary font-mono" placeholder="POST 请求体模板 (可含 {params} 占位符)" rows="3"></textarea>
+    <textarea id="api-description" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-4 outline-none focus:border-primary" placeholder="接口描述" rows="2"></textarea>
+    <div class="flex justify-end gap-2">
+      <button class="px-4 py-2 border border-outline-variant text-sm rounded-xl hover:bg-surface-container-high transition-all" onclick="closeApiModal()">取消</button>
+      <button class="px-4 py-2 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110 transition-all" onclick="saveApi()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Agent-from-API Modal -->
+<div id="agent-modal" class="fixed inset-0 z-50 hidden modal-overlay flex items-center justify-center" onclick="if(event.target===this)closeAgentModal()">
+  <div class="bg-surface-container border border-outline-variant rounded-xl p-lg w-full max-w-md mx-4 shadow-2xl" onclick="event.stopPropagation()">
+    <h3 class="text-lg font-bold text-on-surface mb-md">从接口生成数字员工</h3>
+    <div class="text-xs text-on-surface-variant mb-3">将基于接口 <span id="agent-modal-api-name" class="text-primary font-semibold">--</span> 创建一个 agent_type=api 的接口型数字员工。</div>
+    <input id="agent-create-name" class="w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm mb-3 outline-none focus:border-primary" placeholder="员工名称 (空则使用接口名)"/>
+    <div class="flex justify-end gap-2">
+      <button class="px-4 py-2 border border-outline-variant text-sm rounded-xl hover:bg-surface-container-high transition-all" onclick="closeAgentModal()">取消</button>
+      <button class="px-4 py-2 bg-primary text-on-primary text-sm rounded-xl hover:brightness-110 transition-all" onclick="createAgentFromApi()">生成</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+<script>
+if (!requireAuth()) throw new Error('redirecting');
+
+let currentTab = 'registry';
+let editingApiId = null;
+let apiListCache = [];
+let creatingAgentApiId = null;
+let searchTimer = null;
+
+function switchTab(tab) {
+  if (currentTab === tab) return;
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('text-primary', btn.dataset.tab === tab);
+    btn.classList.toggle('border-primary', btn.dataset.tab === tab);
+    btn.classList.toggle('border-transparent', btn.dataset.tab !== tab);
+    btn.classList.toggle('text-on-surface-variant', btn.dataset.tab !== tab);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  const panel = document.getElementById('tab-' + tab);
+  if (panel) panel.classList.remove('hidden');
+  if (tab === 'test') refreshTestSelect();
+}
+
+function debounceSearch(val) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadApis(val), 300);
+}
+
+// ===== Tab1: 接口列表 =====
+async function loadApis(search) {
+  try {
+    const list = await apiGet('/api/apis');
+    apiListCache = list || [];
+    let arr = apiListCache;
+    if (search) {
+      const s = search.toLowerCase();
+      arr = arr.filter(a => (a.name || '').toLowerCase().includes(s) || (a.code || '').toLowerCase().includes(s));
+    }
+    const tbody = document.getElementById('api-tbody');
+    document.getElementById('api-count').textContent = '共 ' + apiListCache.length + ' 个接口';
+    if (!arr.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-outline py-lg">暂无接口</td></tr>';
+      return;
+    }
+    const methodColors = {GET:'bg-secondary-container/30 text-secondary', POST:'bg-primary-container/30 text-primary', PUT:'bg-tertiary/30 text-tertiary', DELETE:'bg-error/30 text-error'};
+    const authLabels = {query:'query', header:'header', none:'none'};
+    tbody.innerHTML = arr.map(a => {
+      const mc = methodColors[a.method] || 'bg-outline/20 text-outline';
+      return '<tr class="hover:bg-surface-container-high transition-colors">' +
+        '<td class="px-4 py-3 text-sm text-on-surface-variant">' + a.id + '</td>' +
+        '<td class="px-4 py-3 text-sm font-medium">' + escapeHtml(a.name || '') + '</td>' +
+        '<td class="px-4 py-3"><span class="text-[11px] bg-primary/20 text-primary px-2 py-0.5 rounded font-label-mono">' + escapeHtml(a.code || '') + '</span></td>' +
+        '<td class="px-4 py-3 text-xs text-on-surface-variant font-mono max-w-[260px] truncate" title="' + escapeHtml(a.base_url || '') + '">' + escapeHtml(a.base_url || '') + '</td>' +
+        '<td class="px-4 py-3"><span class="text-[11px] px-2 py-0.5 rounded font-label-mono ' + mc + '">' + escapeHtml(a.method || 'GET') + '</span></td>' +
+        '<td class="px-4 py-3 text-xs text-on-surface-variant">' + escapeHtml(authLabels[a.auth_type] || a.auth_type || 'none') + '</td>' +
+        '<td class="px-4 py-3 text-xs text-on-surface-variant max-w-[200px] truncate" title="' + escapeHtml(a.description || '') + '">' + escapeHtml(a.description || '-') + '</td>' +
+        '<td class="px-4 py-3"><div class="flex gap-1 flex-wrap">' +
+          '<button class="text-[11px] px-2 py-1 bg-primary/20 text-primary rounded hover:bg-primary/30 transition-all" onclick="editApi(' + a.id + ')">编辑</button>' +
+          '<button class="text-[11px] px-2 py-1 bg-tertiary/20 text-tertiary rounded hover:bg-tertiary/30 transition-all" onclick="testApiJump(' + a.id + ')">测试</button>' +
+          '<button class="text-[11px] px-2 py-1 bg-secondary/20 text-secondary rounded hover:bg-secondary/30 transition-all" onclick="openAgentModal(' + a.id + ')">生成员工</button>' +
+          '<button class="text-[11px] px-2 py-1 bg-error/20 text-error rounded hover:bg-error/30 transition-all" onclick="deleteApi(' + a.id + ')">删除</button>' +
+        '</div></td></tr>';
+    }).join('');
+  } catch(e) {
+    showToast('加载接口失败: ' + (e.message || ''), 'error');
+  }
+}
+
+function openApiModal() {
+  editingApiId = null;
+  document.getElementById('api-modal-title').textContent = '新增接口';
+  document.getElementById('api-name').value = '';
+  document.getElementById('api-code').value = '';
+  document.getElementById('api-base-url').value = '';
+  document.getElementById('api-method').value = 'GET';
+  document.getElementById('api-auth-type').value = 'query';
+  document.getElementById('api-auth-key').value = '';
+  document.getElementById('api-response-path').value = '';
+  document.getElementById('api-headers').value = '{}';
+  document.getElementById('api-body-template').value = '';
+  document.getElementById('api-description').value = '';
+  document.getElementById('api-modal').classList.remove('hidden');
+}
+
+function closeApiModal() {
+  document.getElementById('api-modal').classList.add('hidden');
+}
+
+async function editApi(id) {
+  try {
+    const api = apiListCache.find(x => x.id === id) || await (await fetch('/api/apis', {headers: {Authorization: 'Bearer ' + Token.access}})).json().then(l => l.find(x => x.id === id));
+    if (!api) { showToast('接口不存在', 'error'); return; }
+    editingApiId = id;
+    document.getElementById('api-modal-title').textContent = '编辑接口';
+    document.getElementById('api-name').value = api.name || '';
+    document.getElementById('api-code').value = api.code || '';
+    document.getElementById('api-base-url').value = api.base_url || '';
+    document.getElementById('api-method').value = api.method || 'GET';
+    document.getElementById('api-auth-type').value = api.auth_type || 'query';
+    document.getElementById('api-auth-key').value = '';
+    document.getElementById('api-auth-key').placeholder = api.auth_key_configured ? '已配置，留空则不修改' : '认证密钥';
+    document.getElementById('api-response-path').value = api.response_path || '';
+    document.getElementById('api-headers').value = api.headers || '{}';
+    document.getElementById('api-body-template').value = api.body_template || '';
+    document.getElementById('api-description').value = api.description || '';
+    document.getElementById('api-modal').classList.remove('hidden');
+  } catch(e) { showToast('加载失败', 'error'); }
+}
+
+async function saveApi() {
+  const name = document.getElementById('api-name').value.trim();
+  const code = document.getElementById('api-code').value.trim();
+  const base_url = document.getElementById('api-base-url').value.trim();
+  if (!name || !code || !base_url) { showToast('名称、编码、Base URL 必填', 'error'); return; }
+  const body = {
+    name, code, base_url,
+    method: document.getElementById('api-method').value,
+    auth_type: document.getElementById('api-auth-type').value,
+    auth_key: document.getElementById('api-auth-key').value,
+    response_path: document.getElementById('api-response-path').value.trim(),
+    headers: document.getElementById('api-headers').value || '{}',
+    body_template: document.getElementById('api-body-template').value,
+    description: document.getElementById('api-description').value,
+  };
+  if (editingApiId && !body.auth_key) delete body.auth_key;
+  try {
+    if (editingApiId) {
+      await apiPut('/api/apis/' + editingApiId, body);
+      showToast('更新成功', 'success');
+    } else {
+      await apiPost('/api/apis', body);
+      showToast('创建成功', 'success');
+    }
+    closeApiModal();
+    loadApis();
+  } catch(e) { showToast('操作失败: ' + (e.message || ''), 'error'); }
+}
+
+async function deleteApi(id) {
+  if (!confirm('确定删除此接口？关联的接口型员工将失效。')) return;
+  try {
+    await apiDelete('/api/apis/' + id);
+    showToast('删除成功', 'success');
+    loadApis();
+  } catch(e) { showToast('删除失败', 'error'); }
+}
+
+function testApiJump(id) {
+  switchTab('test');
+  setTimeout(() => {
+    const sel = document.getElementById('test-api-select');
+    sel.value = String(id);
+    onTestApiChange();
+  }, 100);
+}
+
+// ===== Tab2: 在线测试 =====
+async function refreshTestSelect() {
+  try {
+    const list = await apiGet('/api/apis');
+    const sel = document.getElementById('test-api-select');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- 选择接口 --</option>' + (list || []).map(a =>
+      '<option value="' + a.id + '">' + escapeHtml(a.name + ' [' + (a.code || '') + ']') + '</option>'
+    ).join('');
+    if (cur) sel.value = cur;
+  } catch(e) { /* silent */ }
+}
+
+function onTestApiChange() {
+  // 占位：可显示当前接口详情
+}
+
+async function runTestApi() {
+  const id = document.getElementById('test-api-select').value;
+  if (!id) { showToast('请先选择接口', 'error'); return; }
+  const params = document.getElementById('test-params').value || '{}';
+  document.getElementById('test-raw').value = '请求中...';
+  document.getElementById('test-extract').value = '';
+  document.getElementById('test-meta').textContent = '';
+  try {
+    const url = '/api/apis/' + id + '/test?params=' + encodeURIComponent(params);
+    const res = await apiGet(url);
+    document.getElementById('test-raw').value = res.response || res.error || '';
+    document.getElementById('test-extract').value = res.extracted || '';
+    document.getElementById('test-meta').textContent =
+      'success=' + (res.success !== undefined ? res.success : '?') +
+      ' | status=' + (res.status_code || '-') + (res.error ? ' | error=' + res.error : '');
+  } catch(e) {
+    document.getElementById('test-raw').value = '请求失败: ' + (e.message || '');
+  }
+}
+
+function clearTestResult() {
+  document.getElementById('test-raw').value = '';
+  document.getElementById('test-extract').value = '';
+  document.getElementById('test-meta').textContent = '';
+}
+
+// ===== 从接口生成数字员工 =====
+function openAgentModal(id) {
+  creatingAgentApiId = id;
+  const api = apiListCache.find(x => x.id === id);
+  document.getElementById('agent-modal-api-name').textContent = api ? api.name : '--';
+  document.getElementById('agent-create-name').value = '';
+  document.getElementById('agent-modal').classList.remove('hidden');
+}
+
+function closeAgentModal() {
+  document.getElementById('agent-modal').classList.add('hidden');
+  creatingAgentApiId = null;
+}
+
+async function createAgentFromApi() {
+  if (!creatingAgentApiId) return;
+  const name = document.getElementById('agent-create-name').value.trim();
+  const url = '/api/apis/' + creatingAgentApiId + '/create-agent' + (name ? '?agent_name=' + encodeURIComponent(name) : '');
+  try {
+    const res = await apiPost(url, {});
+    showToast('生成接口型员工成功: ' + (res.name || ''), 'success');
+    closeAgentModal();
+  } catch(e) {
+    showToast('生成失败: ' + (e.message || ''), 'error');
+  }
+}
+
+// Initial load
+loadApis();
+</script>
+</body>
+</html>

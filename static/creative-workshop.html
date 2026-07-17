@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html class="dark" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>创意工坊 - 数据瞭望系统</title>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+tailwind.config = {
+darkMode: "class",
+theme: { extend: {
+"colors": {
+"background": "#071425", "surface": "#071425", "surface-dim": "#071425",
+"surface-bright": "#2e3a4c", "surface-container-lowest": "#030e1f",
+"surface-container-low": "#101c2d", "surface-container": "#142031",
+"surface-container-high": "#1f2a3c", "surface-container-highest": "#2a3548",
+"surface-variant": "#2a3548", "on-surface": "#d7e3fb", "on-surface-variant": "#c3c6d7",
+"primary": "#b4c5ff", "primary-container": "#0052d9", "on-primary": "#002a78",
+"on-primary-container": "#cbd6ff", "primary-fixed": "#dbe1ff", "primary-fixed-dim": "#b4c5ff",
+"secondary": "#a6e6ff", "secondary-container": "#14d1ff", "on-secondary": "#003543",
+"on-secondary-container": "#00566b", "secondary-fixed": "#b7eaff", "secondary-fixed-dim": "#4cd6ff",
+"tertiary": "#ffb59c", "tertiary-container": "#aa3500", "on-tertiary": "#5c1900",
+"on-tertiary-container": "#ffccbc", "error": "#ffb4ab", "error-container": "#93000a",
+"on-error": "#690005", "on-error-container": "#ffdad6",
+"outline": "#8d90a0", "outline-variant": "#434654",
+"on-background": "#d7e3fb", "inverse-surface": "#d7e3fb", "inverse-on-surface": "#253143",
+"inverse-primary": "#0353da",
+},
+"borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+"fontFamily": { "Inter": ["Inter"], "label-mono": ["JetBrains Mono"] },
+}},
+}
+</script>
+<style>
+body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3fb; }
+.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #434654; border-radius: 10px; }
+.generation-card { transition: all 0.2s ease; }
+.generation-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+</style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+
+<aside></aside>
+
+<main class="p-6 min-h-screen">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-primary">创意工坊</h1>
+      <p class="text-sm text-on-surface-variant mt-1">调用 image/video 模型进行 AI 生成</p>
+    </div>
+  </div>
+
+  <!-- Prompt Input Card -->
+  <div class="bg-surface-container/50 rounded-2xl border border-outline-variant/20 p-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="md:col-span-2">
+        <label class="text-xs text-on-surface-variant block mb-1">提示词 (Prompt)</label>
+        <textarea id="promptInput" rows="3" placeholder="描述你想要生成的图片或视频内容..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-4 py-3 text-sm focus:border-secondary-container focus:ring-1 focus:ring-secondary-container/30 transition-all resize-none"></textarea>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">生成类型</label>
+        <select id="genType" onchange="onGenerationTypeChange()" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-3 text-sm focus:border-secondary-container transition-all">
+          <option value="image">图片生成</option>
+          <option value="video">视频生成</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1 mt-1">&nbsp;</label>
+        <button onclick="generate()" class="w-full flex items-center justify-center gap-2 bg-primary-container text-on-primary-container px-4 py-3 rounded-xl hover:opacity-80 transition-opacity">
+          <span class="material-symbols-outlined">auto_awesome</span>
+          <span class="text-sm font-medium">生成</span>
+        </button>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div data-image-control>
+        <label class="text-xs text-on-surface-variant block mb-1">图片尺寸（图片生成）</label>
+        <select id="imgSize" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm focus:border-secondary-container transition-all">
+          <option value="1024x1024">1024×1024</option>
+          <option value="1024x1792">1024×1792</option>
+          <option value="1792x1024">1792×1024</option>
+        </select>
+      </div>
+      <div data-image-control>
+        <label class="text-xs text-on-surface-variant block mb-1">生成数量</label>
+        <input id="genCount" type="number" value="1" min="1" max="4" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm"/>
+      </div>
+      <div data-video-control class="hidden">
+        <label class="text-xs text-on-surface-variant block mb-1">视频时长</label>
+        <input id="videoDuration" type="number" value="5" min="1" max="60" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm"/>
+      </div>
+      <div data-video-control class="hidden">
+        <label class="text-xs text-on-surface-variant block mb-1">视频分辨率</label>
+        <select id="videoResolution" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm"><option value="720p">720p</option><option value="1080p">1080p</option></select>
+      </div>
+      <div>
+        <label class="text-xs text-on-surface-variant block mb-1">模型</label>
+        <select id="modelSelect" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm focus:border-secondary-container transition-all">
+          <option value="">自动选择</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results Area -->
+  <div id="resultsArea" class="hidden">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-bold text-primary">生成结果</h2>
+      <button onclick="clearResults()" class="text-xs text-on-surface-variant hover:text-error transition-colors">
+        <span class="material-symbols-outlined text-base">delete</span> 清除
+      </button>
+    </div>
+    <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingArea" class="hidden flex flex-col items-center justify-center py-16">
+    <span class="material-symbols-outlined animate-spin text-4xl text-secondary-container">progress_activity</span>
+    <p class="text-on-surface-variant mt-4 text-sm">正在生成，请稍候...</p>
+  </div>
+</main>
+
+<script src="/static/js/app.js"></script>
+<script>
+let models = [];
+
+async function loadModels() {
+  try {
+    const all = await apiGet('/api/models');
+    // 只保留 image/video 模型
+    models = all.filter(m => m.model_type === 'image' || m.model_type === 'video');
+    renderModelOptions();
+  } catch(e) { /* 静默 */ }
+}
+
+function renderModelOptions() {
+  const type = document.getElementById('genType').value;
+  const sel = document.getElementById('modelSelect');
+  const matching = models.filter(model => model.model_type === type && model.is_active);
+  sel.innerHTML = '<option value="">自动选择</option>' +
+    matching.map(model => `<option value="${model.id}">${escapeHtml(model.name)}</option>`).join('');
+}
+
+function onGenerationTypeChange() {
+  const isVideo = document.getElementById('genType').value === 'video';
+  document.querySelectorAll('[data-image-control]').forEach(el => el.classList.toggle('hidden', isVideo));
+  document.querySelectorAll('[data-video-control]').forEach(el => el.classList.toggle('hidden', !isVideo));
+  renderModelOptions();
+}
+
+async function generate() {
+  const prompt = document.getElementById('promptInput').value.trim();
+  if (!prompt) { showToast('请输入提示词', 'error'); return; }
+
+  const type = document.getElementById('genType').value;
+  const size = document.getElementById('imgSize').value;
+  const n = parseInt(document.getElementById('genCount').value) || 1;
+  const modelId = document.getElementById('modelSelect').value;
+
+  const loading = document.getElementById('loadingArea');
+  const resultsArea = document.getElementById('resultsArea');
+  resultsArea.classList.add('hidden');
+  loading.classList.remove('hidden');
+
+  try {
+    const body = {
+      prompt: prompt,
+      type: type,
+      n: n,
+      size: size,
+      duration: parseInt(document.getElementById('videoDuration').value) || 5,
+      resolution: document.getElementById('videoResolution').value,
+    };
+    if (modelId) body.model_id = parseInt(modelId);
+
+    const data = await apiPost('/api/creative/generate', body);
+    loading.classList.add('hidden');
+
+    if (data.success) {
+      showResults(data.urls, type);
+    } else {
+      showToast('生成失败: ' + (data.error || '未知错误'), 'error');
+    }
+  } catch(e) {
+    loading.classList.add('hidden');
+    showToast('请求失败: ' + e.message, 'error');
+  }
+}
+
+function showResults(urls, type) {
+  const grid = document.getElementById('resultsGrid');
+  const resultsArea = document.getElementById('resultsArea');
+  resultsArea.classList.remove('hidden');
+
+  if (!urls || urls.length === 0) {
+    grid.innerHTML = `<div class="col-span-full text-center py-8 text-on-surface-variant">
+      <span class="material-symbols-outlined text-3xl">image</span>
+      <p class="mt-2">没有返回结果 URL</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = urls.map((url, i) => {
+    if (type === 'video') {
+      return `<div class="generation-card bg-surface-container-high/50 rounded-xl border border-outline-variant/20 overflow-hidden">
+        <div class="aspect-video bg-surface-container flex items-center justify-center">
+          <video controls class="w-full h-full object-contain">
+            <source src="${escapeHtml(url)}" type="video/mp4">
+            您的浏览器不支持视频播放
+          </video>
+        </div>
+        <div class="p-3">
+          <p class="text-xs text-on-surface-variant truncate">${escapeHtml(url)}</p>
+          <div class="flex gap-2 mt-2">
+            <a href="${escapeHtml(url)}" target="_blank" class="flex items-center gap-1 text-xs text-primary hover:underline">
+              <span class="material-symbols-outlined text-sm">open_in_new</span> 打开
+            </a>
+            <a href="${escapeHtml(url)}" download class="flex items-center gap-1 text-xs text-secondary hover:underline">
+              <span class="material-symbols-outlined text-sm">download</span> 下载
+            </a>
+          </div>
+        </div>
+      </div>`;
+    }
+    // 图片
+    return `<div class="generation-card bg-surface-container-high/50 rounded-xl border border-outline-variant/20 overflow-hidden">
+      <div class="aspect-square bg-surface-container flex items-center justify-center overflow-hidden">
+        <img src="${escapeHtml(url)}" alt="生成图片 ${i+1}" class="w-full h-full object-contain" loading="lazy"/>
+      </div>
+      <div class="p-3">
+        <p class="text-xs text-on-surface-variant truncate">${escapeHtml(url)}</p>
+        <div class="flex gap-2 mt-2">
+          <a href="${escapeHtml(url)}" target="_blank" class="flex items-center gap-1 text-xs text-primary hover:underline">
+            <span class="material-symbols-outlined text-sm">open_in_new</span> 打开
+          </a>
+          <a href="${escapeHtml(url)}" download class="flex items-center gap-1 text-xs text-secondary hover:underline">
+            <span class="material-symbols-outlined text-sm">download</span> 下载
+          </a>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function clearResults() {
+  document.getElementById('resultsArea').classList.add('hidden');
+  document.getElementById('resultsGrid').innerHTML = '';
+}
+
+if (requireAuth()) {
+  onGenerationTypeChange();
+  loadModels();
+}
+</script>
+</body>
+</html>

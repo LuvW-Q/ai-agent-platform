@@ -2,9 +2,15 @@
 <html class="dark" lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<title>数字员工会话 - 数据瞭望系统</title>
+<!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- Tailwind CDN has no CORS header for SRI; exact runtime and CSP hosts are pinned. -->
+<script src="https://cdn.tailwindcss.com/3.4.17?plugins=forms@0.5.10,container-queries@0.1.1"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" integrity="sha384-oHwoZ9HyKv5ark5VOH+XWdbNfmhYtptAOBuV8plz6mAfXvTA6d8fULuYllWouEK2" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" integrity="sha384-q1KhAZhJcJXr3zfC3Tz07pBqQSabwFIZhXlmlUAB8s0zk4ETWERkIKGBCFQ5Jc3e" crossorigin="anonymous"></script>
 <script id="tailwind-config">
 tailwind.config = {
 darkMode: "class",
@@ -42,6 +48,39 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
 .message-user { background: #0052d9; color: #cbd6ff; margin-left: auto; border-bottom-right-radius: 4px; }
 .message-agent { background: #1f2a3c; color: #d7e3fb; border-bottom-left-radius: 4px; }
 .skill-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 8px; border-radius: 8px; }
+.message-action { opacity: 0; transition: opacity 0.2s ease; }
+.chat-message:hover .message-action, .message-action:focus-visible { opacity: 1; }
+.mention-picker { box-shadow: 0 16px 48px rgba(3, 14, 31, 0.45); }
+.gesture-video { transform: scaleX(-1); }
+.de-sidebar-overlay { display: none; }
+@media (hover: none) { .message-action { opacity: 1; } }
+@media (max-width: 768px) {
+  .de-sidebar {
+    position: fixed;
+    top: 88px;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: min(86vw, 320px) !important;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 16px 0 40px rgba(3, 14, 31, 0.5);
+  }
+  .de-sidebar.is-open { transform: translateX(0); }
+  .de-sidebar-overlay {
+    position: fixed;
+    inset: 88px 0 0;
+    z-index: 50;
+    background: rgba(3, 14, 31, 0.64);
+  }
+  .de-sidebar-overlay:not(.hidden) { display: block; }
+  .de-mobile-menu { display: inline-flex !important; }
+  #chatHeader { padding-left: 12px; padding-right: 12px; }
+  #chatMessages { padding-left: 12px; padding-right: 12px; }
+  .de-input-area { padding: 12px; }
+  .message-bubble { max-width: 88%; }
+  #gesturePanel { left: 12px; right: 12px; width: auto; }
+}
 @keyframes typing-dot { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
 .typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #8d90a0; animation: typing-dot 1.4s infinite; }
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -54,7 +93,7 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
 
 <main class=" h-screen flex">
   <!-- Left: Agent List -->
-  <div class="w-72 bg-surface-container/50 border-r border-outline-variant/20 flex flex-col">
+  <div id="deSidebar" class="de-sidebar w-72 bg-surface-container/50 border-r border-outline-variant/20 flex flex-col">
     <div class="p-4 border-b border-outline-variant/20">
       <h1 class="text-lg font-bold text-primary">数字员工</h1>
       <p class="text-xs text-on-surface-variant mt-0.5">选择员工开始对话</p>
@@ -63,20 +102,50 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
       <span class="material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-outline text-sm">search</span>
       <input id="agentSearch" oninput="filterAgents()" type="text" placeholder="搜索员工..." class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:border-secondary-container transition-all"/>
     </div>
-    <div id="agentList" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+    <div id="agentList" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2 space-y-1">
+    </div>
+    <div class="border-t border-outline-variant/20">
+      <div class="flex items-center justify-between px-4 pt-3 pb-1">
+        <div>
+          <h2 class="text-sm font-bold text-on-surface">会话列表</h2>
+          <p class="text-[10px] text-on-surface-variant">仅保存在当前浏览器</p>
+        </div>
+        <button type="button" onclick="newConversation()" title="新建本地会话" class="text-on-surface-variant hover:text-primary">
+          <span class="material-symbols-outlined text-lg">add</span>
+        </button>
+      </div>
+      <div id="conversationList" class="h-48 overflow-y-auto custom-scrollbar p-2 space-y-1">
+        <div class="py-5 text-center text-xs text-on-surface-variant">选择员工后创建本地会话</div>
+      </div>
     </div>
   </div>
 
   <!-- Right: Chat Area -->
-  <div class="flex-1 flex flex-col">
+  <button id="deSidebarOverlay" type="button" onclick="closeChatSidebar()" class="de-sidebar-overlay hidden" aria-label="关闭员工与会话面板"></button>
+
+  <div class="min-w-0 flex-1 flex flex-col">
     <!-- Chat Header -->
     <div id="chatHeader" class="px-6 py-3 border-b border-outline-variant/20 flex items-center gap-3 bg-surface-container/30">
+      <button type="button" onclick="openChatSidebar()" class="de-mobile-menu hidden flex-shrink-0 items-center justify-center rounded-lg bg-surface-container-high/50 p-2 text-on-surface-variant hover:text-primary" aria-label="打开员工与会话面板">
+        <span class="material-symbols-outlined text-lg">menu</span>
+      </button>
       <div id="headerAvatar" class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center">
         <span class="material-symbols-outlined text-primary">smart_toy</span>
       </div>
-      <div>
-        <h2 id="headerName" class="font-bold text-on-surface">选择一个数字员工</h2>
-        <p id="headerStatus" class="text-xs text-on-surface-variant">点击左侧列表开始对话</p>
+      <div class="min-w-0">
+        <h2 id="headerName" class="font-bold text-on-surface truncate">选择一个数字员工</h2>
+        <p id="headerStatus" class="text-xs text-on-surface-variant truncate">打开员工列表开始对话</p>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="gestureToggleBtn" onclick="toggleGestureMode()" title="手势模式" class="bg-surface-container-high/50 text-on-surface-variant px-3 py-2 rounded-lg hover:text-secondary transition-colors">
+          <span class="material-symbols-outlined text-lg">back_hand</span>
+        </button>
+        <button onclick="newConversation()" title="新建对话" class="bg-surface-container-high/50 text-on-surface-variant px-3 py-2 rounded-lg hover:text-primary transition-colors">
+          <span class="material-symbols-outlined text-lg">add_comment</span>
+        </button>
+        <button id="exportPdfBtn" onclick="exportChatPdf()" title="导出对话 PDF" class="bg-surface-container-high/50 text-on-surface-variant px-3 py-2 rounded-lg hover:text-primary transition-colors">
+          <span class="material-symbols-outlined text-lg">picture_as_pdf</span>
+        </button>
       </div>
     </div>
 
@@ -95,10 +164,12 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
     </div>
 
     <!-- Input Area -->
-    <div class="px-6 py-4 border-t border-outline-variant/20 bg-surface-container/30">
+    <div class="de-input-area px-6 py-4 border-t border-outline-variant/20 bg-surface-container/30">
       <div class="flex items-end gap-2">
         <div class="flex-1 relative">
-          <textarea id="chatInput" rows="1" placeholder="输入消息..." onkeydown="handleKeyDown(event)" oninput="autoResize(this)" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-4 py-2.5 text-sm focus:border-secondary-container transition-all resize-none custom-scrollbar" style="max-height: 120px;"></textarea>
+          <div id="mentionPicker" class="mention-picker hidden absolute left-0 right-0 bottom-full mb-2 max-h-56 overflow-y-auto rounded-xl border border-outline-variant/30 bg-surface-container z-20 p-2"></div>
+          <textarea id="chatInput" rows="1" placeholder="输入消息，键入 @ 选择数字员工..." onkeydown="handleKeyDown(event)" oninput="handleChatInput(this)" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl pl-11 pr-4 py-2.5 text-sm focus:border-secondary-container transition-all resize-none custom-scrollbar" style="max-height: 120px;"></textarea>
+          <button type="button" onclick="openMentionPicker()" title="@数字员工" class="absolute left-3 bottom-3 text-on-surface-variant hover:text-primary transition-colors font-bold">@</button>
         </div>
         <button id="sendBtn" onclick="sendMessage()" disabled class="bg-primary-container text-on-primary-container px-4 py-2.5 rounded-xl hover:opacity-80 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed">
           <span class="material-symbols-outlined">send</span>
@@ -111,18 +182,177 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
   </div>
 </main>
 
+<div id="gesturePanel" class="fixed bottom-24 right-6 z-40 hidden w-80 overflow-hidden rounded-xl border border-outline-variant/40 bg-surface-container shadow-2xl">
+  <div class="flex items-center justify-between border-b border-outline-variant/20 px-4 py-3">
+    <div>
+      <h3 class="text-sm font-bold text-on-surface">手势模式</h3>
+      <p class="text-[10px] text-on-surface-variant">连续稳定 1.5 秒后触发</p>
+    </div>
+    <button type="button" onclick="stopGestureMode()" class="text-on-surface-variant hover:text-primary" aria-label="关闭手势模式"><span class="material-symbols-outlined">close</span></button>
+  </div>
+  <div class="relative aspect-video bg-surface-container-lowest">
+    <video id="gestureVideo" class="gesture-video h-full w-full object-cover" autoplay muted playsinline></video>
+    <div id="gestureCameraHint" class="absolute inset-0 flex items-center justify-center bg-surface-container-lowest/90 px-6 text-center text-xs text-on-surface-variant">正在申请摄像头权限…</div>
+  </div>
+  <div class="space-y-2 p-4">
+    <div id="gestureStatus" class="text-xs text-on-surface">等待识别手势</div>
+    <div class="h-1.5 overflow-hidden rounded-full bg-surface-container-high"><div id="gestureProgress" class="h-full w-0 bg-secondary-container transition-[width] duration-100"></div></div>
+    <div class="grid grid-cols-3 gap-1 text-center text-[10px] text-on-surface-variant">
+      <span>剪刀手 → 天气助手</span><span>握拳 → 随机音乐</span><span>手掌 → 新闻</span>
+    </div>
+  </div>
+</div>
+
 <script src="/static/js/app.js"></script>
 <script>
 let agentList = [];
 let currentAgent = null;
 let chatHistory = [];
 let isWaiting = false;
+let speechButton = null;
+let voicePlaybackEnabled = true;
+const LOCAL_CONVERSATION_KEY = 'ai-agent-platform-local-conversations-v1';
+let localConversations = [];
+let activeConversationId = null;
+let gestureHands = null;
+let gestureCamera = null;
+let gestureRunning = false;
+let stableGesture = '';
+let stableGestureStartedAt = 0;
+let gestureOnCooldown = false;
+const GESTURE_STABLE_MS = 1500;
+const GESTURE_AGENT_NAMES = Object.freeze({ victory: '天气助手', fist: '随机音乐', palm: '新闻' });
+
+async function loadVoicePlaybackSetting() {
+  try {
+    const settings = await apiGet('/api/settings');
+    const setting = settings.find(item => item.key === 'voice_enabled');
+    voicePlaybackEnabled = !setting || setting.value === 'true' || setting.value === '1';
+  } catch (error) {}
+}
 
 async function loadAgents() {
+  loadLocalConversations();
   try {
     agentList = await apiGet('/api/de/list');
+    await loadServerConversations();
     renderAgentList();
+    renderConversationList();
   } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+async function loadServerConversations() {
+  const sessions = await apiGet('/api/de/sessions');
+  const localIds = new Set(localConversations.map(item => item.id));
+  for (const session of sessions) {
+    if (localIds.has(session.id)) continue;
+    localConversations.push({
+      id: session.id,
+      agentId: session.agent_id,
+      agentName: session.agent_name,
+      title: session.title || '新对话',
+      messages: [],
+      serverBacked: true,
+      updatedAt: session.updated_at
+    });
+  }
+  localConversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  saveLocalConversations();
+}
+
+function loadLocalConversations() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(LOCAL_CONVERSATION_KEY) || '[]');
+    localConversations = Array.isArray(stored) ? stored.filter(item =>
+      item && typeof item.id === 'string' && Number.isInteger(item.agentId) &&
+      typeof item.agentName === 'string' && Array.isArray(item.messages)
+    ) : [];
+  } catch (error) {
+    localConversations = [];
+    showToast('本机会话列表读取失败，已使用空列表', 'error');
+  }
+}
+
+function saveLocalConversations() {
+  try {
+    localStorage.setItem(LOCAL_CONVERSATION_KEY, JSON.stringify(localConversations.slice(0, 30)));
+  } catch (error) {
+    showToast('本机会话保存失败，当前页面仍可继续对话', 'error');
+  }
+}
+
+function createLocalConversation(initialMessages = []) {
+  if (!currentAgent) return null;
+  const firstUserMessage = initialMessages.find(message => message.role === 'user');
+  const conversation = {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    agentId: currentAgent.id,
+    agentName: currentAgent.name,
+    title: firstUserMessage ? firstUserMessage.content.slice(0, 24) : '新对话',
+    messages: initialMessages.map(message => ({ role: message.role, content: message.content })),
+    updatedAt: new Date().toISOString()
+  };
+  localConversations.unshift(conversation);
+  activeConversationId = conversation.id;
+  saveLocalConversations();
+  renderConversationList();
+  return conversation;
+}
+
+function persistActiveConversation() {
+  if (!activeConversationId || !currentAgent) return;
+  const conversation = localConversations.find(item => item.id === activeConversationId);
+  if (!conversation) return;
+  conversation.messages = chatHistory.map(message => ({ role: message.role, content: message.content }));
+  const firstUserMessage = conversation.messages.find(message => message.role === 'user');
+  conversation.title = firstUserMessage ? firstUserMessage.content.slice(0, 24) : '新对话';
+  conversation.updatedAt = new Date().toISOString();
+  localConversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  saveLocalConversations();
+  renderConversationList();
+}
+
+function renderConversationList() {
+  const list = document.getElementById('conversationList');
+  if (!localConversations.length) {
+    list.innerHTML = '<div class="py-5 text-center text-xs text-on-surface-variant">选择员工后创建本地会话</div>';
+    return;
+  }
+  list.innerHTML = localConversations.map(conversation => {
+    const active = conversation.id === activeConversationId;
+    const time = conversation.updatedAt ? new Date(conversation.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+    return `<button type="button" onclick="openLocalConversation('${conversation.id}')" class="w-full rounded-lg border p-2 text-left transition-colors ${active ? 'border-secondary-container/40 bg-secondary-container/10' : 'border-transparent hover:bg-surface-container-high/50'}">
+      <span class="block truncate text-xs font-medium text-on-surface">${escapeHtml(conversation.title || '新对话')}</span>
+      <span class="mt-0.5 flex items-center justify-between gap-2 text-[10px] text-on-surface-variant"><span class="truncate">${escapeHtml(conversation.agentName)}</span><span class="flex-shrink-0">${escapeHtml(time)}</span></span>
+    </button>`;
+  }).join('');
+}
+
+async function openLocalConversation(conversationId) {
+  const conversation = localConversations.find(item => item.id === conversationId);
+  if (!conversation) {
+    showToast('该本机会话不存在', 'error');
+    return;
+  }
+  if (conversation.serverBacked && !conversation.messages.length) {
+    const history = await apiGet(`/api/de/${conversation.agentId}/history?session_id=${encodeURIComponent(conversation.id)}`);
+    conversation.messages = history.map(message => ({ role: message.role, content: message.content }));
+    conversation.serverBacked = false;
+    saveLocalConversations();
+  }
+  await selectAgent(conversation.agentId, { conversationId });
+}
+
+function activateLocalConversation(conversation) {
+  activeConversationId = conversation.id;
+  chatHistory = conversation.messages.map(message => ({ role: message.role, content: message.content }));
+  renderMessages();
+  if (chatHistory.length) {
+    chatHistory.forEach(message => appendMessage(message.role, message.content));
+  } else {
+    appendMessage('agent', `新的对话已开始。我是${currentAgent.name}，请告诉我你想了解什么。`);
+  }
+  renderConversationList();
 }
 
 function renderAgentList() {
@@ -133,16 +363,16 @@ function renderAgentList() {
   }
   list.innerHTML = agentList.map(a => {
     const avatar = a.avatar
-      ? `<img src="${escapeHtml(a.avatar)}" class="w-10 h-10 rounded-full object-cover"/>`
+      ? `<img ${protectedImageAttrs(a.avatar)} class="w-10 h-10 rounded-full object-cover"/>`
       : `<div class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></div>`;
     const isActive = currentAgent && currentAgent.id === a.id;
-    return `<div onclick="selectAgent(${a.id})" class="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
+    return `<button type="button" onclick="selectAgent(${a.id})" class="w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
       ${avatar}
       <div class="flex-1 min-w-0">
         <h3 class="text-sm font-medium text-on-surface truncate">${escapeHtml(a.name)}</h3>
         <p class="text-[10px] text-on-surface-variant truncate">${escapeHtml(a.model_name || '未绑定模型')}</p>
       </div>
-    </div>`;
+    </button>`;
   }).join('');
 }
 
@@ -153,27 +383,53 @@ function filterAgents() {
   if (!filtered.length) { list.innerHTML = '<div class="text-center py-8 text-on-surface-variant text-sm">无匹配结果</div>'; return; }
   list.innerHTML = filtered.map(a => {
     const avatar = a.avatar
-      ? `<img src="${escapeHtml(a.avatar)}" class="w-10 h-10 rounded-full object-cover"/>`
+      ? `<img ${protectedImageAttrs(a.avatar)} class="w-10 h-10 rounded-full object-cover"/>`
       : `<div class="w-10 h-10 rounded-full bg-primary-container/30 border border-primary/30 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></div>`;
     const isActive = currentAgent && currentAgent.id === a.id;
-    return `<div onclick="selectAgent(${a.id})" class="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
+    return `<button type="button" onclick="selectAgent(${a.id})" class="w-full flex items-center gap-3 p-2 rounded-xl text-left transition-all ${isActive ? 'bg-secondary-container/10 border border-secondary-container/30' : 'hover:bg-surface-variant/30 border border-transparent'}">
       ${avatar}
       <div class="flex-1 min-w-0"><h3 class="text-sm font-medium text-on-surface truncate">${escapeHtml(a.name)}</h3><p class="text-[10px] text-on-surface-variant truncate">${escapeHtml(a.model_name || '未绑定模型')}</p></div>
-    </div>`;
+    </button>`;
   }).join('');
 }
 
-async function selectAgent(id) {
+async function selectAgent(id, options = {}) {
   try {
+    if (currentAgent && currentAgent.id === id && !options.conversationId) return;
+    persistActiveConversation();
     currentAgent = await apiGet(`/api/de/${id}`);
     chatHistory = [];
     renderAgentList();
     updateChatHeader();
     renderMessages();
     document.getElementById('sendBtn').disabled = false;
-    // 加载服务端对话历史
-    await loadHistory(id);
+    if (options.conversationId) {
+      const selected = localConversations.find(item => item.id === options.conversationId);
+      if (!selected) throw new Error('本机会话不存在');
+      activateLocalConversation(selected);
+    } else {
+      const latest = localConversations.find(item => item.agentId === id);
+      if (latest) {
+        activateLocalConversation(latest);
+      } else {
+        // 服务端接口只按员工返回历史；首次打开时保存为明确的本地快照。
+        await loadHistory(id);
+        createLocalConversation(chatHistory);
+      }
+    }
+    refreshSendButton();
+    closeChatSidebar();
   } catch(e) { showToast('加载详情失败', 'error'); }
+}
+
+function openChatSidebar() {
+  document.getElementById('deSidebar').classList.add('is-open');
+  document.getElementById('deSidebarOverlay').classList.remove('hidden');
+}
+
+function closeChatSidebar() {
+  document.getElementById('deSidebar').classList.remove('is-open');
+  document.getElementById('deSidebarOverlay').classList.add('hidden');
 }
 
 async function loadHistory(agentId) {
@@ -183,7 +439,7 @@ async function loadHistory(agentId) {
       document.getElementById('chatMessages').innerHTML = '';
       chatHistory = [];
       for (const msg of history) {
-        appendMessage(msg.role, msg.content);
+        appendMessage(msg.role, msg.content, null, msg.created_at);
         chatHistory.push({ role: msg.role, content: msg.content });
       }
     } else {
@@ -201,23 +457,34 @@ function updateChatHeader() {
   document.getElementById('headerStatus').textContent = skills ? `技能: ${skills}` : '无绑定技能';
   const avatarEl = document.getElementById('headerAvatar');
   if (currentAgent.avatar) {
-    avatarEl.innerHTML = `<img src="${escapeHtml(currentAgent.avatar)}" class="w-full h-full rounded-full object-cover"/>`;
+    avatarEl.innerHTML = `<img ${protectedImageAttrs(currentAgent.avatar)} class="w-full h-full rounded-full object-cover"/>`;
   } else {
     avatarEl.innerHTML = '<span class="material-symbols-outlined text-primary">smart_toy</span>';
   }
 }
 
-function appendMessage(role, content, skillCalls) {
+function appendMessage(role, content, skillCalls, createdAt) {
   const container = document.getElementById('chatMessages');
   const isUser = role === 'user';
   const bubble = document.createElement('div');
-  bubble.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+  bubble.className = `chat-message flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`;
+  const avatar = isUser
+    ? '<div class="w-8 h-8 rounded-full bg-primary-container/20 border border-primary/30 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-primary text-sm">person</span></div>'
+    : (currentAgent && currentAgent.avatar
+      ? `<img ${protectedImageAttrs(currentAgent.avatar)} class="w-8 h-8 rounded-full object-cover flex-shrink-0"/>`
+      : '<div class="w-8 h-8 rounded-full bg-secondary-container/15 border border-secondary-container/30 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-secondary text-sm">smart_toy</span></div>');
+  const time = createdAt ? new Date(createdAt) : new Date();
   bubble.innerHTML = `
+    ${isUser ? '' : avatar}
     <div class="message-bubble ${isUser ? 'message-user' : 'message-agent'}">
       ${skillCalls && skillCalls.length ? `<div class="mb-2 flex flex-wrap gap-1">${skillCalls.map(sc => `<span class="skill-badge ${sc.success ? 'bg-secondary-container/20 text-secondary-container' : 'bg-error-container/20 text-error'}"><span class="material-symbols-outlined text-[10px]">${sc.success ? 'check_circle' : 'error'}</span>${escapeHtml(sc.skill)}</span>`).join('')}</div>` : ''}
-      <div class="text-sm whitespace-pre-wrap">${escapeHtml(content)}</div>
-      ${!isUser ? `<div class="text-[10px] text-on-surface-variant mt-1 text-right">${new Date().toLocaleTimeString('zh-CN', {hour12:false, hour:'2-digit', minute:'2-digit'})}</div>` : ''}
-    </div>`;
+      <div data-message-content class="text-sm whitespace-pre-wrap">${escapeHtml(content)}</div>
+      <div class="mt-1 flex items-center ${isUser ? 'justify-end' : 'justify-between'} gap-3 text-[10px] text-on-surface-variant">
+        ${isUser ? '' : '<button type="button" onclick="speakMessage(this)" class="message-action inline-flex items-center gap-1 hover:text-secondary" title="朗读这条回复"><span class="material-symbols-outlined text-sm">volume_up</span><span>朗读</span></button>'}
+        <span>${time.toLocaleTimeString('zh-CN', {hour12:false, hour:'2-digit', minute:'2-digit'})}</span>
+      </div>
+    </div>
+    ${isUser ? avatar : ''}`;
   container.appendChild(bubble);
   container.scrollTop = container.scrollHeight;
 }
@@ -238,13 +505,25 @@ function hideTyping() {
 }
 
 async function sendMessage() {
-  if (!currentAgent || isWaiting) return;
+  if (isWaiting) return;
   const input = document.getElementById('chatInput');
-  const text = input.value.trim();
+  let text = input.value.trim();
   if (!text) return;
+
+  const mentionedAgent = agentList.find(agent => text === `@${agent.name}` || text.startsWith(`@${agent.name} `));
+  if (mentionedAgent) {
+    if (!currentAgent || currentAgent.id !== mentionedAgent.id) await selectAgent(mentionedAgent.id);
+    text = text.slice(mentionedAgent.name.length + 1).trim() || '你好';
+  }
+  if (!currentAgent) {
+    showToast('请先选择数字员工，或输入 @ 进行选择', 'error');
+    openMentionPicker();
+    return;
+  }
 
   appendMessage('user', text);
   chatHistory.push({ role: 'user', content: text });
+  persistActiveConversation();
   input.value = '';
   autoResize(input);
 
@@ -256,6 +535,7 @@ async function sendMessage() {
     const res = await apiPost('/api/de/chat', {
       agent_id: currentAgent.id,
       messages: chatHistory,
+      session_id: activeConversationId || '',
     });
     hideTyping();
     appendMessage('agent', res.reply, res.skill_calls);
@@ -270,12 +550,13 @@ async function sendMessage() {
     }
 
     chatHistory.push({ role: 'assistant', content: res.reply });
+    persistActiveConversation();
   } catch(e) {
     hideTyping();
     appendMessage('agent', '抱歉，服务暂时不可用，请稍后再试。');
   } finally {
     isWaiting = false;
-    document.getElementById('sendBtn').disabled = false;
+    refreshSendButton();
   }
 }
 
@@ -291,8 +572,295 @@ function autoResize(el) {
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
-function clearChat() {
+function handleChatInput(el) {
+  autoResize(el);
+  const beforeCursor = el.value.slice(0, el.selectionStart);
+  const match = beforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
+  if (match) renderMentionPicker(match[1]);
+  else closeMentionPicker();
+  refreshSendButton();
+}
+
+function renderMentionPicker(query = '') {
+  const picker = document.getElementById('mentionPicker');
+  const normalized = query.toLocaleLowerCase('zh-CN');
+  const agents = agentList.filter(agent => agent.name.toLocaleLowerCase('zh-CN').includes(normalized));
+  picker.innerHTML = agents.length ? agents.map(agent => `
+    <button type="button" onclick="chooseMention(${agent.id})" class="w-full flex items-center gap-3 rounded-lg p-2 text-left hover:bg-surface-container-high transition-colors">
+      <span class="w-8 h-8 rounded-full bg-primary-container/20 flex items-center justify-center"><span class="material-symbols-outlined text-primary text-sm">smart_toy</span></span>
+      <span class="min-w-0"><span class="block text-sm font-medium truncate">${escapeHtml(agent.name)}</span><span class="block text-[10px] text-on-surface-variant truncate">${escapeHtml(agent.description || agent.model_name || '数字员工')}</span></span>
+    </button>`).join('') : '<div class="px-3 py-4 text-center text-xs text-on-surface-variant">没有匹配的数字员工</div>';
+  picker.classList.remove('hidden');
+}
+
+function openMentionPicker() {
+  const input = document.getElementById('chatInput');
+  if (!input.value.endsWith('@')) input.value += input.value && !input.value.endsWith(' ') ? ' @' : '@';
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  renderMentionPicker('');
+  refreshSendButton();
+}
+
+async function chooseMention(id) {
+  const agent = agentList.find(item => item.id === id);
+  if (!agent) return;
+  const input = document.getElementById('chatInput');
+  const beforeCursor = input.value.slice(0, input.selectionStart);
+  const afterCursor = input.value.slice(input.selectionStart);
+  const replaced = beforeCursor.replace(/(^|\s)@[^\s@]*$/, (match, prefix) => `${prefix}@${agent.name} `);
+  input.value = replaced + afterCursor;
+  closeMentionPicker();
+  await selectAgent(id);
+  input.focus();
+  input.setSelectionRange(replaced.length, replaced.length);
+}
+
+function closeMentionPicker() {
+  document.getElementById('mentionPicker').classList.add('hidden');
+}
+
+function refreshSendButton() {
+  const text = document.getElementById('chatInput').value.trim();
+  const hasMention = agentList.some(agent => text === `@${agent.name}` || text.startsWith(`@${agent.name} `));
+  document.getElementById('sendBtn').disabled = isWaiting || !text || (!currentAgent && !hasMention);
+}
+
+function newConversation() {
+  if (!currentAgent) {
+    showToast('请先选择数字员工', 'error');
+    return;
+  }
+  window.speechSynthesis?.cancel();
+  persistActiveConversation();
   chatHistory = [];
+  createLocalConversation();
+  renderMessages();
+  appendMessage('agent', `新的对话已开始。我是${currentAgent.name}，请告诉我你想了解什么。`);
+  document.getElementById('chatInput').value = '';
+  refreshSendButton();
+  showToast('已创建新的对话上下文', 'success');
+}
+
+async function toggleGestureMode() {
+  if (gestureRunning) stopGestureMode();
+  else await startGestureMode();
+}
+
+async function startGestureMode() {
+  const panel = document.getElementById('gesturePanel');
+  panel.classList.remove('hidden');
+  document.getElementById('gestureCameraHint').classList.remove('hidden');
+  document.getElementById('gestureCameraHint').textContent = '正在申请摄像头权限…';
+  document.getElementById('gestureStatus').textContent = '正在初始化 MediaPipe Hands…';
+  if (!window.Hands || !window.Camera) {
+    document.getElementById('gestureStatus').textContent = 'MediaPipe 组件加载失败，请检查网络';
+    return;
+  }
+  try {
+    gestureHands = new Hands({
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+    });
+    gestureHands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 0,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+    gestureHands.onResults(handleGestureResults);
+    const video = document.getElementById('gestureVideo');
+    gestureCamera = new Camera(video, {
+      onFrame: async () => {
+        if (gestureRunning && gestureHands) await gestureHands.send({ image: video });
+      },
+      width: 640,
+      height: 360
+    });
+    gestureRunning = true;
+    await gestureCamera.start();
+    document.getElementById('gestureCameraHint').classList.add('hidden');
+    document.getElementById('gestureStatus').textContent = '等待手势：剪刀手、握拳或手掌';
+    document.getElementById('gestureToggleBtn').classList.add('text-secondary', 'border', 'border-secondary-container/40');
+  } catch (error) {
+    gestureRunning = false;
+    document.getElementById('gestureCameraHint').textContent = '摄像头启动失败';
+    document.getElementById('gestureStatus').textContent = error.message;
+  }
+}
+
+function stopGestureMode() {
+  gestureRunning = false;
+  stableGesture = '';
+  stableGestureStartedAt = 0;
+  document.getElementById('gestureProgress').style.width = '0%';
+  if (gestureCamera) {
+    gestureCamera.stop();
+    gestureCamera = null;
+  }
+  const video = document.getElementById('gestureVideo');
+  if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+  video.srcObject = null;
+  if (gestureHands) {
+    gestureHands.close();
+    gestureHands = null;
+  }
+  document.getElementById('gesturePanel').classList.add('hidden');
+  document.getElementById('gestureToggleBtn').classList.remove('text-secondary', 'border', 'border-secondary-container/40');
+}
+
+function classifyGesture(landmarks) {
+  if (!Array.isArray(landmarks) || landmarks.length !== 21) return '';
+  const extended = [
+    landmarks[8].y < landmarks[6].y - 0.025,
+    landmarks[12].y < landmarks[10].y - 0.025,
+    landmarks[16].y < landmarks[14].y - 0.025,
+    landmarks[20].y < landmarks[18].y - 0.025
+  ];
+  const folded = [
+    landmarks[8].y > landmarks[6].y + 0.015,
+    landmarks[12].y > landmarks[10].y + 0.015,
+    landmarks[16].y > landmarks[14].y + 0.015,
+    landmarks[20].y > landmarks[18].y + 0.015
+  ];
+  if (extended[0] && extended[1] && folded[2] && folded[3]) return 'victory';
+  if (folded.every(Boolean)) return 'fist';
+  if (extended.every(Boolean)) return 'palm';
+  return '';
+}
+
+function handleGestureResults(results) {
+  if (!gestureRunning || gestureOnCooldown) return;
+  const landmarks = results.multiHandLandmarks && results.multiHandLandmarks[0];
+  const gesture = landmarks ? classifyGesture(landmarks) : '';
+  const status = document.getElementById('gestureStatus');
+  const progress = document.getElementById('gestureProgress');
+  if (!gesture) {
+    stableGesture = '';
+    stableGestureStartedAt = 0;
+    progress.style.width = '0%';
+    status.textContent = landmarks ? '手势不匹配，请调整手型' : '未检测到手，请将手掌放入画面';
+    return;
+  }
+  const labels = { victory: '剪刀手', fist: '握拳', palm: '手掌' };
+  if (gesture !== stableGesture) {
+    stableGesture = gesture;
+    stableGestureStartedAt = performance.now();
+  }
+  const elapsed = performance.now() - stableGestureStartedAt;
+  const percent = Math.min(100, elapsed / GESTURE_STABLE_MS * 100);
+  progress.style.width = `${percent}%`;
+  status.textContent = `已识别${labels[gesture]}，请保持 ${(Math.max(0, GESTURE_STABLE_MS - elapsed) / 1000).toFixed(1)} 秒`;
+  if (elapsed >= GESTURE_STABLE_MS) {
+    stableGesture = '';
+    stableGestureStartedAt = 0;
+    progress.style.width = '0%';
+    gestureOnCooldown = true;
+    triggerGestureAction(gesture).finally(() => {
+      setTimeout(() => { gestureOnCooldown = false; }, 3000);
+    });
+  }
+}
+
+async function triggerGestureAction(gesture) {
+  const agentName = GESTURE_AGENT_NAMES[gesture];
+  if (!agentName) return;
+  const status = document.getElementById('gestureStatus');
+  const agent = agentList.find(item => item.name === agentName);
+  if (!agent) {
+    const message = `手势目标“${agentName}”不在已发布员工列表中，未发送消息。`;
+    status.textContent = message;
+    showToast(message, 'error');
+    return;
+  }
+  status.textContent = `正在触发 @${agent.name}`;
+  await selectAgent(agent.id);
+  const input = document.getElementById('chatInput');
+  input.value = `@${agent.name}`;
+  refreshSendButton();
+  await sendMessage();
+  status.textContent = `已触发 @${agent.name}`;
+}
+
+function speakMessage(button) {
+  if (!voicePlaybackEnabled) {
+    showToast('管理员已关闭语音播报', 'info');
+    return;
+  }
+  if (!('speechSynthesis' in window)) {
+    showToast('当前浏览器不支持语音播报', 'error');
+    return;
+  }
+  const content = button.closest('.message-bubble')?.querySelector('[data-message-content]')?.textContent?.trim();
+  if (!content) return;
+  if (speechButton === button && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    speechButton = null;
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(content);
+  utterance.lang = 'zh-CN';
+  utterance.rate = 1;
+  utterance.onend = () => { speechButton = null; };
+  utterance.onerror = () => { speechButton = null; showToast('语音播报失败', 'error'); };
+  speechButton = button;
+  window.speechSynthesis.speak(utterance);
+}
+
+async function exportChatPdf() {
+  if (!currentAgent || !document.querySelector('#chatMessages .chat-message')) {
+    showToast('当前没有可导出的对话', 'error');
+    return;
+  }
+  if (!window.html2canvas || !window.jspdf?.jsPDF) {
+    showToast('PDF 组件加载失败，请检查网络后重试', 'error');
+    return;
+  }
+  const button = document.getElementById('exportPdfBtn');
+  const container = document.getElementById('chatMessages');
+  const previous = { height: container.style.height, overflow: container.style.overflow, maxHeight: container.style.maxHeight };
+  button.disabled = true;
+  showToast('正在生成 PDF...', 'info');
+  try {
+    container.style.height = 'auto';
+    container.style.maxHeight = 'none';
+    container.style.overflow = 'visible';
+    const canvas = await html2canvas(container, { backgroundColor: '#071425', scale: 1.5, useCORS: true, logging: false });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 10;
+    const imageWidth = pageWidth - margin * 2;
+    const imageHeight = canvas.height * imageWidth / canvas.width;
+    const image = canvas.toDataURL('image/jpeg', 0.92);
+    let y = margin;
+    pdf.addImage(image, 'JPEG', margin, y, imageWidth, imageHeight);
+    let remaining = imageHeight - (pageHeight - margin * 2);
+    while (remaining > 0) {
+      pdf.addPage();
+      y = margin - (imageHeight - remaining);
+      pdf.addImage(image, 'JPEG', margin, y, imageWidth, imageHeight);
+      remaining -= pageHeight - margin * 2;
+    }
+    const safeName = currentAgent.name.replace(/[\\/:*?"<>|]/g, '_');
+    pdf.save(`${safeName}-对话-${new Date().toISOString().slice(0, 10)}.pdf`);
+    showToast('PDF 已生成', 'success');
+  } catch (error) {
+    showToast('PDF 生成失败: ' + error.message, 'error');
+  } finally {
+    Object.assign(container.style, previous);
+    button.disabled = false;
+  }
+}
+
+async function clearChat() {
+  if (activeConversationId) {
+    try { await apiDelete('/api/de/sessions/' + encodeURIComponent(activeConversationId)); }
+    catch (error) { showToast('服务端历史清空失败，请稍后重试', 'error'); return; }
+  }
+  chatHistory = [];
+  persistActiveConversation();
   renderMessages();
   document.getElementById('skillCallBar').classList.add('hidden');
   if (currentAgent) {
@@ -305,7 +873,10 @@ function renderMessages() {
   document.getElementById('skillCallBar').classList.add('hidden');
 }
 
-if (requireAuth()) loadAgents();
+if (requireAuth()) {
+  loadVoicePlaybackSetting();
+  loadAgents();
+}
 </script>
 </body>
 </html>
