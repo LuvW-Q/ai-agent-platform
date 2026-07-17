@@ -80,7 +80,7 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
     <div id="tab-api" class="tab-panel hidden">
       <div class="flex items-center justify-between mb-4">
         <span class="text-xs text-on-surface-variant" id="apiCount">共 0 个</span>
-        <span class="text-xs text-on-surface-variant">接口型员工由<a href="/apis" class="text-primary hover:underline">接口管理</a>自动生成</span>
+        <span class="text-xs text-on-surface-variant">接口型员工由<a href="/api-registry" class="text-primary hover:underline">接口管理</a>自动生成</span>
       </div>
       <div id="apiAgentGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
     </div>
@@ -197,7 +197,7 @@ function renderApiGrid() {
   document.getElementById('apiCount').textContent = '共 ' + filtered.length + ' 个';
   const grid = document.getElementById('apiAgentGrid');
   if (!filtered.length) {
-    grid.innerHTML = '<div class="col-span-full text-center py-12 text-on-surface-variant">暂无接口型员工<br/>可在 <a href="/apis" class="text-primary hover:underline">接口管理</a> 中从接口生成</div>';
+    grid.innerHTML = '<div class="col-span-full text-center py-12 text-on-surface-variant">暂无接口型员工<br/>可在 <a href="/api-registry" class="text-primary hover:underline">接口管理</a> 中从接口生成</div>';
     return;
   }
   grid.innerHTML = filtered.map(a => buildCard(a, true)).join('');

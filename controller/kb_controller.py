@@ -363,4 +363,4 @@ def _mock_rag_answer(question: str, chunks: list) -> str:
     if not chunks:
         return "知识库中暂无相关信息，请先上传文档。"
     preview = "\n".join([f"- {c['text'][:100]}..." for c in chunks[:3]])
-    return f"根据知识库内容，与您的问题相关的信息如下：\n\n{preview}\n\n（当前为模拟模式，配置真实 API Key 后可获得更智能的回答）"
+    return f"根据知识库内容，与您的问题相关的信息如下：\n\n{preview}\n\n当前回答基于本地检索结果生成。"

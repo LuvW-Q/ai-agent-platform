@@ -64,7 +64,7 @@ tailwind.config = {
 
   <!-- Tabs -->
   <div class="border-b border-outline-variant mb-lg">
-    <nav class="flex gap-6 -mb-px">
+    <nav class="flex gap-6 -mb-px overflow-x-auto whitespace-nowrap" aria-label="权限管理标签">
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-primary text-primary" data-tab="users" onclick="switchTab('users')">用户管理</button>
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="roles" onclick="switchTab('roles')">角色管理</button>
       <button class="tab-btn text-sm font-semibold pb-3 px-1 border-b-2 border-transparent text-on-surface-variant hover:text-on-surface" data-tab="functions" onclick="switchTab('functions')">功能管理</button>
@@ -78,10 +78,10 @@ tailwind.config = {
   <div id="tabContent" class="mt-lg">
     <!-- Tab1: 用户管理 -->
     <div id="tab-users" class="tab-panel">
-      <div class="flex items-center justify-between mb-md">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-md">
         <div class="relative">
           <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg">search</span>
-          <input id="user-search" class="bg-surface-container border border-outline-variant rounded-xl pl-10 pr-4 py-2 text-sm w-72 outline-none focus:border-primary" placeholder="搜索用户名或昵称..." oninput="debounceSearch('users', this.value)"/>
+          <input id="user-search" class="bg-surface-container border border-outline-variant rounded-xl pl-10 pr-4 py-2 text-sm w-full sm:w-72 outline-none focus:border-primary" placeholder="搜索用户名或昵称..." oninput="debounceSearch('users', this.value)"/>
         </div>
         <div class="flex items-center gap-3">
           <span class="text-xs text-on-surface-variant" id="user-count">共 0 人</span>
@@ -252,6 +252,49 @@ tailwind.config = {
   </div>
 </div>
 
+<!-- User Modal -->
+<div id="user-modal" class="fixed inset-0 z-50 hidden modal-overlay flex items-center justify-center" onclick="if(event.target===this)closeUserModal()">
+  <form class="bg-surface-container border border-outline-variant rounded-xl p-lg w-full max-w-lg mx-4 shadow-2xl" onsubmit="event.preventDefault();saveUser()">
+    <h3 class="text-lg font-bold text-on-surface mb-md" id="user-modal-title">新增用户</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="text-xs text-on-surface-variant">用户名<input id="user-username" required minlength="3" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+      <label id="user-password-field" class="text-xs text-on-surface-variant">初始密码<input id="user-password" type="password" minlength="6" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+      <label class="text-xs text-on-surface-variant">昵称<input id="user-nickname" required class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+      <label class="text-xs text-on-surface-variant">邮箱<input id="user-email" required type="email" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+      <label class="text-xs text-on-surface-variant">角色<select id="user-role" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface"></select></label>
+      <label class="text-xs text-on-surface-variant">状态<select id="user-active" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface"><option value="true">启用</option><option value="false">停用</option></select></label>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button type="button" class="px-4 py-2 border border-outline-variant text-sm rounded-xl" onclick="closeUserModal()">取消</button>
+      <button type="submit" class="px-4 py-2 bg-primary text-on-primary text-sm rounded-xl">保存</button>
+    </div>
+  </form>
+</div>
+
+<!-- Function Modal -->
+<div id="function-modal" class="fixed inset-0 z-50 hidden modal-overlay flex items-center justify-center" onclick="if(event.target===this)closeFunctionModal()">
+  <form class="bg-surface-container border border-outline-variant rounded-xl p-lg w-full max-w-md mx-4 shadow-2xl" onsubmit="event.preventDefault();saveFunction()">
+    <h3 class="text-lg font-bold text-on-surface mb-md" id="function-modal-title">新增功能</h3>
+    <label class="text-xs text-on-surface-variant block mb-3">功能名称<input id="function-name" required class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+    <label class="text-xs text-on-surface-variant block mb-3">功能代码<input id="function-code" required pattern="[A-Za-z0-9_.\-]+" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+    <label class="text-xs text-on-surface-variant block mb-3">描述<textarea id="function-description" rows="3" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"></textarea></label>
+    <label class="text-xs text-on-surface-variant block mb-3">状态<select id="function-active" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface"><option value="true">启用</option><option value="false">停用</option></select></label>
+    <div class="flex justify-end gap-2"><button type="button" class="px-4 py-2 border border-outline-variant text-sm rounded-xl" onclick="closeFunctionModal()">取消</button><button type="submit" class="px-4 py-2 bg-primary text-on-primary text-sm rounded-xl">保存</button></div>
+  </form>
+</div>
+
+<!-- Permission Binding Modal -->
+<div id="binding-modal" class="fixed inset-0 z-50 hidden modal-overlay flex items-center justify-center" onclick="if(event.target===this)closeBindingModal()">
+  <form class="bg-surface-container border border-outline-variant rounded-xl p-lg w-full max-w-md mx-4 shadow-2xl" onsubmit="event.preventDefault();saveBinding()">
+    <h3 class="text-lg font-bold text-on-surface mb-md" id="binding-modal-title">新增权限绑定</h3>
+    <label class="text-xs text-on-surface-variant block mb-3">角色<select id="binding-role" required class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface"></select></label>
+    <label class="text-xs text-on-surface-variant block mb-3">功能点<select id="binding-function" required class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-3 py-2.5 text-sm text-on-surface"></select></label>
+    <label class="text-xs text-on-surface-variant block mb-3">资源路径<input id="binding-resource" required placeholder="/api/resource" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+    <label class="text-xs text-on-surface-variant block mb-4">操作权限<input id="binding-actions" required value="查看" placeholder="查看,编辑" class="mt-1 w-full bg-surface-container-high border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface"/></label>
+    <div class="flex justify-end gap-2"><button type="button" class="px-4 py-2 border border-outline-variant text-sm rounded-xl" onclick="closeBindingModal()">取消</button><button type="submit" class="px-4 py-2 bg-primary text-on-primary text-sm rounded-xl">保存</button></div>
+  </form>
+</div>
+
 <script src="/static/js/app.js"></script>
 <script>
 if (!requireAuth()) throw new Error('redirecting');
@@ -259,6 +302,9 @@ if (!requireAuth()) throw new Error('redirecting');
 let currentTab = 'users';
 let editingRoleId = null;
 let editingMenuId = null;
+let editingUserId = null;
+let editingFunctionId = null;
+let editingBindingId = null;
 let searchTimer = null;
 
 function switchTab(tab) {
@@ -325,17 +371,51 @@ async function loadUsers(search) {
   } catch(e) { showToast('加载用户失败', 'error'); }
 }
 
+async function populateRoleSelect(selectId, selected = 'USER') {
+  const roles = await apiGet('/api/permissions/roles');
+  const select = document.getElementById(selectId);
+  select.innerHTML = roles.filter(role => role.is_active || role.code === selected).map(role =>
+    `<option value="${escapeHtml(role.code)}" ${role.code === selected ? 'selected' : ''}>${escapeHtml(role.name)} (${escapeHtml(role.code)})</option>`
+  ).join('');
+}
+
 async function createUser() {
-  const username = prompt('用户名:'); if (!username) return;
-  const password = prompt('初始密码（至少 6 位）:'); if (!password) return;
-  const nickname = prompt('昵称:', username); if (!nickname) return;
-  const email = prompt('邮箱:'); if (!email) return;
-  const role = prompt('角色代码:', 'USER'); if (!role) return;
+  editingUserId = null;
+  document.getElementById('user-modal-title').textContent = '新增用户';
+  document.getElementById('user-username').value = '';
+  document.getElementById('user-username').disabled = false;
+  document.getElementById('user-password').value = '';
+  document.getElementById('user-password').required = true;
+  document.getElementById('user-password-field').classList.remove('hidden');
+  document.getElementById('user-nickname').value = '';
+  document.getElementById('user-email').value = '';
+  document.getElementById('user-active').value = 'true';
+  await populateRoleSelect('user-role');
+  document.getElementById('user-modal').classList.remove('hidden');
+}
+
+function closeUserModal() { document.getElementById('user-modal').classList.add('hidden'); }
+
+async function saveUser() {
+  const body = {
+    nickname: document.getElementById('user-nickname').value.trim(),
+    email: document.getElementById('user-email').value.trim(),
+    role: document.getElementById('user-role').value,
+  };
   try {
-    await apiPost('/api/permissions/users', {username, password, nickname, email, role});
-    showToast('用户创建成功', 'success');
+    if (editingUserId) {
+      body.is_active = document.getElementById('user-active').value === 'true';
+      await apiPut('/api/permissions/users/' + editingUserId, body);
+      showToast('用户已更新', 'success');
+    } else {
+      body.username = document.getElementById('user-username').value.trim();
+      body.password = document.getElementById('user-password').value;
+      await apiPost('/api/permissions/users', body);
+      showToast('用户创建成功', 'success');
+    }
+    closeUserModal();
     loadUsers();
-  } catch (error) { showToast(error.message || '创建失败', 'error'); }
+  } catch (error) { showToast(error.message || '保存失败', 'error'); }
 }
 
 async function deleteUser(id) {
@@ -351,21 +431,17 @@ async function editUser(id) {
   const users = await apiGet('/api/permissions/users');
   const u = users.find(x => x.id === id);
   if (!u) return;
-  const newNickname = prompt('昵称:', u.nickname || '');
-  if (newNickname === null) return;
-  const newEmail = prompt('邮箱:', u.email || '');
-  if (newEmail === null) return;
-  const newRole = prompt('角色 (ROOT/AUDIT/OPS/USER/GUEST):', u.role || 'USER');
-  if (newRole === null) return;
-  try {
-    const body = {};
-    if (newNickname && newNickname.trim()) body.nickname = newNickname.trim();
-    if (newEmail && newEmail.trim()) body.email = newEmail.trim();
-    if (newRole && newRole.trim()) body.role = newRole.trim();
-    await apiPut('/api/permissions/users/' + id, body);
-    showToast('更新成功', 'success');
-    loadUsers();
-  } catch(e) { showToast('更新失败', 'error'); }
+  editingUserId = id;
+  document.getElementById('user-modal-title').textContent = '编辑用户';
+  document.getElementById('user-username').value = u.username;
+  document.getElementById('user-username').disabled = true;
+  document.getElementById('user-password').required = false;
+  document.getElementById('user-password-field').classList.add('hidden');
+  document.getElementById('user-nickname').value = u.nickname || '';
+  document.getElementById('user-email').value = u.email || '';
+  document.getElementById('user-active').value = u.is_active ? 'true' : 'false';
+  await populateRoleSelect('user-role', u.role || 'USER');
+  document.getElementById('user-modal').classList.remove('hidden');
 }
 
 async function toggleUserActive(id, current) {
@@ -479,22 +555,44 @@ async function loadFunctions() {
   } catch (error) { showToast(error.message || '加载功能点失败', 'error'); }
 }
 
-async function createFunction() {
-  const name = prompt('功能名称:'); if (!name) return;
-  const code = prompt('功能代码:'); if (!code) return;
-  const description = prompt('描述:', '') ?? '';
-  try { await apiPost('/api/permissions/functions', {name, code, description}); loadFunctions(); showToast('功能点已创建', 'success'); }
-  catch (error) { showToast(error.message || '创建失败', 'error'); }
+function createFunction() {
+  editingFunctionId = null;
+  document.getElementById('function-modal-title').textContent = '新增功能';
+  document.getElementById('function-name').value = '';
+  document.getElementById('function-code').value = '';
+  document.getElementById('function-description').value = '';
+  document.getElementById('function-active').value = 'true';
+  document.getElementById('function-modal').classList.remove('hidden');
 }
 
 async function editFunction(id) {
   const items = await apiGet('/api/permissions/functions');
   const item = items.find(row => row.id === id); if (!item) return;
-  const name = prompt('功能名称:', item.name); if (!name) return;
-  const code = prompt('功能代码:', item.code); if (!code) return;
-  const description = prompt('描述:', item.description || ''); if (description === null) return;
-  try { await apiPut('/api/permissions/functions/' + id, {name, code, description}); loadFunctions(); showToast('功能点已更新', 'success'); }
-  catch (error) { showToast(error.message || '更新失败', 'error'); }
+  editingFunctionId = id;
+  document.getElementById('function-modal-title').textContent = '编辑功能';
+  document.getElementById('function-name').value = item.name;
+  document.getElementById('function-code').value = item.code;
+  document.getElementById('function-description').value = item.description || '';
+  document.getElementById('function-active').value = item.is_active ? 'true' : 'false';
+  document.getElementById('function-modal').classList.remove('hidden');
+}
+
+function closeFunctionModal() { document.getElementById('function-modal').classList.add('hidden'); }
+
+async function saveFunction() {
+  const body = {
+    name: document.getElementById('function-name').value.trim(),
+    code: document.getElementById('function-code').value.trim(),
+    description: document.getElementById('function-description').value.trim(),
+  };
+  if (editingFunctionId) body.is_active = document.getElementById('function-active').value === 'true';
+  try {
+    if (editingFunctionId) await apiPut('/api/permissions/functions/' + editingFunctionId, body);
+    else await apiPost('/api/permissions/functions', body);
+    closeFunctionModal();
+    loadFunctions();
+    showToast(editingFunctionId ? '功能点已更新' : '功能点已创建', 'success');
+  } catch (error) { showToast(error.message || '保存失败', 'error'); }
 }
 
 async function deleteFunction(id) {
@@ -516,25 +614,48 @@ async function loadBindings() {
   } catch (error) { showToast(error.message || '加载权限绑定失败', 'error'); }
 }
 
-async function promptBinding(existing) {
-  const role_code = prompt('角色代码:', existing?.role_code || 'USER'); if (!role_code) return null;
-  const function_code = prompt('功能代码:', existing?.function_code || ''); if (!function_code) return null;
-  const resource = prompt('资源路径或资源标识:', existing?.resource || ''); if (!resource) return null;
-  const actions = prompt('操作权限（逗号分隔）:', existing?.actions || '查看'); if (!actions) return null;
-  return {role_code, function_code, resource, actions};
+async function openBindingModal(existing = null) {
+  editingBindingId = existing?.id || null;
+  document.getElementById('binding-modal-title').textContent = existing ? '编辑权限绑定' : '新增权限绑定';
+  const [roles, functions] = await Promise.all([
+    apiGet('/api/permissions/roles'), apiGet('/api/permissions/functions')
+  ]);
+  document.getElementById('binding-role').innerHTML = roles.map(role =>
+    `<option value="${escapeHtml(role.code)}" ${role.code === (existing?.role_code || 'USER') ? 'selected' : ''}>${escapeHtml(role.name)} (${escapeHtml(role.code)})</option>`
+  ).join('');
+  document.getElementById('binding-function').innerHTML = functions.map(item =>
+    `<option value="${escapeHtml(item.code)}" ${item.code === existing?.function_code ? 'selected' : ''}>${escapeHtml(item.name)} (${escapeHtml(item.code)})</option>`
+  ).join('');
+  document.getElementById('binding-resource').value = existing?.resource || '';
+  document.getElementById('binding-actions').value = existing?.actions || '查看';
+  document.getElementById('binding-modal').classList.remove('hidden');
 }
 
 async function createBinding() {
-  const body = await promptBinding(null); if (!body) return;
-  try { await apiPost('/api/permissions/bindings', body); loadBindings(); showToast('权限绑定已创建', 'success'); }
-  catch (error) { showToast(error.message || '创建失败', 'error'); }
+  await openBindingModal();
 }
 
 async function editBinding(id) {
   const items = await apiGet('/api/permissions/bindings'); const item = items.find(row => row.id === id); if (!item) return;
-  const body = await promptBinding(item); if (!body) return;
-  try { await apiPut('/api/permissions/bindings/' + id, body); loadBindings(); showToast('权限绑定已更新', 'success'); }
-  catch (error) { showToast(error.message || '更新失败', 'error'); }
+  await openBindingModal(item);
+}
+
+function closeBindingModal() { document.getElementById('binding-modal').classList.add('hidden'); }
+
+async function saveBinding() {
+  const body = {
+    role_code: document.getElementById('binding-role').value,
+    function_code: document.getElementById('binding-function').value,
+    resource: document.getElementById('binding-resource').value.trim(),
+    actions: document.getElementById('binding-actions').value.trim(),
+  };
+  try {
+    if (editingBindingId) await apiPut('/api/permissions/bindings/' + editingBindingId, body);
+    else await apiPost('/api/permissions/bindings', body);
+    closeBindingModal();
+    loadBindings();
+    showToast(editingBindingId ? '权限绑定已更新' : '权限绑定已创建', 'success');
+  } catch (error) { showToast(error.message || '保存失败', 'error'); }
 }
 
 async function deleteBinding(id) {

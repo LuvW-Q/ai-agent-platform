@@ -20,7 +20,7 @@ def register(data: RegisterIn, db: SessionLocal):
         password_hash=hash_password(data.password),
         nickname=data.username,
         email=data.email,
-        role="user",
+        role="USER",
     )
     saved = insert_user(new_user, db)
     if not saved:

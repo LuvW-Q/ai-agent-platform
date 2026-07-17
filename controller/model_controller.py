@@ -12,6 +12,7 @@ from dao.base_dao import log_action
 from models.user import User
 from models.ai_model import AIModel
 import asyncio
+from core.generation_api import generation_endpoint
 
 model_router = APIRouter(prefix="/api/models", tags=["大模型管理"])
 
@@ -88,7 +89,7 @@ async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: Us
             import httpx
             async with httpx.AsyncClient(timeout=20) as http:
                 resp = await http.post(
-                    f"{m.endpoint.rstrip('/')}/v1/images/generations",
+                    generation_endpoint(m.endpoint, "image"),
                     json={"model": m.model_name, "prompt": "test", "n": 1, "size": "1024x1024"},
                     headers={"Authorization": f"Bearer {m.api_key}"},
                 )
@@ -100,7 +101,7 @@ async def test_model(model_id: int, db: SessionLocal = Depends(get_db), user: Us
             import httpx
             async with httpx.AsyncClient(timeout=20) as http:
                 resp = await http.post(
-                    f"{m.endpoint.rstrip('/')}/v1/video/generations",
+                    generation_endpoint(m.endpoint, "video"),
                     json={"model": m.model_name, "prompt": "test"},
                     headers={"Authorization": f"Bearer {m.api_key}"},
                 )

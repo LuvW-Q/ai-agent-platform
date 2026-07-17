@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
 
 
 # ===== 认证相关 =====
@@ -221,7 +222,7 @@ class AIModelCreate(BaseModel):
     model_name: str
     endpoint: str = "https://api.openai.com/v1"
     context_length: int = 4096
-    model_type: str = "chat"  # chat/image/video/embedding/rerank
+    model_type: Literal["chat", "image", "video", "embedding", "rerank"] = "chat"
     temperature: str = "0.7"
     max_tokens: int = 2048
 
@@ -232,7 +233,7 @@ class AIModelUpdate(BaseModel):
     model_name: str | None = None
     endpoint: str | None = None
     context_length: int | None = None
-    model_type: str | None = None
+    model_type: Literal["chat", "image", "video", "embedding", "rerank"] | None = None
     is_active: bool | None = None
     temperature: str | None = None
     max_tokens: int | None = None
@@ -314,9 +315,11 @@ class DEChatIn(BaseModel):
     agent_id: int
     messages: list[ChatMessage]
     group_id: int | None = None  # 群聊场景
+    session_id: str = Field(default="", max_length=64, pattern=r"^[A-Za-z0-9._-]*$")
 
 class DEChatOut(BaseModel):
     reply: str
     skill_calls: list[dict] = []
     agent_id: int
     agent_name: str = ""
+    session_id: str = ""

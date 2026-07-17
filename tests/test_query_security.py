@@ -6,6 +6,8 @@ import sqlite3
 import pytest
 
 from controller.query_controller import _execute_readonly_select, _parse_and_execute
+from dao.user_dao import find_user_by_name
+from models.user import User
 
 
 def test_readonly_query_executor_allows_declared_business_columns(db_session):
@@ -44,7 +46,12 @@ def test_model_generated_secret_query_is_rejected(db_session):
     assert "查询执行失败" in result.explanation
 
 
-def test_readonly_query_executor_restores_connection_write_mode(db_session):
+def test_readonly_query_executor_does_not_poison_application_connection(db_session):
+    username = db_session.query(User.username).first()[0]
+    assert find_user_by_name(username, db_session) is not None
+
     _execute_readonly_select(db_session, "SELECT COUNT(*) AS total FROM users")
+
     raw_connection = db_session.connection().connection.driver_connection
     assert raw_connection.execute("PRAGMA query_only").fetchone()[0] == 0
+    assert find_user_by_name(username, db_session) is not None

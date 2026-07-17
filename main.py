@@ -3,8 +3,12 @@
 启动 FastAPI，注册所有路由，初始化数据库，种子数据
 """
 import uvicorn
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from core.config import config
 
 from database.session import Base, engine, SessionLocal
@@ -46,6 +50,7 @@ from models.menu import Menu
 from models.setting import Setting
 from models.api_registry import ApiRegistry
 from models.permission import FunctionPoint, RoleFunctionPermission
+from models.user_preference import UserPreference
 
 # 建表
 Base.metadata.create_all(bind=engine)
@@ -115,7 +120,7 @@ migrate_agents_table()
 
 
 def migrate_de_messages_table():
-    """创建de_messages表（如果不存在）"""
+    """创建或补齐 de_messages 表。"""
     from sqlalchemy import text, inspect
     inspector = inspect(engine)
     if "de_messages" not in inspector.get_table_names():
@@ -124,6 +129,13 @@ def migrate_de_messages_table():
             print("[migrate] Created de_messages table")
         except Exception as e:
             print(f"[migrate] de_messages table creation error: {e}")
+        return
+    columns = {column["name"] for column in inspector.get_columns("de_messages")}
+    if "session_id" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE de_messages ADD COLUMN session_id VARCHAR(64) NOT NULL DEFAULT ''"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_de_messages_session_id ON de_messages (session_id)"))
+        print("[migrate] Added column session_id to de_messages table")
 
 
 def migrate_agent_model_binding():
@@ -186,6 +198,17 @@ from seed import run_seed
 run_seed()
 
 app = FastAPI(title="智能数据瞭望系统", version="1.0.0")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    accepts_html = "text/html" in request.headers.get("accept", "")
+    if exc.status_code == 404 and not request.url.path.startswith("/api/") and accepts_html:
+        return FileResponse(
+            Path(__file__).resolve().parent / "static" / "404.html",
+            status_code=404,
+        )
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
 
 # CORS中间件：允许源由部署环境显式配置，默认仅本地开发地址。
 from fastapi.middleware.cors import CORSMiddleware

@@ -91,15 +91,22 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
     if body.msg_id:
         existing = db.query(Message).filter(Message.msg_id == body.msg_id).first()
         if existing:
+            if existing.status == "blocked":
+                raise HTTPException(status_code=400, detail="消息包含敏感信息，已被拦截")
             return existing
+    content = body.content
+    matches = []
+    blocked = False
+    if body.msg_type == "text":
+        content, blocked, matches = sensitive_filter.inspect(body.content, db)
     msg = Message(
         msg_id=body.msg_id or str(uuid.uuid4()),
         sender_id=user.id,
         receiver_id=body.receiver_id,
         group_id=body.group_id,
-        content=body.content,
+        content=body.content if blocked else content,
         msg_type=body.msg_type,
-        status="sent",
+        status="blocked" if blocked else "sent",
         file_url=body.file_url,
         file_name=body.file_name,
         file_size=body.file_size,
@@ -107,6 +114,17 @@ def send(body: MessageSend, db: SessionLocal = Depends(get_db), user: User = Dep
     saved = create_message(msg, db)
     if not saved:
         raise HTTPException(status_code=500, detail="发送失败")
+    if matches:
+        matched_words = "、".join(sorted({rule["word"] for rule in matches}))
+        log_action(
+            "sensitive_message_blocked" if blocked else "sensitive_message_filtered",
+            f"用户 {user.username} 的消息命中敏感规则: {matched_words}",
+            user.username,
+            db,
+            risk_level="high" if blocked else "medium",
+        )
+    if blocked:
+        raise HTTPException(status_code=400, detail="消息包含敏感信息，已被拦截")
     log_action("message_send", f"用户 {user.username} 发送消息", user.username, db)
     return saved
 

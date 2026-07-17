@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <!-- ECharts + GL + Wordcloud CDNs -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js" integrity="sha384-pPi0zxBAoDu6+JXW/C68UZLvBUUtU+7zonhif43rqj7pxsGyqyqzcian2Rj37Rss" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js" integrity="sha384-Jrlf45MaPztb6IIPdhM8IBz9mpGKZIEaia3gSoonwudLUQOO9YF2DsbsdM2pJKPw" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.1.0/dist/echarts-gl.min.js" integrity="sha384-RSPZ3vSNVFJnUBsUVMnD0qizvywfxO1bcpIeS9dg5sseJ+Daf08BIyMCZMX+rmLl" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js" integrity="sha384-U1KEY0DDCF4Dq6Yx1J+EZ5Hnj8X5bMn52OAcJB8C4OiAWeU4iJhJ/Tv5KhTqu8zZ" crossorigin="anonymous"></script>
 <!-- Theme Config -->
@@ -501,7 +502,7 @@ loadSidebarUser();
 
 // Update sidebar nav links
 const navMap = {
-    '数据治理': '/dashboard',
+    '数据治理': '/data-governance',
     '权限管理': '/permissions',
     '员工编排': '/agents',
     '审计管理': '/audit',
@@ -522,11 +523,17 @@ document.querySelectorAll('aside a, aside div').forEach(el => {
     }
 });
 
-window.onload = () => {
+function initializeScreen() {
     loadScreenData();
     // Poll every 30s
     setInterval(loadScreenData, 30000);
-};
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeScreen, { once: true });
+} else {
+    initializeScreen();
+}
 
 window.onresize = () => {
     if (globeChart) globeChart.resize();

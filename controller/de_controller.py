@@ -13,7 +13,7 @@ from dao.skill_dao import get_skill, get_skills_by_ids
 from core.security import get_current_user
 from core.openai_client import OpenAIClient, OpenAIError
 from core.sandbox import sandbox
-from core.builtin_skills import execute_builtin_skill
+from core.builtin_skills import execute_builtin_skill_async
 from core.safe_http import request_public_url
 from core.circuit_breaker import circuit_breaker
 from core.sensitive_filter import sensitive_filter
@@ -22,7 +22,10 @@ from models.agent import Agent
 from models.skill import Skill
 from models.skill_call_log import SkillCallLog
 from models.de_message import DEMessage
+from models.api_registry import ApiRegistry
 import httpx
+import re
+from urllib.parse import quote
 
 de_router = APIRouter(prefix="/api/de", tags=["数字员工-用户端"])
 
@@ -54,16 +57,63 @@ def list_published(db=Depends(get_db), user: User = Depends(get_current_user)):
     return result
 
 
+@de_router.get("/sessions")
+def list_chat_sessions(db=Depends(get_db), user: User = Depends(get_current_user)):
+    """返回当前用户的服务端会话摘要。"""
+    messages = (
+        db.query(DEMessage)
+        .filter(DEMessage.user_id == user.id, DEMessage.session_id != "")
+        .order_by(DEMessage.created_at.desc(), DEMessage.id.desc())
+        .limit(1000)
+        .all()
+    )
+    agent_ids = {message.agent_id for message in messages}
+    agent_names = {
+        agent.id: agent.name
+        for agent in db.query(Agent).filter(Agent.id.in_(agent_ids)).all()
+    } if agent_ids else {}
+    grouped = {}
+    for message in reversed(messages):
+        session = grouped.setdefault(message.session_id, {
+            "id": message.session_id,
+            "agent_id": message.agent_id,
+            "agent_name": agent_names.get(message.agent_id, "数字员工"),
+            "title": "新对话",
+            "message_count": 0,
+            "updated_at": message.created_at.isoformat(),
+        })
+        session["message_count"] += 1
+        if message.role == "user" and session["title"] == "新对话":
+            session["title"] = message.content[:24] or "新对话"
+        if message.created_at.isoformat() > session["updated_at"]:
+            session["updated_at"] = message.created_at.isoformat()
+    return sorted(grouped.values(), key=lambda item: item["updated_at"], reverse=True)[:30]
+
+
+@de_router.delete("/sessions/{session_id}")
+def delete_chat_session(session_id: str, db=Depends(get_db), user: User = Depends(get_current_user)):
+    deleted = (
+        db.query(DEMessage)
+        .filter(DEMessage.user_id == user.id, DEMessage.session_id == session_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": deleted}
+
+
 @de_router.get("/{agent_id}/history")
-def get_chat_history(agent_id: int, db=Depends(get_db), user: User = Depends(get_current_user)):
+def get_chat_history(agent_id: int, session_id: str = Query("", max_length=64),
+                     db=Depends(get_db), user: User = Depends(get_current_user)):
     """获取与指定数字员工的对话历史"""
     agent = get_agent(agent_id, db)
     if not agent:
         raise HTTPException(404, "数字员工不存在")
-    msgs = db.query(DEMessage).filter(
+    query = db.query(DEMessage).filter(
         DEMessage.user_id == user.id,
         DEMessage.agent_id == agent_id,
-    ).order_by(DEMessage.created_at.asc()).limit(100).all()
+    )
+    query = query.filter(DEMessage.session_id == session_id)
+    msgs = query.order_by(DEMessage.created_at.asc()).limit(100).all()
     return [{"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in msgs]
 
 
@@ -138,6 +188,7 @@ async def _do_chat(agent: Agent, body: DEChatIn, db, user: User) -> DEChatOut:
     db_history = db.query(DEMessage).filter(
         DEMessage.user_id == user.id,
         DEMessage.agent_id == agent.id,
+        DEMessage.session_id == body.session_id,
     ).order_by(DEMessage.created_at.asc()).limit(30).all()
 
     # 将DB历史转为消息列表
@@ -146,30 +197,7 @@ async def _do_chat(agent: Agent, body: DEChatIn, db, user: User) -> DEChatOut:
     # 前端传入的消息（当前会话的）
     frontend_messages = [{"role": m.role, "content": m.content} for m in body.messages] if body.messages else []
 
-    # 合并：DB历史 + 前端消息（去重：如果前端消息的最后一条用户消息和DB最后一条相同，则去重）
-    if history_messages and frontend_messages:
-        # 找到DB最后一条用户消息
-        last_db_user = None
-        for m in reversed(history_messages):
-            if m["role"] == "user":
-                last_db_user = m["content"]
-                break
-        # 找到前端第一条用户消息
-        first_fe_user = None
-        for m in frontend_messages:
-            if m["role"] == "user":
-                first_fe_user = m["content"]
-                break
-        # 如果相同，说明前端已包含DB历史，使用前端消息即可
-        if last_db_user and first_fe_user and last_db_user.strip() == first_fe_user.strip():
-            merged_messages = frontend_messages
-        else:
-            # 否则拼接：DB历史 + 前端消息
-            merged_messages = history_messages + frontend_messages
-    elif history_messages:
-        merged_messages = history_messages
-    else:
-        merged_messages = frontend_messages
+    merged_messages = _merge_messages(history_messages, frontend_messages)
 
     # 加载绑定的技能
     skills_map = {}  # func_name → Skill (同时用中文名和 skill_{id} 两种key)
@@ -190,19 +218,47 @@ async def _do_chat(agent: Agent, body: DEChatIn, db, user: User) -> DEChatOut:
         last_msg = merged_messages[-1].get("content", "")
 
     # 敏感词检查（输入侧）
-    filtered_input, input_blocked = sensitive_filter.filter(last_msg, db)
+    filtered_input, input_blocked, input_matches = sensitive_filter.inspect(last_msg, db)
     if input_blocked:
-        return DEChatOut(
-            reply="您的输入包含敏感信息，已被拦截。",
-            skill_calls=[], agent_id=agent.id, agent_name=agent.name,
+        warning = "您的输入包含敏感信息，已被拦截。"
+        _save_de_message(user.id, agent.id, body.session_id, "user", last_msg, db)
+        _save_de_message(user.id, agent.id, body.session_id, "assistant", warning, db)
+        matched_words = "、".join(sorted({rule["word"] for rule in input_matches}))
+        log_action(
+            "sensitive_de_input",
+            f"用户 {user.username} 与数字员工 [{agent.name}] 的对话命中敏感规则: {matched_words}",
+            user.username,
+            db,
+            risk_level="high",
         )
+        return DEChatOut(
+            reply=warning,
+            skill_calls=[], agent_id=agent.id, agent_name=agent.name,
+            session_id=body.session_id,
+        )
+    if input_matches:
+        matched_words = "、".join(sorted({rule["word"] for rule in input_matches}))
+        log_action(
+            "sensitive_de_input_filtered",
+            f"用户 {user.username} 的数字员工输入已过滤敏感规则: {matched_words}",
+            user.username,
+            db,
+            risk_level="medium",
+        )
+        last_msg = filtered_input
+        if merged_messages:
+            merged_messages[-1]["content"] = filtered_input
+
+    if agent.agent_type == "api":
+        return await _do_api_agent_chat(agent, body, last_msg, db, user)
 
     # ===== Mock 模式：无真实API key时使用模拟回复 =====
     if is_mock:
         result = await _mock_chat(agent, last_msg, skills_map, db, user)
         # 保存对话到DB
-        _save_de_message(user.id, agent.id, "user", last_msg, db)
-        _save_de_message(user.id, agent.id, "assistant", result.reply, db)
+        _save_de_message(user.id, agent.id, body.session_id, "user", last_msg, db)
+        _save_de_message(user.id, agent.id, body.session_id, "assistant", result.reply, db)
+        result.session_id = body.session_id
         return result
 
     # ===== 真实 API 调用模式 =====
@@ -292,11 +348,12 @@ async def _do_chat(agent: Agent, body: DEChatIn, db, user: User) -> DEChatOut:
             filtered = "回复内容包含违规信息，已被拦截。"
 
         # ===== 持久化对话历史 =====
-        _save_de_message(user.id, agent.id, "user", last_msg, db)
-        _save_de_message(user.id, agent.id, "assistant", filtered, db)
+        _save_de_message(user.id, agent.id, body.session_id, "user", last_msg, db)
+        _save_de_message(user.id, agent.id, body.session_id, "assistant", filtered, db)
 
         log_action("de_chat", f"用户 {user.username} 与数字员工 [{agent.name}] 对话", user.username, db)
-        return DEChatOut(reply=filtered, skill_calls=skill_calls_log, agent_id=agent.id, agent_name=agent.name)
+        return DEChatOut(reply=filtered, skill_calls=skill_calls_log, agent_id=agent.id,
+                         agent_name=agent.name, session_id=body.session_id)
 
     except (OpenAIError, Exception) as e:
         await client.close()
@@ -309,9 +366,23 @@ async def _do_chat(agent: Agent, body: DEChatIn, db, user: User) -> DEChatOut:
             # 降级话术为空或为默认值，退到mock模式
             reply = f"系统繁忙，请稍后再试。\n\n提示：{str(e)[:100]}"
         # 保存对话到DB
-        _save_de_message(user.id, agent.id, "user", last_msg, db)
-        _save_de_message(user.id, agent.id, "assistant", reply, db)
-        return DEChatOut(reply=reply, skill_calls=[], agent_id=agent.id, agent_name=agent.name)
+        _save_de_message(user.id, agent.id, body.session_id, "user", last_msg, db)
+        _save_de_message(user.id, agent.id, body.session_id, "assistant", reply, db)
+        return DEChatOut(reply=reply, skill_calls=[], agent_id=agent.id,
+                         agent_name=agent.name, session_id=body.session_id)
+
+
+def _merge_messages(history_messages: list[dict], frontend_messages: list[dict]) -> list[dict]:
+    """Merge persisted history with a client snapshot without duplicating overlap."""
+    if not history_messages:
+        return frontend_messages
+    if not frontend_messages:
+        return history_messages
+    max_overlap = min(len(history_messages), len(frontend_messages))
+    for overlap in range(max_overlap, 0, -1):
+        if history_messages[-overlap:] == frontend_messages[:overlap]:
+            return history_messages + frontend_messages[overlap:]
+    return history_messages + frontend_messages
 
 
 async def _mock_chat(agent: Agent, last_msg: str, skills_map: dict, db, user: User) -> DEChatOut:
@@ -396,6 +467,74 @@ async def _mock_chat(agent: Agent, last_msg: str, skills_map: dict, db, user: Us
     return DEChatOut(reply=filtered, skill_calls=skill_calls_log, agent_id=agent.id, agent_name=agent.name)
 
 
+async def _do_api_agent_chat(agent: Agent, body: DEChatIn, last_msg: str, db, user: User) -> DEChatOut:
+    registry = db.query(ApiRegistry).filter(ApiRegistry.id == agent.api_id).first()
+    if registry is None:
+        reply = agent.fallback_message or "该数字员工绑定的接口已不存在。"
+        return DEChatOut(reply=reply, agent_id=agent.id, agent_name=agent.name,
+                         session_id=body.session_id)
+
+    value_match = re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", last_msg)
+    parameter = value_match.group(0) if value_match else last_msg.strip()
+    try:
+        headers = json.loads(registry.headers) if registry.headers else {}
+    except json.JSONDecodeError:
+        headers = {}
+    if not isinstance(headers, dict):
+        headers = {}
+    if registry.auth_type == "header" and registry.auth_key:
+        headers["Authorization"] = f"Bearer {registry.auth_key}"
+    resolved_url = registry.base_url
+    if "{params}" in resolved_url:
+        resolved_url = resolved_url.replace("{params}", quote(parameter, safe=""))
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            if registry.method.upper() == "POST":
+                body_text = (registry.body_template or "").replace("{params}", parameter)
+                response = await request_public_url(
+                    client, "POST", resolved_url, content=body_text, headers=headers
+                )
+            else:
+                query_params = {"key": registry.auth_key} if registry.auth_type == "query" and registry.auth_key else None
+                response = await request_public_url(
+                    client, "GET", resolved_url, headers=headers, params=query_params
+                )
+        response.raise_for_status()
+        response_text = response.text[:4000]
+        extracted = _extract_response_value(response_text, registry.response_path)
+        answer = extracted or response_text[:1000]
+        reply = f"{registry.name} 查询结果：\n{answer}"
+        skill_calls = [{"skill": f"api_{registry.id}", "success": True, "result": answer[:200]}]
+    except Exception as exc:
+        reply = (agent.fallback_message or "接口暂时不可用，请稍后再试。").strip()
+        skill_calls = [{"skill": f"api_{registry.id}", "success": False, "result": str(exc)[:200]}]
+
+    filtered, blocked = sensitive_filter.filter(reply, db)
+    reply = "接口回复包含违规信息，已被拦截。" if blocked else filtered
+    _save_de_message(user.id, agent.id, body.session_id, "user", last_msg, db)
+    _save_de_message(user.id, agent.id, body.session_id, "assistant", reply, db)
+    log_action("de_api_chat", f"用户 {user.username} 调用接口员工 [{agent.name}]", user.username, db)
+    return DEChatOut(reply=reply, skill_calls=skill_calls, agent_id=agent.id,
+                     agent_name=agent.name, session_id=body.session_id)
+
+
+def _extract_response_value(text: str, path: str) -> str:
+    if not path:
+        return ""
+    try:
+        current = json.loads(text)
+    except json.JSONDecodeError:
+        return ""
+    for segment in path.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return ""
+        current = current[segment]
+    if isinstance(current, (dict, list)):
+        return json.dumps(current, ensure_ascii=False)[:1000]
+    return str(current)[:1000]
+
+
 def _extract_args_from_msg(msg: str, skill: Skill) -> dict:
     """从用户消息中提取技能参数 (parameters 为 JSON Schema 格式)"""
     try:
@@ -433,7 +572,7 @@ def _extract_args_from_msg(msg: str, skill: Skill) -> dict:
             args[pname] = msg
         elif pname == "keyword":
             keyword = msg
-            for token in ["帮我查", "查询", "搜索", "最新", "新闻", "资讯"]:
+            for token in ["帮我查", "帮我", "给我", "查询", "检索", "搜索", "推荐", "最新", "新闻", "资讯", "一下", "请"]:
                 keyword = keyword.replace(token, " ")
             args[pname] = " ".join(keyword.split())
     return args
@@ -473,11 +612,17 @@ def _generate_persona_reply(agent: Agent, user_msg: str) -> str:
         return f"我是{name}，擅长审计报告生成。我可以帮您获取当前时间、进行计算或生成审计报告模板。请问您需要什么帮助？"
     elif "运维" in persona or "巡检" in persona:
         return f"我是{name}，负责系统运维巡检。目前可以帮您查询时间、进行数学计算等。请告诉我您的需求。"
+    elif "程序员" in persona or "代码" in persona:
+        return (
+            f"我是{name}，可以协助编写和调试代码。当前未配置在线模型，先给出一个可运行的 Python 示例：\n\n"
+            "def solve(value):\n    return value * 2\n\n"
+            "配置有效模型后，我可以根据你的具体需求生成完整实现和测试。"
+        )
     else:
         # 最终降级：优先使用自定义降级话术
         if has_custom_fallback:
             return fallback
-        return f'我是{name}。{desc}我收到了您的消息：「{user_msg[:50]}」。目前我处于演示模式，可以帮您获取当前时间、进行数学计算等。请尝试问我「现在几点」或「帮我计算3+5」。'
+        return f'我是{name}。{desc}我收到了您的消息：「{user_msg[:50]}」。我可以帮您查询信息、整理思路或调用已绑定的业务技能。'
 
 
 async def _execute_skill(skill: Skill, args: dict, agent_id: int, user_id: int, db) -> dict:
@@ -485,7 +630,7 @@ async def _execute_skill(skill: Skill, args: dict, agent_id: int, user_id: int, 
     try:
         if skill.skill_type == "builtin":
             config = json.loads(skill.config) if skill.config else {}
-            result = execute_builtin_skill(config.get("handler", ""), args, db)
+            result = await execute_builtin_skill_async(config.get("handler", ""), args, db)
             circuit_breaker.record_success(skill.id)
             return {"success": True, "result": result}
 
@@ -559,7 +704,7 @@ def _log_de_error(agent_id: int, user_id: int, error: str, db):
         pass
 
 
-def _save_de_message(user_id: int, agent_id: int, role: str, content: str, db):
+def _save_de_message(user_id: int, agent_id: int, session_id: str, role: str, content: str, db):
     """持久化DE对话消息"""
     if not content:
         return
@@ -567,6 +712,7 @@ def _save_de_message(user_id: int, agent_id: int, role: str, content: str, db):
         msg = DEMessage(
             user_id=user_id,
             agent_id=agent_id,
+            session_id=session_id,
             role=role,
             content=content[:4000],  # 截断过长内容
         )

@@ -4,16 +4,16 @@
 import json
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, text
+from sqlalchemy import func, select, text
 from schema.api import DashboardMetrics
 from database.session import SessionLocal, get_db
 from core.security import get_current_user
 from models.user import User
-from models.data_source import DataSource
 from models.agent import Agent
 from models.audit_log import AuditLog
 from models.message import Message
-from models.data_collection import CollectedData
+from models.data_collection import CollectedData, DataSourceConfig
+from models.de_message import DEMessage
 
 dashboard_router = APIRouter(prefix="/api/dashboard", tags=["仪表盘"])
 
@@ -23,19 +23,23 @@ def get_metrics(db: SessionLocal = Depends(get_db), current: User = Depends(get_
     """从数据库实时计算数字大屏指标"""
 
     # 数据源统计
-    total_sources = db.query(func.count(DataSource.id)).scalar() or 0
-    active_sources = db.query(func.count(DataSource.id)).filter(DataSource.status == "active").scalar() or 0
-    error_sources = db.query(func.count(DataSource.id)).filter(DataSource.status == "error").scalar() or 0
+    total_sources = db.query(func.count(DataSourceConfig.id)).scalar() or 0
+    active_sources = db.query(func.count(DataSourceConfig.id)).filter(DataSourceConfig.status == "active").scalar() or 0
+    error_sources = db.query(func.count(DataSourceConfig.id)).filter(DataSourceConfig.status == "error").scalar() or 0
     active_pipelines = active_sources
     crawl_success_rate = round((active_sources / total_sources * 100) if total_sources > 0 else 0, 1)
 
     # 今日消息数
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_messages = db.query(func.count(Message.id)).filter(Message.created_at >= today_start).scalar() or 0
+    today_messages = (
+        db.query(func.count(Message.id)).filter(Message.created_at >= today_start).scalar() or 0
+    ) + (
+        db.query(func.count(DEMessage.id)).filter(DEMessage.created_at >= today_start).scalar() or 0
+    )
 
     # 活跃用户：最近7天发过消息的用户
     week_ago = datetime.utcnow() - timedelta(days=7)
-    active_senders = db.query(Message.sender_id).filter(Message.created_at >= week_ago).distinct().subquery()
+    active_senders = select(Message.sender_id).where(Message.created_at >= week_ago).distinct()
     active_users = db.query(func.count(User.id)).filter(User.id.in_(active_senders)).scalar() or 0
     if active_users == 0:
         active_users = db.query(func.count(User.id)).scalar() or 0
@@ -56,7 +60,9 @@ def get_metrics(db: SessionLocal = Depends(get_db), current: User = Depends(get_
     trust_score = round(max(0, 100 - audit_high * 2 - audit_medium * 0.5 - error_sources * 3), 1)
 
     # 数据接入量：基于消息数量 + 数据源数量推算日志量
-    total_msg = db.query(func.count(Message.id)).scalar() or 0
+    total_msg = (db.query(func.count(Message.id)).scalar() or 0) + (
+        db.query(func.count(DEMessage.id)).scalar() or 0
+    )
     ingress_gb = total_sources * 0.3 + total_msg * 0.001
     if ingress_gb >= 1:
         data_ingress_24h = f"{ingress_gb:.1f} TB" if ingress_gb >= 1024 else f"{ingress_gb:.1f} GB"
@@ -124,19 +130,34 @@ def screen_data(db: SessionLocal = Depends(get_db), current: User = Depends(get_
     total_collected = db.query(CollectedData).filter(CollectedData.saved == True).count()
 
     # 实时消息流（最近20条消息）
-    recent_msgs = db.query(Message).order_by(Message.created_at.desc()).limit(20).all()
+    recent_rows = [
+        {"content": (message.content or "")[:50], "created_at": message.created_at}
+        for message in db.query(Message).filter(Message.status != "blocked").order_by(
+            Message.created_at.desc()
+        ).limit(20).all()
+    ]
+    recent_rows.extend({
+        "content": (message.content or "")[:50],
+        "created_at": message.created_at,
+    } for message in db.query(DEMessage).filter(DEMessage.role == "assistant").order_by(
+        DEMessage.created_at.desc()
+    ).limit(20).all())
+    recent_rows.sort(
+        key=lambda row: row["created_at"].timestamp() if row["created_at"] else 0,
+        reverse=True,
+    )
 
     return {
         "source_stats": [{"name": s[0], "value": s[1]} for s in source_stats],
         "wordcloud": [{"name": k, "value": v} for k, v in sorted(wordcloud.items(), key=lambda x: -x[1])[:50]],
         "active_agents": active_agents,
         "total_collected": total_collected,
-        "total_messages": db.query(Message).count(),
+        "total_messages": db.query(Message).count() + db.query(DEMessage).count(),
         "recent_messages": [
             {
-                "content": (m.content or "")[:50],
-                "time": m.created_at.isoformat() if m.created_at else "",
+                "content": row["content"],
+                "time": row["created_at"].isoformat() if row["created_at"] else "",
             }
-            for m in recent_msgs
+            for row in recent_rows[:20]
         ],
     }

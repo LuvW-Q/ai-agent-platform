@@ -97,37 +97,36 @@ class SensitiveFilter:
             - blocked=False → 文本通过，敏感词已被替换。
                               filtered_text 为过滤后的文本。
         """
+        filtered, blocked, _matches = self.inspect(text, db)
+        return filtered, blocked
+
+    def inspect(self, text: str, db: Any) -> tuple[str, bool, list[dict[str, str]]]:
+        """Filter text and also return the matched rules for audit decisions."""
         if not text or not isinstance(text, str):
-            return (text or "", False)
+            return (text or "", False, [])
 
         words = self._ensure_cache(db)
-        if not words:
-            return (text, False)
+        matches = [
+            rule for rule in words
+            if rule["word"] and re.search(re.escape(rule["word"]), text, re.IGNORECASE)
+        ]
+        blocked = any(rule["action"] == "block" for rule in matches)
+        if blocked:
+            logger.info("[SensitiveFilter] 文本被阻断: 命中 %d 条规则", len(matches))
+            return (text, True, matches)
 
-        # 第一遍: 检查阻断类敏感词，命中即返回
-        for w in words:
-            if w["action"] == "block":
-                if re.search(re.escape(w["word"]), text, re.IGNORECASE):
-                    logger.info(
-                        "[SensitiveFilter] 文本被阻断: 命中敏感词 '%s'", w["word"]
-                    )
-                    return (text, True)
-
-        # 第二遍: 替换替换类敏感词
         filtered = text
-        for w in words:
-            if w["action"] == "replace":
+        for rule in matches:
+            if rule["action"] == "replace":
                 filtered = re.sub(
-                    re.escape(w["word"]),
-                    w["replacement"],
+                    re.escape(rule["word"]),
+                    rule["replacement"],
                     filtered,
                     flags=re.IGNORECASE,
                 )
-
         if filtered != text:
             logger.debug("[SensitiveFilter] 文本已过滤（替换敏感词）")
-
-        return (filtered, False)
+        return (filtered, False, matches)
 
 
 # 全局单例

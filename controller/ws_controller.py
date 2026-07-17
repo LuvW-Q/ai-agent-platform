@@ -17,6 +17,7 @@ from models.user import User
 from models.message import Message
 from models.group_member import GroupMember
 from dao.base_dao import log_action
+from core.sensitive_filter import sensitive_filter
 
 ws_router = APIRouter(tags=["WebSocket"])
 
@@ -35,6 +36,8 @@ def _authenticate(token: str) -> User | None:
         db = SessionLocal()
         user = db.query(User).filter(User.username == username).first()
         db.close()
+        if user is not None and not user.is_active:
+            return None
         return user
     except JWTError:
         return None
@@ -119,6 +122,13 @@ async def _handle_chat(sender: User, msg_id: str, body: dict):
         receiver_id = body.get("receiver_id")
         group_id = body.get("group_id")
 
+        matches = []
+        blocked = False
+        if content_type == "text":
+            filtered_content, blocked, matches = sensitive_filter.inspect(content, db)
+            if not blocked:
+                content = filtered_content
+
         # 创建消息记录
         msg = Message(
             msg_id=msg_id,
@@ -127,7 +137,7 @@ async def _handle_chat(sender: User, msg_id: str, body: dict):
             group_id=group_id if chat_type == "group" else None,
             content=content,
             msg_type=content_type,
-            status="sent",
+            status="blocked" if blocked else "sent",
             file_url=file_url,
             file_name=file_name,
             file_size=file_size,
@@ -135,6 +145,25 @@ async def _handle_chat(sender: User, msg_id: str, body: dict):
         db.add(msg)
         db.commit()
         db.refresh(msg)
+
+        if matches:
+            matched_words = "、".join(sorted({rule["word"] for rule in matches}))
+            log_action(
+                "sensitive_message_blocked" if blocked else "sensitive_message_filtered",
+                f"用户 {sender.username} 的实时消息命中敏感规则: {matched_words}",
+                sender.username,
+                db,
+                risk_level="high" if blocked else "medium",
+            )
+
+        if blocked:
+            await ws_manager.send_to_user(sender.id, _build_packet("ack", {
+                "msg_id": msg_id,
+                "status": "blocked",
+                "db_id": msg.id,
+                "error": "消息包含敏感信息，已被拦截",
+            }, msg_id))
+            return
 
         # 向发送方返回ACK
         await ws_manager.send_to_user(sender.id, _build_packet("ack", {

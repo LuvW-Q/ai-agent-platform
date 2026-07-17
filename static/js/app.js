@@ -26,7 +26,7 @@ function ensureTechLightTheme() {
   if (document.querySelector('link[data-tech-light-theme]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/static/css/tech-light.css?v=20260710-5';
+  link.href = '/static/css/tech-light.css?v=20260717-1';
   link.setAttribute('data-tech-light-theme', '');
   document.head.appendChild(link);
 }
@@ -236,7 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 const PAGE_META = {
-  dashboard: { title: '数据治理', desc: '统一管理数据源、采集链路、治理规则与任务状态', icon: 'database' },
+  dashboard: { title: '控制台', desc: '在线用户、消息、采集、审计和数字员工运行态势', icon: 'space_dashboard' },
+  'data-governance': { title: '数据治理', desc: '统一管理数据源、采集链路、治理规则与任务状态', icon: 'database' },
   screen: { title: '数字大屏', desc: '关键指标、风险事件与系统运行态势总览', icon: 'monitoring', fluid: true },
   models: { title: '模型管理', desc: '配置 OpenAI 协议兼容模型、嵌入模型与默认模型策略', icon: 'model_training' },
   skills: { title: '技能管理', desc: '维护工具调用、提示词技能、AI 生成技能与测试结果', icon: 'extension' },
@@ -273,7 +274,13 @@ function createPageHero(meta, active, main) {
     </div>
     <div class="app-page-actions"></div>`;
 
-  const legacyHeader = Array.from(main.children).find(el => {
+  const headerCandidates = Array.from(main.children);
+  if (active === 'dashboard') {
+    const dashboardContent = main.querySelector(':scope > div');
+    headerCandidates.push(...Array.from(dashboardContent?.children || []));
+  }
+
+  const legacyHeader = headerCandidates.find(el => {
     if (el.matches('[data-app-page-hero], script, style')) return false;
     const hasTitle = !!el.querySelector('h1');
     const isLikelyHeader = /justify-between|items-center|mb-6|mb-8|mb-4/.test(el.className || '');
@@ -427,7 +434,7 @@ async function openNotificationPanel() {
 
 function openHelpPanel() {
   const modules = [
-    ['数据治理', '/dashboard', 'database'],
+    ['数据治理', '/data-governance', 'database'],
     ['智能问数', '/query', 'terminal'],
     ['员工管理', '/agent-management', 'precision_manufacturing'],
     ['工作流', '/workflows', 'account_tree'],
@@ -465,11 +472,13 @@ function openHelpPanel() {
 
 /* 默认菜单定义（API 不可用时的降级） */
 const DEFAULT_MENUS = [
-  { name: '数据治理', icon: 'database', path: '/dashboard', key: 'dashboard' },
+  { name: '控制台', icon: 'space_dashboard', path: '/dashboard', key: 'dashboard' },
+  { name: '数据治理', icon: 'database', path: '/data-governance', key: 'data-governance' },
   { name: '数字大屏', icon: 'monitoring', path: '/screen', key: 'screen' },
   { name: '智能对话', icon: 'forum', path: '/de', key: 'de' },
   { name: '智能问数', icon: 'terminal', path: '/query', key: 'query' },
-  { name: '数字员工', icon: 'precision_manufacturing', path: '/agent-management', key: 'agent-management' },
+  { name: '数字员工', icon: 'precision_manufacturing', path: '/employees', key: 'employees' },
+  { name: '员工管理', icon: 'precision_manufacturing', path: '/agent-management', key: 'agent-management' },
   { name: '模型管理', icon: 'model_training', path: '/models', key: 'models' },
   { name: '技能管理', icon: 'extension', path: '/skills', key: 'skills' },
   { name: '员工编排', icon: 'smart_toy', path: '/agents', key: 'agents' },
@@ -498,7 +507,7 @@ async function fetchMenus() {
   if (!Token.exists()) return null;
   try {
     const data = await apiGet('/api/permissions/menus');
-    if (Array.isArray(data) && data.length > 0) {
+    if (Array.isArray(data)) {
       return data.map(m => ({
         name: m.path === '/settings' ? '个人设置' : m.name,
         icon: m.icon || 'circle',
@@ -677,6 +686,7 @@ async function replaceSidebar() {
   }
   const activeMap = {
     '/dashboard': 'dashboard',
+    '/data-governance': 'data-governance',
     '/screen': 'screen',
     '/models': 'models',
     '/skills': 'skills',
@@ -826,7 +836,7 @@ function injectSidebarExtras() {
 function fixSidebarNav(aside) {
   // 中文 → 路由
   const cnMap = {
-    '数据治理': '/dashboard', '数字大屏': '/screen', '模型管理': '/models',
+    '数据治理': '/data-governance', '数字大屏': '/screen', '模型管理': '/models',
     '技能管理': '/skills', '员工管理': '/agent-management', '员工编排': '/agents',
     '数字员工': '/de', '权限管理': '/permissions', '审计管理': '/audit',
     '消息中心': '/messages', 'IM控制台': '/im', '智能问数': '/query',
@@ -835,7 +845,7 @@ function fixSidebarNav(aside) {
   // 英文 → 路由
   const enMap = {
     'messages': '/messages', 'agents': '/agents', 'analyze': '/query',
-    'data': '/dashboard', 'settings': '/settings', 'account': '/settings',
+    'data': '/data-governance', 'settings': '/settings', 'account': '/settings',
     'console': '/im',
   };
 
@@ -997,7 +1007,9 @@ const IM = {
     };
 
     this.ws.onerror = (error) => {
-      console.error('[IM] WebSocket错误:', error);
+      if (!this._stopped && this.ws?.readyState !== WebSocket.CLOSING) {
+        console.warn('[IM] WebSocket连接异常，将按重连策略处理');
+      }
     };
   },
 
@@ -1092,6 +1104,12 @@ IM.on('force_logout', (data) => {
   Token.clear();
   alert(data.reason || '账号在其他设备登录，您已被强制下线');
   window.location.href = '/login';
+});
+
+IM.on('ack', (data) => {
+  if (data.status === 'blocked') {
+    showToast(data.error || '消息包含敏感信息，已被拦截', 'error');
+  }
 });
 
 // 自动连接（如果已登录且不在登录页）

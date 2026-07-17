@@ -235,9 +235,29 @@ async function loadAgents() {
   loadLocalConversations();
   try {
     agentList = await apiGet('/api/de/list');
+    await loadServerConversations();
     renderAgentList();
     renderConversationList();
   } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+async function loadServerConversations() {
+  const sessions = await apiGet('/api/de/sessions');
+  const localIds = new Set(localConversations.map(item => item.id));
+  for (const session of sessions) {
+    if (localIds.has(session.id)) continue;
+    localConversations.push({
+      id: session.id,
+      agentId: session.agent_id,
+      agentName: session.agent_name,
+      title: session.title || '新对话',
+      messages: [],
+      serverBacked: true,
+      updatedAt: session.updated_at
+    });
+  }
+  localConversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  saveLocalConversations();
 }
 
 function loadLocalConversations() {
@@ -313,6 +333,12 @@ async function openLocalConversation(conversationId) {
   if (!conversation) {
     showToast('该本机会话不存在', 'error');
     return;
+  }
+  if (conversation.serverBacked && !conversation.messages.length) {
+    const history = await apiGet(`/api/de/${conversation.agentId}/history?session_id=${encodeURIComponent(conversation.id)}`);
+    conversation.messages = history.map(message => ({ role: message.role, content: message.content }));
+    conversation.serverBacked = false;
+    saveLocalConversations();
   }
   await selectAgent(conversation.agentId, { conversationId });
 }
@@ -509,6 +535,7 @@ async function sendMessage() {
     const res = await apiPost('/api/de/chat', {
       agent_id: currentAgent.id,
       messages: chatHistory,
+      session_id: activeConversationId || '',
     });
     hideTyping();
     appendMessage('agent', res.reply, res.skill_calls);
@@ -827,7 +854,11 @@ async function exportChatPdf() {
   }
 }
 
-function clearChat() {
+async function clearChat() {
+  if (activeConversationId) {
+    try { await apiDelete('/api/de/sessions/' + encodeURIComponent(activeConversationId)); }
+    catch (error) { showToast('服务端历史清空失败，请稍后重试', 'error'); return; }
+  }
   chatHistory = [];
   persistActiveConversation();
   renderMessages();

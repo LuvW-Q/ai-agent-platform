@@ -298,7 +298,8 @@ async function editApi(id) {
     document.getElementById('api-base-url').value = api.base_url || '';
     document.getElementById('api-method').value = api.method || 'GET';
     document.getElementById('api-auth-type').value = api.auth_type || 'query';
-    document.getElementById('api-auth-key').value = api.auth_key || '';
+    document.getElementById('api-auth-key').value = '';
+    document.getElementById('api-auth-key').placeholder = api.auth_key_configured ? '已配置，留空则不修改' : '认证密钥';
     document.getElementById('api-response-path').value = api.response_path || '';
     document.getElementById('api-headers').value = api.headers || '{}';
     document.getElementById('api-body-template').value = api.body_template || '';
@@ -322,6 +323,7 @@ async function saveApi() {
     body_template: document.getElementById('api-body-template').value,
     description: document.getElementById('api-description').value,
   };
+  if (editingApiId && !body.auth_key) delete body.auth_key;
   try {
     if (editingApiId) {
       await apiPut('/api/apis/' + editingApiId, body);

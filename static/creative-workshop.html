@@ -64,7 +64,7 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
       </div>
       <div>
         <label class="text-xs text-on-surface-variant block mb-1">生成类型</label>
-        <select id="genType" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-3 text-sm focus:border-secondary-container transition-all">
+        <select id="genType" onchange="onGenerationTypeChange()" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-3 text-sm focus:border-secondary-container transition-all">
           <option value="image">图片生成</option>
           <option value="video">视频生成</option>
         </select>
@@ -78,7 +78,7 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
       </div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-      <div>
+      <div data-image-control>
         <label class="text-xs text-on-surface-variant block mb-1">图片尺寸（图片生成）</label>
         <select id="imgSize" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm focus:border-secondary-container transition-all">
           <option value="1024x1024">1024×1024</option>
@@ -86,9 +86,17 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
           <option value="1792x1024">1792×1024</option>
         </select>
       </div>
-      <div>
+      <div data-image-control>
         <label class="text-xs text-on-surface-variant block mb-1">生成数量</label>
         <input id="genCount" type="number" value="1" min="1" max="4" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm"/>
+      </div>
+      <div data-video-control class="hidden">
+        <label class="text-xs text-on-surface-variant block mb-1">视频时长</label>
+        <input id="videoDuration" type="number" value="5" min="1" max="60" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm"/>
+      </div>
+      <div data-video-control class="hidden">
+        <label class="text-xs text-on-surface-variant block mb-1">视频分辨率</label>
+        <select id="videoResolution" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-xl px-3 py-2 text-sm"><option value="720p">720p</option><option value="1080p">1080p</option></select>
       </div>
       <div>
         <label class="text-xs text-on-surface-variant block mb-1">模型</label>
@@ -127,10 +135,23 @@ async function loadModels() {
     const all = await apiGet('/api/models');
     // 只保留 image/video 模型
     models = all.filter(m => m.model_type === 'image' || m.model_type === 'video');
-    const sel = document.getElementById('modelSelect');
-    sel.innerHTML = '<option value="">自动选择</option>' +
-      models.map(m => `<option value="${m.id}">${escapeHtml(m.name)} (${m.model_type})</option>`).join('');
+    renderModelOptions();
   } catch(e) { /* 静默 */ }
+}
+
+function renderModelOptions() {
+  const type = document.getElementById('genType').value;
+  const sel = document.getElementById('modelSelect');
+  const matching = models.filter(model => model.model_type === type && model.is_active);
+  sel.innerHTML = '<option value="">自动选择</option>' +
+    matching.map(model => `<option value="${model.id}">${escapeHtml(model.name)}</option>`).join('');
+}
+
+function onGenerationTypeChange() {
+  const isVideo = document.getElementById('genType').value === 'video';
+  document.querySelectorAll('[data-image-control]').forEach(el => el.classList.toggle('hidden', isVideo));
+  document.querySelectorAll('[data-video-control]').forEach(el => el.classList.toggle('hidden', !isVideo));
+  renderModelOptions();
 }
 
 async function generate() {
@@ -153,6 +174,8 @@ async function generate() {
       type: type,
       n: n,
       size: size,
+      duration: parseInt(document.getElementById('videoDuration').value) || 5,
+      resolution: document.getElementById('videoResolution').value,
     };
     if (modelId) body.model_id = parseInt(modelId);
 
@@ -231,6 +254,7 @@ function clearResults() {
 }
 
 if (requireAuth()) {
+  onGenerationTypeChange();
   loadModels();
 }
 </script>

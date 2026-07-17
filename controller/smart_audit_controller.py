@@ -2,6 +2,7 @@
 智能审计：聊天消息敏感度评估 + 采集数据情感分析 + 封禁管理
 """
 import json
+import re
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from database.session import SessionLocal, get_db
@@ -15,8 +16,38 @@ from models.user import User
 from models.message import Message
 from models.group_member import GroupMember
 from models.data_collection import CollectedData
+from models.de_message import DEMessage
 
 smart_audit = APIRouter(prefix="/api/smart-audit", tags=["智能审计"])
+
+
+def _parse_risk_result(raw_text: str) -> dict:
+    text = (raw_text or "").strip()
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.IGNORECASE | re.DOTALL)
+    candidate = fenced.group(1) if fenced else ""
+    if not candidate:
+        start, end = text.find("{"), text.rfind("}")
+        candidate = text[start:end + 1] if start >= 0 and end > start else ""
+    try:
+        parsed = json.loads(candidate)
+    except (json.JSONDecodeError, TypeError):
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    risk_level = str(parsed.get("risk_level", "unknown")).lower()
+    if risk_level not in {"high", "medium", "low", "unknown"}:
+        risk_level = "unknown"
+    risk_types = parsed.get("risk_types", [])
+    if not isinstance(risk_types, list):
+        risk_types = []
+    analysis = parsed.get("analysis")
+    suggestions = parsed.get("suggestions")
+    return {
+        "risk_level": risk_level,
+        "risk_types": [str(item)[:40] for item in risk_types[:10]],
+        "analysis": str(analysis)[:500] if analysis else text[:200] or "(模型返回为空)",
+        "suggestions": str(suggestions)[:500] if suggestions else "",
+    }
 
 
 def _classify_risk(content: str, db) -> tuple[str, list[str]]:
@@ -48,36 +79,72 @@ def audit_messages(
     user: User = Depends(require_role("ROOT", "AUDIT", "ADMIN")),
 ):
     """审计聊天消息 — 基于关键词和规则的敏感度分级"""
-    q = db.query(Message).filter(Message.msg_type == "text", Message.status != "recalled")
-    if start:
-        q = q.filter(Message.created_at >= datetime.fromisoformat(start))
-    if end:
-        q = q.filter(Message.created_at <= datetime.fromisoformat(end))
-    if risk_level:
-        q = q.filter(Message._risk == risk_level)
+    start_dt = datetime.fromisoformat(start) if start else None
+    end_dt = datetime.fromisoformat(end) if end else None
+    message_query = db.query(Message).filter(
+        Message.msg_type == "text", Message.status != "recalled"
+    )
+    de_query = db.query(DEMessage).filter(DEMessage.role == "user")
+    if start_dt:
+        message_query = message_query.filter(Message.created_at >= start_dt)
+        de_query = de_query.filter(DEMessage.created_at >= start_dt)
+    if end_dt:
+        message_query = message_query.filter(Message.created_at <= end_dt)
+        de_query = de_query.filter(DEMessage.created_at <= end_dt)
 
-    msgs = q.order_by(Message.created_at.desc()).limit(limit).all()
+    messages = message_query.order_by(Message.created_at.desc()).limit(limit).all()
+    de_messages = de_query.order_by(DEMessage.created_at.desc()).limit(limit).all()
+    user_ids = {message.sender_id for message in messages if message.sender_id}
+    user_ids.update(message.user_id for message in de_messages)
+    user_names = {
+        item.id: (item.nickname or item.username)
+        for item in db.query(User).filter(User.id.in_(user_ids)).all()
+    } if user_ids else {}
 
     results = []
-    for m in msgs:
-        content = m.content or ""
-        # 风险分级委托给 SensitiveFilter（数据库 sensitive_words 表）
+    for message in messages:
+        content = message.content or ""
         risk, matched_words = _classify_risk(content, db)
-
-        sender_name = ""
-        if m.sender_id:
-            s = db.query(User).filter(User.id == m.sender_id).first()
-            sender_name = (s.nickname or s.username) if s else ""
-
         results.append({
-            "id": m.id, "msg_id": m.msg_id,
-            "sender_id": m.sender_id, "sender_name": sender_name,
-            "receiver_id": m.receiver_id, "group_id": m.group_id,
-            "content": content.lower()[:200],
-            "risk_level": risk, "matched_words": matched_words,
-            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "id": message.id,
+            "msg_id": message.msg_id,
+            "source": "im",
+            "sender_id": message.sender_id,
+            "sender_name": user_names.get(message.sender_id, ""),
+            "receiver_id": message.receiver_id,
+            "group_id": message.group_id,
+            "content": content[:200],
+            "risk_level": risk,
+            "matched_words": matched_words,
+            "created_at": message.created_at.isoformat() if message.created_at else None,
+            "_created_at": message.created_at,
         })
-    return results
+    for message in de_messages:
+        content = message.content or ""
+        risk, matched_words = _classify_risk(content, db)
+        results.append({
+            "id": f"de-{message.id}",
+            "msg_id": f"de-{message.id}",
+            "source": "digital_employee",
+            "sender_id": message.user_id,
+            "sender_name": user_names.get(message.user_id, ""),
+            "receiver_id": None,
+            "group_id": None,
+            "content": content[:200],
+            "risk_level": risk,
+            "matched_words": matched_words,
+            "created_at": message.created_at.isoformat() if message.created_at else None,
+            "_created_at": message.created_at,
+        })
+    if risk_level:
+        results = [row for row in results if row["risk_level"] == risk_level]
+    results.sort(
+        key=lambda row: row["_created_at"].timestamp() if row["_created_at"] else 0,
+        reverse=True,
+    )
+    for row in results:
+        row.pop("_created_at", None)
+    return results[:limit]
 
 
 @smart_audit.get("/messages/stats")
@@ -116,7 +183,14 @@ def message_audit_stats(
 
     # 边界场景：没有任何敏感词时，全部记为 low
     if not block_words and not replace_words:
-        total = db.query(func.count(Message.id)).filter(*base_filters).scalar() or 0
+        de_filters = [DEMessage.role == "user"]
+        if start:
+            de_filters.append(DEMessage.created_at >= datetime.fromisoformat(start))
+        if end:
+            de_filters.append(DEMessage.created_at <= datetime.fromisoformat(end))
+        total = (db.query(func.count(Message.id)).filter(*base_filters).scalar() or 0) + (
+            db.query(func.count(DEMessage.id)).filter(*de_filters).scalar() or 0
+        )
         return {
             "total": total, "high": 0, "medium": 0, "low": total,
             "high_pct": 0.0, "medium_pct": 0.0,
@@ -139,11 +213,32 @@ def message_audit_stats(
 
     rows = stats_q.all()
 
+    de_filters = [DEMessage.role == "user"]
+    if start:
+        de_filters.append(DEMessage.created_at >= datetime.fromisoformat(start))
+    if end:
+        de_filters.append(DEMessage.created_at <= datetime.fromisoformat(end))
+    de_case_expr = case(
+        *[(func.instr(func.lower(DEMessage.content), word.lower()) > 0, level)
+          for word, level in (
+              [(word, "high") for word in block_words]
+              + [(word, "medium") for word in replace_words]
+          )],
+        else_="low",
+    )
+    de_rows = db.query(
+        de_case_expr.label("risk_level"),
+        func.count(DEMessage.id).label("cnt"),
+    ).filter(*de_filters).group_by(de_case_expr.label("risk_level")).all()
+
     counts = {"high": 0, "medium": 0, "low": 0}
     for r in rows:
         # SQLite 在无命中时 risk_level 可能为 NULL → 归到 low
         level = r.risk_level if r.risk_level in counts else "low"
         counts[level] = r.cnt
+    for row in de_rows:
+        level = row.risk_level if row.risk_level in counts else "low"
+        counts[level] += row.cnt
 
     total = counts["high"] + counts["medium"] + counts["low"]
     base = total or 1
@@ -172,14 +267,21 @@ def audit_collected_data(
     if sentiment: q = q.filter(CollectedData.sentiment == sentiment)
 
     items = q.order_by(CollectedData.created_at.desc()).limit(100).all()
-    return [{
+    results = []
+    for d in items:
+        risk, matched_words = _classify_risk(
+            "\n".join(part for part in (d.title, d.summary, d.content) if part), db
+        )
+        results.append({
         "id": d.id, "title": d.title, "source_name": d.source_name,
         "sentiment": d.sentiment,
+        "risk_level": risk, "matched_words": matched_words,
         "summary": (d.summary or d.content or "")[:200],
         "keywords": d.keywords_extracted,
         "entities": d.entities,
         "created_at": d.created_at.isoformat() if d.created_at else None,
-    } for d in items]
+        })
+    return results
 
 
 @smart_audit.post("/data/{data_id}/mark-sentiment")
@@ -321,16 +423,7 @@ async def ai_risk_analyze(
 内容:{content[:4000]}"""
         resp = await client.chat_completion([{"role": "user", "content": prompt}])
         text = OpenAIClient.extract_content(resp) or ""
-        try:
-            result = json.loads(text.strip().strip("`").strip("json").strip())
-        except Exception:
-            result = {
-                "risk_level": "unknown",
-                "risk_types": [],
-                "analysis": text[:200] or "(模型返回为空)",
-                "suggestions": "",
-            }
-        return result
+        return _parse_risk_result(text)
     except Exception as e:
         return {"risk_level": "unknown", "risk_types": [],
                 "analysis": f"AI 分析失败:{type(e).__name__}: {str(e)[:150]}",

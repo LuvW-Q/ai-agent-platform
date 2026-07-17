@@ -60,7 +60,8 @@ def _serialize(api: ApiRegistry) -> dict:
         "body_template": api.body_template or "",
         "response_path": api.response_path or "",
         "auth_type": api.auth_type or "query",
-        "auth_key": api.auth_key or "",
+        "auth_key": "",
+        "auth_key_configured": bool(api.auth_key),
         "description": api.description or "",
         "created_at": api.created_at.isoformat() if api.created_at else None,
         "updated_at": api.updated_at.isoformat() if api.updated_at else None,
@@ -68,7 +69,8 @@ def _serialize(api: ApiRegistry) -> dict:
 
 
 @api_registry_router.get("")
-def list_apis(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
+def list_apis(db: SessionLocal = Depends(get_db),
+              user: User = Depends(require_role("ROOT", "OPS", "ADMIN"))):
     apis = db.query(ApiRegistry).order_by(ApiRegistry.created_at.desc()).all()
     return [_serialize(a) for a in apis]
 
@@ -97,7 +99,7 @@ def update_api(api_id: int, body: ApiUpdateIn, db: SessionLocal = Depends(get_db
         if db.query(ApiRegistry).filter(ApiRegistry.code == data["code"]).first():
             raise HTTPException(400, "接口编码已存在")
     for k, v in data.items():
-        if v is not None:
+        if v is not None and not (k == "auth_key" and v == ""):
             setattr(api, k, v)
     db.commit()
     db.refresh(api)
@@ -212,6 +214,11 @@ def create_agent_from_api(api_id: int, agent_name: str = Query(""),
     api = db.query(ApiRegistry).filter(ApiRegistry.id == api_id).first()
     if not api:
         raise HTTPException(404, "接口不存在")
+    existing = db.query(Agent).filter(
+        Agent.agent_type == "api", Agent.api_id == api_id
+    ).first()
+    if existing:
+        raise HTTPException(409, f"该接口已生成数字员工：{existing.name}")
     name = agent_name or f"{api.name}员工"
     agent = Agent(
         name=name,

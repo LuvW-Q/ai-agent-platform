@@ -67,7 +67,7 @@ def _seed_roles(db: SessionLocal):
 
 def _seed_function_permissions(db: SessionLocal):
     functions = [
-        ("数据治理", "data_governance", "/dashboard", "查看,编辑,删除"),
+        ("数据治理", "data_governance", "/data-governance", "查看,编辑,删除"),
         ("数字大屏", "digital_screen", "/screen", "查看"),
         ("员工编排", "agent_orchestration", "/agents", "查看,创建,发布"),
         ("权限管理", "permission_management", "/permissions", "查看,编辑"),
@@ -77,6 +77,7 @@ def _seed_function_permissions(db: SessionLocal):
         ("模型管理", "model_management", "/models", "查看,编辑"),
         ("技能管理", "skill_management", "/skills", "查看,编辑"),
         ("数字员工管理", "agent_management", "/agent-management", "查看,编辑"),
+        ("数字员工", "digital_employee", "/employees", "查看"),
         ("个人设置", "personal_settings", "/settings", "查看,编辑"),
     ]
     existing_functions = {row.code for row in db.query(FunctionPoint).all()}
@@ -89,9 +90,17 @@ def _seed_function_permissions(db: SessionLocal):
         "ROOT": {code for _name, code, _resource, _actions in functions},
         "AUDIT": {"digital_screen", "audit_management", "personal_settings"},
         "OPS": {"data_governance", "digital_screen", "smart_query", "personal_settings"},
-        "USER": {"digital_screen", "im_console", "smart_query", "agent_management", "personal_settings"},
+        "USER": {"digital_screen", "im_console", "smart_query", "digital_employee", "personal_settings"},
         "GUEST": {"digital_screen"},
     }
+    db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.function_code == "data_governance",
+        RoleFunctionPermission.resource == "/dashboard",
+    ).update({"resource": "/data-governance"}, synchronize_session=False)
+    db.query(RoleFunctionPermission).filter(
+        RoleFunctionPermission.role_code == "USER",
+        RoleFunctionPermission.function_code == "agent_management",
+    ).delete(synchronize_session=False)
     existing_bindings = {
         (row.role_code, row.function_code, row.resource)
         for row in db.query(RoleFunctionPermission).all()
@@ -110,6 +119,11 @@ def _seed_function_permissions(db: SessionLocal):
 
 
 def _seed_users(db: SessionLocal):
+    known_roles = {"root": "ROOT", "audit": "AUDIT", "ops": "OPS", "user": "USER", "guest": "GUEST"}
+    for user in db.query(User).all():
+        normalized = known_roles.get((user.role or "").lower())
+        if normalized and user.role != normalized:
+            user.role = normalized
     if db.query(User).filter(User.username == config.INITIAL_ADMIN_USERNAME).first():
         return
 
@@ -231,6 +245,14 @@ def _seed_skills(db: SessionLocal):
             db.add(s)
             added += 1
     db.flush()
+    builtin_handlers = {
+        "数据计算器": "calculator",
+        "天气查询": "weather",
+    }
+    for skill_name, handler in builtin_handlers.items():
+        skill = db.query(Skill).filter(Skill.name == skill_name).one()
+        skill.skill_type = "builtin"
+        skill.config = json.dumps({"handler": handler}, ensure_ascii=False)
     print(f"[seed] 技能写入完成（新增 {added} 条）")
 
 
@@ -334,16 +356,16 @@ def _seed_sources_and_rules(db: SessionLocal):
             "template": "rss",
         },
         {
-            "name": "Hacker News",
-            "url": "https://news.ycombinator.com/",
+            "name": "中国新闻网即时新闻",
+            "url": "https://www.chinanews.com.cn/scroll-news/news1.html",
             "method": "GET",
             "parse_type": "selector",
-            "parse_rule": ".athing",
+            "parse_rule": ".dd_bt a",
             "headers": '{"User-Agent":"Mozilla/5.0"}',
             "template": "custom",
         },
     ]
-    legacy_names = {"百度新闻搜索", "知乎热门"}
+    legacy_names = {"百度新闻搜索", "知乎热门", "Hacker News"}
     existing_by_template = {
         source.template: source
         for source in db.query(DataSourceConfig).filter(
@@ -377,22 +399,32 @@ def _seed_sources_and_rules(db: SessionLocal):
 
 def _seed_menus(db: SessionLocal):
     """初始化菜单表，按角色分权限（增量写入：已有菜单不覆盖）"""
+    legacy_employee_menu = db.query(Menu).filter(
+        Menu.path == "/agent-management",
+        Menu.name == "数字员工",
+    ).first()
+    if legacy_employee_menu and "USER" in (legacy_employee_menu.role_codes or ""):
+        legacy_employee_menu.path = "/employees"
+        legacy_employee_menu.role_codes = "USER,AUDIT,OPS,ROOT"
+        db.flush()
     existing_paths = {m.path for m in db.query(Menu).all()}
 
     # 用户侧可见（普通用户 /USER）
     user_menus = [
         Menu(name="智能对话", icon="forum", path="/de", sort_order=1, role_codes="USER,AUDIT,OPS,ROOT"),
         Menu(name="智能问数", icon="terminal", path="/query", sort_order=2, role_codes="USER,AUDIT,OPS,ROOT"),
-        Menu(name="数字员工", icon="precision_manufacturing", path="/agent-management", sort_order=3, role_codes="USER,AUDIT,OPS,ROOT"),
+        Menu(name="数字员工", icon="precision_manufacturing", path="/employees", sort_order=3, role_codes="USER,AUDIT,OPS,ROOT"),
         Menu(name="创意工坊", icon="palette", path="/creative", sort_order=14, role_codes="ROOT,OPS,USER"),
     ]
     # 管理侧可见（AUDIT / OPS / ROOT）
     admin_menus = [
         Menu(name="控制台", icon="database", path="/dashboard", sort_order=10, role_codes="ROOT,AUDIT,OPS"),
+        Menu(name="数据治理", icon="storage", path="/data-governance", sort_order=10, role_codes="ROOT,OPS"),
         Menu(name="数字大屏", icon="monitoring", path="/screen", sort_order=11, role_codes="ROOT,AUDIT,OPS,USER,GUEST"),
         Menu(name="模型管理", icon="model_training", path="/models", sort_order=12, role_codes="ROOT,OPS"),
         Menu(name="技能管理", icon="extension", path="/skills", sort_order=13, role_codes="ROOT,OPS"),
         Menu(name="员工编排", icon="smart_toy", path="/agents", sort_order=14, role_codes="ROOT,OPS"),
+        Menu(name="员工管理", icon="precision_manufacturing", path="/agent-management", sort_order=14, role_codes="ROOT,OPS"),
         Menu(name="工作流", icon="account_tree", path="/workflows", sort_order=15, role_codes="ROOT,OPS"),
         Menu(name="RAG 管理", icon="book_4", path="/rag", sort_order=16, role_codes="ROOT,OPS"),
         Menu(name="权限管理", icon="admin_panel_settings", path="/permissions", sort_order=17, role_codes="ROOT"),

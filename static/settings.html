@@ -316,7 +316,7 @@
 </div>
 <div class="glass-panel rounded-xl overflow-hidden divide-y divide-outline-variant/30">
 <!-- System Name -->
-<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+<div data-admin-setting class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
 <div>
 <h4 class="font-bold text-on-surface text-body-lg">系统名称</h4>
 <p class="text-body-md text-on-surface-variant">显示在顶部导航与侧边栏的系统名称，保存后立即生效。</p>
@@ -325,7 +325,7 @@
 <input id="setting-system-name" data-setting-key="system_name" type="text"
        class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3 focus:outline-none focus:border-secondary-container text-on-surface"
        value="智能数据瞭望系统"/>
-<button id="setting-system-name-save"
+<button id="setting-system-name-save" disabled
         class="self-end bg-primary-container text-on-primary-container px-5 py-2 rounded-lg font-bold hover:bg-primary-container/80 active:scale-95 transition-all">保存名称</button>
 </div>
 </div>
@@ -381,8 +381,9 @@
 </label>
 </div>
 </div>
+ </div>
 <!-- Advanced System Settings -->
-<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+<div data-admin-setting class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
 <div>
 <h4 class="font-bold text-on-surface text-body-lg">运行参数</h4>
 <p class="text-body-md text-on-surface-variant">管理员可调整数据库、日志、模型、安全阈值、采集频率和外链密钥。数据库连接保存后需重启服务。</p>
@@ -402,8 +403,7 @@
 <input data-config-key="collection_rate_limit" type="number" min="1" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="采集频率/分钟"/>
 </div>
 <input data-config-key="external_api_key" type="password" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-3" placeholder="外链 API 全局密钥（已配置时留空表示不修改）"/>
-<button id="advanced-settings-save" class="justify-self-end bg-primary-container text-on-primary-container px-5 py-2 rounded-lg font-bold">保存运行参数</button>
-</div>
+<button id="advanced-settings-save" disabled class="justify-self-end bg-primary-container text-on-primary-container px-5 py-2 rounded-lg font-bold disabled:opacity-50">保存运行参数</button>
 </div>
 </div>
 </div>
@@ -472,12 +472,26 @@ async function loadProfile() {
     } catch (e) { showToast('\u52a0\u8f7d\u8d44\u6599\u5931\u8d25', 'error'); }
 }
 
-// Load system settings from /api/settings and backfill controls
+const PERSONAL_PREFERENCE_KEYS = new Set([
+    'notify_critical', 'notify_analysis', 'notify_login_alert',
+    'profile_public', 'allow_agent_access'
+]);
+
+// Load global settings and the current user's private preferences.
 async function loadSettings() {
     try {
-        const settings = await apiGet('/api/settings');
+        const [settings, preferences, profile] = await Promise.all([
+            apiGet('/api/settings'),
+            apiGet('/api/settings/preferences'),
+            apiGet('/api/auth/profile'),
+        ]);
         const map = {};
         (settings || []).forEach(s => { map[s.key] = s.value; });
+        (preferences || []).forEach(s => { map[s.key] = s.value; });
+        const isRoot = String(profile.role || '').toUpperCase() === 'ROOT';
+        document.querySelectorAll('[data-admin-setting]').forEach(el => {
+            el.classList.toggle('hidden', !isRoot);
+        });
         // \u7cfb\u7edf\u540d\u79f0\u8f93\u5165\u6846
         const nameInput = document.getElementById('setting-system-name');
         if (nameInput && map['system_name']) nameInput.value = map['system_name'];
@@ -494,6 +508,12 @@ async function loadSettings() {
             if (map[key]) el.value = map[key];
         });
     } catch (e) { /* \u9759\u9ed8\uff1a\u8bbe\u7f6e\u52a0\u8f7d\u5931\u8d25\u4e0d\u963b\u585e\u7528\u6237\u8d44\u6599 */ }
+    finally {
+        const systemNameSave = document.getElementById('setting-system-name-save');
+        const advancedSave = document.getElementById('advanced-settings-save');
+        if (systemNameSave) systemNameSave.disabled = false;
+        if (advancedSave) advancedSave.disabled = false;
+    }
 }
 
 // Save profile
@@ -537,9 +557,15 @@ document.querySelectorAll('input[type="checkbox"][data-setting-key]').forEach(el
         const key = el.getAttribute('data-setting-key');
         const value = el.checked ? 'true' : 'false';
         try {
-            await apiPut('/api/settings/' + encodeURIComponent(key), { value });
+            const endpoint = PERSONAL_PREFERENCE_KEYS.has(key)
+                ? '/api/settings/preferences/' + encodeURIComponent(key)
+                : '/api/settings/' + encodeURIComponent(key);
+            await apiPut(endpoint, { value });
             showToast('设置已保存', 'success');
-        } catch (e) { showToast('保存失败', 'error'); }
+        } catch (e) {
+            el.checked = !el.checked;
+            showToast(e.message || '保存失败', 'error');
+        }
     });
 });
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json, re, sqlite3, time
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core.security import get_current_user
@@ -107,11 +108,12 @@ _QUERY_TIMEOUT_SECONDS = 2.0
 
 def _execute_readonly_select(db, sql: str) -> tuple[list[str], list[dict]]:
     """Execute a model-produced SELECT under SQLite table/column authorization."""
-    raw_connection = db.connection().connection.driver_connection
-    if not isinstance(raw_connection, sqlite3.Connection):
-        raise RuntimeError("智能问数只允许使用 SQLite 只读执行器")
+    database_name = db.get_bind().url.database
+    if not database_name or database_name == ":memory:":
+        raise RuntimeError("智能问数只允许使用基于文件的 SQLite 只读执行器")
 
-    previous_query_only = raw_connection.execute("PRAGMA query_only").fetchone()[0]
+    database_uri = Path(database_name).resolve().as_uri() + "?mode=ro"
+    raw_connection = sqlite3.connect(database_uri, uri=True, timeout=_QUERY_TIMEOUT_SECONDS)
     deadline = time.monotonic() + _QUERY_TIMEOUT_SECONDS
 
     def authorize(action, arg1, arg2, database_name, trigger_name):
@@ -145,8 +147,7 @@ def _execute_readonly_select(db, sql: str) -> tuple[list[str], list[dict]]:
     finally:
         raw_connection.set_progress_handler(None, 0)
         raw_connection.set_authorizer(None)
-        if not previous_query_only:
-            raw_connection.execute("PRAGMA query_only = OFF")
+        raw_connection.close()
 
 # 关键词降级模板（无 AI 时使用）
 QUERY_TEMPLATES = [

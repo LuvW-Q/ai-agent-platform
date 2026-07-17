@@ -12,10 +12,27 @@ from models.user import User
 from models.role import Role
 from models.menu import Menu
 from models.permission import FunctionPoint, RoleFunctionPermission
+from models.de_message import DEMessage
+from models.friend_request import FriendRequest
+from models.friendship import Friendship
+from models.group import Group
+from models.group_member import GroupMember
+from models.message import Message
+from models.refresh_token import RefreshToken
+from models.skill_call_log import SkillCallLog
+from models.user_preference import UserPreference
+from sqlalchemy import or_
 from pydantic import BaseModel, Field
 from core.security import hash_password
 
 permission_router = APIRouter(prefix="/api/permissions", tags=["权限管理"])
+BUILTIN_ROLE_CODES = {"ROOT", "ADMIN", "AUDIT", "OPS", "USER", "GUEST"}
+
+
+def _canonical_role_code(value: str | None) -> str:
+    role_code = value or "USER"
+    upper = role_code.upper()
+    return upper if upper in BUILTIN_ROLE_CODES else role_code
 
 
 class RoleOut(BaseModel):
@@ -174,7 +191,7 @@ PERM_TREE = {
 @permission_router.get("/tree")
 def get_permission_tree(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """返回当前用户角色的权限树"""
-    role_code = user.role or "USER"
+    role_code = _canonical_role_code(user.role)
     bindings = (
         db.query(RoleFunctionPermission, FunctionPoint)
         .join(FunctionPoint, FunctionPoint.code == RoleFunctionPermission.function_code)
@@ -407,7 +424,7 @@ class MenuUpdateIn(BaseModel):
 @permission_router.get("/menus")
 def get_menus(db: SessionLocal = Depends(get_db), user: User = Depends(get_current_user)):
     """返回当前用户可见的菜单列表"""
-    role_code = user.role or "USER"
+    role_code = _canonical_role_code(user.role)
     all_menus = db.query(Menu).filter(Menu.is_active == True).order_by(Menu.sort_order, Menu.id).all()
     # 过滤：role_codes 为空表示全部可见，否则检查是否包含用户角色
     visible = [
@@ -539,9 +556,9 @@ def update_perm_user(user_id: int, body: UserUpdateIn, db: SessionLocal = Depend
     if not target:
         raise HTTPException(404, "用户不存在")
     # 保护：不允许通过此接口把超管停用或修改其角色（防止权限误操作）
-    if target.role == "ROOT" and body.is_active is False:
+    if (target.role or "").upper() == "ROOT" and body.is_active is False:
         raise HTTPException(400, "不能停用超级管理员")
-    if target.role == "ROOT" and body.role is not None and body.role != "ROOT":
+    if (target.role or "").upper() == "ROOT" and body.role is not None and body.role.upper() != "ROOT":
         raise HTTPException(400, "不能修改超级管理员角色")
     if body.role is not None and db.query(Role).filter(
         Role.code == body.role,
@@ -566,11 +583,33 @@ def delete_perm_user(user_id: int, db: SessionLocal = Depends(get_db),
     target = db.query(User).filter(User.id == user_id).first()
     if target is None:
         raise HTTPException(404, "用户不存在")
-    if target.role == "ROOT":
+    if (target.role or "").upper() == "ROOT":
         raise HTTPException(400, "不能删除超级管理员")
     if target.id == user.id:
         raise HTTPException(400, "不能删除当前登录用户")
     username = target.username
+    owned_group_ids = [row.id for row in db.query(Group.id).filter(Group.owner_id == target.id).all()]
+    message_filter = or_(Message.sender_id == target.id, Message.receiver_id == target.id)
+    if owned_group_ids:
+        message_filter = or_(message_filter, Message.group_id.in_(owned_group_ids))
+        db.query(GroupMember).filter(GroupMember.group_id.in_(owned_group_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Group).filter(Group.id.in_(owned_group_ids)).delete(synchronize_session=False)
+    db.query(Message).filter(message_filter).delete(synchronize_session=False)
+    db.query(GroupMember).filter(GroupMember.user_id == target.id).delete(synchronize_session=False)
+    db.query(Friendship).filter(or_(
+        Friendship.user_id == target.id, Friendship.friend_id == target.id
+    )).delete(synchronize_session=False)
+    db.query(FriendRequest).filter(or_(
+        FriendRequest.from_user_id == target.id, FriendRequest.to_user_id == target.id
+    )).delete(synchronize_session=False)
+    db.query(DEMessage).filter(DEMessage.user_id == target.id).delete(synchronize_session=False)
+    db.query(RefreshToken).filter(RefreshToken.uid == target.id).delete(synchronize_session=False)
+    db.query(UserPreference).filter(UserPreference.user_id == target.id).delete(synchronize_session=False)
+    db.query(SkillCallLog).filter(SkillCallLog.user_id == target.id).update(
+        {SkillCallLog.user_id: None}, synchronize_session=False
+    )
     db.delete(target)
     db.commit()
     log_action("user_delete", f"管理员删除用户 {username}", user.username, db)

@@ -309,6 +309,17 @@ if (!requireAuth()) throw new Error('redirecting');
 // ====== Dashboard State ======
 let sentimentChart = null;
 let riskChart = null;
+let chartResizeObserver = null;
+let chartResizeFrame = null;
+
+function resizeDashboardCharts() {
+  if (chartResizeFrame) cancelAnimationFrame(chartResizeFrame);
+  chartResizeFrame = requestAnimationFrame(() => {
+    sentimentChart?.resize();
+    riskChart?.resize();
+    chartResizeFrame = null;
+  });
+}
 
 // ====== Format helpers ======
 function fmtTime(iso) {
@@ -370,6 +381,13 @@ function initCharts() {
       }],
     });
   }
+
+  if (window.ResizeObserver) {
+    chartResizeObserver = new ResizeObserver(resizeDashboardCharts);
+    if (sentimentDom) chartResizeObserver.observe(sentimentDom);
+    if (riskDom) chartResizeObserver.observe(riskDom);
+  }
+  resizeDashboardCharts();
 }
 
 // ====== Render Audit Logs ======
@@ -482,6 +500,12 @@ function init() {
 }
 
 init();
+window.addEventListener('resize', resizeDashboardCharts);
+document.addEventListener('DOMContentLoaded', resizeDashboardCharts, { once: true });
+window.addEventListener('beforeunload', () => {
+  chartResizeObserver?.disconnect();
+  if (chartResizeFrame) cancelAnimationFrame(chartResizeFrame);
+});
 </script>
 </body>
 </html>

@@ -316,20 +316,31 @@ async function loadAll() {
       apiGet('/api/smart-audit/data?limit=100&'+params.toString()),
     ]);
 
-    // ---- Stats Cards ----
-    document.getElementById('statHigh').textContent = stats.high||0;
-    document.getElementById('statMedium').textContent = stats.medium||0;
-    document.getElementById('statLow').textContent = stats.low||0;
-    document.getElementById('statTotal').textContent = stats.total||0;
+    // ---- Full-chain Stats Cards (IM + digital employees + collected data) ----
+    const dataRisk = {high: 0, medium: 0, low: 0};
+    (data || []).forEach(item => {
+      const level = ['high', 'medium'].includes(item.risk_level) ? item.risk_level : 'low';
+      dataRisk[level] += 1;
+    });
+    const fullStats = {
+      high: (stats.high || 0) + dataRisk.high,
+      medium: (stats.medium || 0) + dataRisk.medium,
+      low: (stats.low || 0) + dataRisk.low,
+    };
+    fullStats.total = fullStats.high + fullStats.medium + fullStats.low;
+    document.getElementById('statHigh').textContent = fullStats.high;
+    document.getElementById('statMedium').textContent = fullStats.medium;
+    document.getElementById('statLow').textContent = fullStats.low;
+    document.getElementById('statTotal').textContent = fullStats.total;
 
     // ---- Pie Chart ----
     const now = new Date().toLocaleTimeString();
     document.getElementById('pieUpdate').textContent = now;
     pieChart.setOption({
       series:[{data:[
-        {name:'高风险',value:stats.high||0},
-        {name:'中风险',value:stats.medium||0},
-        {name:'低风险',value:stats.low||0},
+        {name:'高风险',value:fullStats.high},
+        {name:'中风险',value:fullStats.medium},
+        {name:'低风险',value:fullStats.low},
       ]}]
     });
 
@@ -342,12 +353,21 @@ async function loadAll() {
 
     // ---- Message List ----
     const list = document.getElementById('msgList');
-    const msgsArr = msgs||[];
-    document.getElementById('msgCount').textContent = msgsArr.length;
-    if (msgsArr.length===0) {
+    const collectionFindings = (data || []).filter(item => item.risk_level !== 'low').map(item => ({
+      sender_name: item.source_name || '采集数据',
+      sender_id: item.id,
+      content: item.title + ' · ' + (item.summary || ''),
+      risk_level: item.risk_level,
+      created_at: item.created_at,
+      source: 'collected_data',
+    }));
+    const findings = [...(msgs || []).filter(item => item.risk_level !== 'low'), ...collectionFindings]
+      .sort((left, right) => new Date(right.created_at || 0) - new Date(left.created_at || 0));
+    document.getElementById('msgCount').textContent = findings.length;
+    if (findings.length===0) {
       list.innerHTML = '<div class="text-center py-8 text-on-surface-variant text-xs">暂无敏感消息</div>';
     } else {
-      list.innerHTML = msgsArr.map(m => {
+      list.innerHTML = findings.map(m => {
         const rl = (m.risk_level||'low').toLowerCase();
         const riskLabel = {high:'高风险',medium:'中风险',low:'低风险'}[rl] || rl;
         const borderColor = rl==='high' ? 'border-l-error/40' : rl==='medium' ? 'border-l-tertiary/40' : 'border-l-secondary/20';
@@ -357,6 +377,7 @@ async function loadAll() {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 text-xs">
               <span class="font-medium">${escapeHtml(m.sender_name||'ID:'+m.sender_id)}</span>
+              <span class="text-[9px] text-on-surface-variant">${m.source === 'collected_data' ? '采集' : m.source === 'digital_employee' ? '员工对话' : '即时消息'}</span>
               <span class="text-on-surface-variant text-[10px]">${m.created_at ? new Date(m.created_at).toLocaleString() : ''}</span>
               <span class="ml-auto px-1.5 py-0.5 text-[10px] rounded ${rl==='high'?'bg-error-container/20 text-error':rl==='medium'?'bg-tertiary/20 text-tertiary':'bg-secondary/20 text-secondary'}">${riskLabel}</span>
             </div>

@@ -31,20 +31,22 @@ body{font-family:'Inter',sans-serif;background-color:#071425;color:#d7e3fb}.mate
 /* ========== Global State ========== */
 let activeTab = 'sources', sources = [], rules = [], warehouseData = [];
 let testCache = {};
+let previewCache = {};
+let editingSourceId = null;
 
 const TEMPLATES = {
   baidu: {
-    name: '百度新闻搜索', method: 'GET', parse_type: 'selector', parse_rule: '.result',
-    url: 'https://news.baidu.com/ns?word={keyword}&tn=news',
+    name: '百度新闻首页', method: 'GET', parse_type: 'selector', parse_rule: '.hotnews a, .ulist a',
+    url: 'https://news.baidu.com/',
     headers: '{"User-Agent":"Mozilla/5.0"}',
   },
   rss: {
-    name: '', method: 'GET', parse_type: 'crawl4ai', parse_rule: '',
-    url: '', headers: '{"User-Agent":"Mozilla/5.0"}',
+    name: '36氪RSS', method: 'GET', parse_type: 'rss', parse_rule: 'item',
+    url: 'https://36kr.com/feed', headers: '{"User-Agent":"Mozilla/5.0"}',
   },
   custom: {
-    name: '', method: 'GET', parse_type: 'selector', parse_rule: '',
-    url: '', headers: '{}',
+    name: '中国新闻网即时新闻', method: 'GET', parse_type: 'selector', parse_rule: '.dd_bt a',
+    url: 'https://www.chinanews.com.cn/scroll-news/news1.html', headers: '{"User-Agent":"Mozilla/5.0"}',
   },
 };
 
@@ -99,6 +101,7 @@ function renderSourceCards() {
   if (!sources.length) return '<div class="col-span-full text-center py-12 text-on-surface-variant text-sm">暂无数据源，点击右上角添加</div>';
   return sources.map(s => {
     const tr = testCache[s.id];
+    const preview = previewCache[s.id];
     const statusBadge = s.status === 'active'
       ? '<span class="text-[10px] px-2 py-0.5 rounded bg-secondary-container/20 text-secondary">活跃</span>'
       : '<span class="text-[10px] px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant">停用</span>';
@@ -118,7 +121,10 @@ function renderSourceCards() {
           <span class="font-bold text-sm truncate">${escapeHtml(s.name)}</span>
           ${tplBadge}
         </div>
-        <button onclick="deleteSource(${s.id})" class="text-on-surface-variant hover:text-error text-xs shrink-0 ml-2">×</button>
+        <div class="flex items-center gap-1 shrink-0 ml-2">
+          <button onclick="openSourceModal(${s.id})" title="编辑数据源" class="text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined text-sm">edit</span></button>
+          <button onclick="deleteSource(${s.id})" title="删除数据源" class="text-on-surface-variant hover:text-error"><span class="material-symbols-outlined text-sm">delete</span></button>
+        </div>
       </div>
       <div class="text-[10px] text-on-surface-variant space-y-1">
         <div class="truncate" title="${escapeHtml(s.url)}">${escapeHtml(s.url).substring(0, 80)}${s.url.length > 80 ? '...' : ''}</div>
@@ -129,10 +135,34 @@ function renderSourceCards() {
         <button onclick="testSource(${s.id})" class="text-[10px] px-2 py-1 rounded bg-surface-container-high/50 text-on-surface-variant hover:text-primary transition-colors" id="testBtn${s.id}">
           <span class="material-symbols-outlined text-[12px]">wifi_find</span> 测试连接
         </button>
+        <button onclick="previewSource(${s.id})" class="text-[10px] px-2 py-1 rounded bg-primary-container/20 text-primary hover:bg-primary-container/30 transition-colors" id="previewBtn${s.id}">
+          <span class="material-symbols-outlined text-[12px]">preview</span> 采集预览
+        </button>
         ${testWidget}
       </div>
+      ${preview ? `<div class="mt-3 rounded-lg bg-surface-container-high/40 p-2 text-[10px] text-on-surface-variant">
+        <div class="font-semibold text-secondary mb-1">预览 ${preview.count} 条</div>
+        ${(preview.items || []).slice(0, 3).map(item => `<div class="truncate py-0.5">${escapeHtml(item.title || '无标题')}</div>`).join('')}
+      </div>` : ''}
     </div>`;
   }).join('');
+}
+
+async function previewSource(id) {
+  const btn = document.getElementById('previewBtn' + id);
+  if (btn) { btn.disabled = true; btn.textContent = '预览中...'; }
+  try {
+    const response = await apiPost('/api/dc/crawl', {
+      keyword: '人工智能', source_ids: [id], clean_rule_ids: []
+    });
+    const result = (response.results || [])[0] || {count: 0, items: []};
+    if (result.error) throw new Error(result.error);
+    previewCache[id] = result;
+    showToast('采集预览完成，共 ' + (result.count || 0) + ' 条', 'success');
+  } catch (error) {
+    showToast('采集预览失败: ' + (error.message || '未知错误'), 'error');
+  }
+  renderSourcesTab(document.getElementById('tabContent'));
 }
 
 async function testSource(id) {
@@ -151,14 +181,16 @@ async function testSource(id) {
   renderSourcesTab(document.getElementById('tabContent'));
 }
 
-function openSourceModal() {
-  selectedTemplate = 'custom';
+function openSourceModal(id = null) {
+  editingSourceId = id;
+  const editing = sources.find(source => source.id === id) || null;
+  selectedTemplate = editing?.template || 'custom';
   const existing = document.querySelector('.fixed.inset-0');
   if (existing) existing.remove();
 
   const html = `<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onclick="if(event.target===this)this.remove()">
     <div class="bg-surface-container rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
-      <h3 class="text-lg font-bold text-primary mb-4">添加数据源</h3>
+      <h3 class="text-lg font-bold text-primary mb-4">${editing ? '编辑数据源' : '添加数据源'}</h3>
       <div class="mb-4">
         <label class="text-xs text-on-surface-variant mb-2 block">快速模板</label>
         <div class="flex gap-2">
@@ -184,7 +216,7 @@ function openSourceModal() {
           </div>
           <div><label class="text-xs text-on-surface-variant">解析方式</label>
             <select id="dsParse" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1">
-              <option value="selector">CSS选择器</option><option value="xpath">XPath</option><option value="crawl4ai">Crawl4AI 全文</option>
+              <option value="selector">CSS选择器</option><option value="xpath">XPath</option><option value="rss">RSS / Atom</option><option value="crawl4ai">全文提取</option>
             </select>
           </div>
         </div>
@@ -197,6 +229,9 @@ function openSourceModal() {
         <div><label class="text-xs text-on-surface-variant">Body（POST时使用）</label>
           <textarea id="dsBody" rows="2" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1 font-mono"></textarea>
         </div>
+        <div><label class="text-xs text-on-surface-variant">状态</label>
+          <select id="dsStatus" class="w-full bg-surface-container-high/50 border border-outline-variant/20 rounded-lg px-3 py-2 text-sm mt-1"><option value="active">启用</option><option value="inactive">停用</option></select>
+        </div>
       </div>
       <div class="flex justify-end gap-3 mt-4">
         <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-sm text-on-surface-variant hover:text-on-surface">取消</button>
@@ -205,7 +240,18 @@ function openSourceModal() {
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
-  selectTemplate(selectedTemplate);
+  if (editing) {
+    document.getElementById('dsName').value = editing.name || '';
+    document.getElementById('dsUrl').value = editing.url || '';
+    document.getElementById('dsMethod').value = editing.method || 'GET';
+    document.getElementById('dsParse').value = editing.parse_type || 'selector';
+    document.getElementById('dsRule').value = editing.parse_rule || '';
+    document.getElementById('dsHeaders').value = editing.headers || '{}';
+    document.getElementById('dsBody').value = editing.body || '';
+    document.getElementById('dsStatus').value = editing.status || 'active';
+  } else {
+    selectTemplate(selectedTemplate);
+  }
 }
 
 let selectedTemplate = 'custom';
@@ -242,12 +288,15 @@ async function saveSource() {
     headers: document.getElementById('dsHeaders').value,
     body: document.getElementById('dsBody').value,
     template: selectedTemplate,
+    status: document.getElementById('dsStatus').value,
   };
   if (!data.name || !data.url) { showToast('请填写名称和URL', 'error'); return; }
   try {
-    await apiPost('/api/dc/sources', data);
+    if (editingSourceId) await apiPut('/api/dc/sources/' + editingSourceId, data);
+    else await apiPost('/api/dc/sources', data);
     document.querySelector('.fixed.inset-0')?.remove();
-    showToast('数据源已添加', 'success');
+    showToast(editingSourceId ? '数据源已更新' : '数据源已添加', 'success');
+    editingSourceId = null;
     await loadSources();
     renderTab();
   } catch(e) {

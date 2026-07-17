@@ -28,6 +28,12 @@ def login_page():
 
 @page_router.get("/dashboard", include_in_schema=False)
 def dashboard_page():
+    """管理控制台首页"""
+    return FileResponse(os.path.join(STATIC_DIR, "im-console.html"))
+
+
+@page_router.get("/data-governance", include_in_schema=False)
+def data_governance_page():
     """数据治理"""
     return FileResponse(os.path.join(STATIC_DIR, "data-governance.html"))
 
@@ -107,6 +113,12 @@ def agent_mgmt_page():
 @page_router.get("/de", include_in_schema=False)
 def de_chat_page():
     """数字员工对话"""
+    return FileResponse(os.path.join(STATIC_DIR, "de-chat.html"))
+
+
+@page_router.get("/employees", include_in_schema=False)
+def employee_directory_page():
+    """用户侧数字员工目录与对话入口。"""
     return FileResponse(os.path.join(STATIC_DIR, "de-chat.html"))
 
 

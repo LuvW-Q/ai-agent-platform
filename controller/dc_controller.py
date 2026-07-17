@@ -14,6 +14,8 @@ from dao.model_dao import get_default_model
 from core.openai_client import OpenAIClient
 from core.url_guard import assert_public_url
 from core.safe_http import request_public_url
+from core.sensitive_filter import sensitive_filter
+from dao.base_dao import log_action
 from models.user import User
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.collection_task import CollectionTask
@@ -72,6 +74,7 @@ def create_source(body: DSCreateIn, db: SessionLocal = Depends(get_db), user: Us
     db.add(ds)
     db.commit()
     db.refresh(ds)
+    log_action("collection_source_create", f"创建采集源: {ds.name}", user.username, db)
     return {"id": ds.id, "name": ds.name}
 
 
@@ -83,13 +86,19 @@ def update_source(ds_id: int, body: DSUpdateIn, db: SessionLocal = Depends(get_d
     for k, v in body.model_dump().items():
         if v is not None: setattr(ds, k, v)
     db.commit()
+    log_action("collection_source_update", f"更新采集源: {ds.name}", user.username, db)
     return {"updated": True}
 
 
 @dc_router.delete("/sources/{ds_id}")
 def delete_source(ds_id: int, db: SessionLocal = Depends(get_db), user: User = Depends(require_role("ROOT", "ADMIN"))):
-    db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).delete()
+    source = db.query(DataSourceConfig).filter(DataSourceConfig.id == ds_id).first()
+    if source is None:
+        raise HTTPException(404, "数据源不存在")
+    name = source.name
+    db.delete(source)
     db.commit()
+    log_action("collection_source_delete", f"删除采集源: {name}", user.username, db, risk_level="medium")
     return {"deleted": True}
 
 
@@ -114,7 +123,7 @@ async def test_source(ds_id: int, db: SessionLocal = Depends(get_db),
             else:
                 resp = await request_public_url(client, "GET", test_url, headers=headers)
         return {
-            "success": resp.status_code < 500,
+            "success": 200 <= resp.status_code < 400,
             "status_code": resp.status_code,
             "elapsed_ms": int(resp.elapsed.total_seconds() * 1000),
             "length": len(resp.content),
@@ -175,6 +184,7 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
                     )
                 else:
                     resp = await request_public_url(client, "GET", url, headers=headers)
+                resp.raise_for_status()
                 html = resp.text
         except Exception as e:
             results.append({"source": src.name, "error": str(e), "items": []})
@@ -188,6 +198,8 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
 
         # 创建临时结果（不自动保存）
         result_items = []
+        sensitive_counts = {"high": 0, "medium": 0}
+        matched_words: set[str] = set()
         for item in cleaned:
             title = item.get("title", "").strip()
             content = item.get("content", "").strip()
@@ -198,6 +210,10 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
             if not title or not content:
                 continue
             keywords = [body.keyword.strip()] if body.keyword.strip() else [title[:20]]
+            _filtered, blocked, matches = sensitive_filter.inspect(f"{title}\n{content}", db)
+            if matches:
+                sensitive_counts["high" if blocked else "medium"] += 1
+                matched_words.update(rule["word"] for rule in matches)
             cd = CollectedData(
                 source_id=src.id, source_name=src.name, keyword=body.keyword,
                 title=title, url=item.get("url", ""), content=content[:5000],
@@ -213,8 +229,20 @@ async def do_crawl(body: CrawlIn, db: SessionLocal = Depends(get_db),
             })
         db.commit()
 
+        if matched_words:
+            high = sensitive_counts["high"]
+            medium = sensitive_counts["medium"]
+            log_action(
+                "collected_data_sensitive",
+                f"采集源 [{src.name}] 命中敏感规则 {high + medium} 条（高风险 {high}，中风险 {medium}）："
+                + "、".join(sorted(matched_words)),
+                user.username,
+                db,
+                risk_level="high" if high else "medium",
+            )
+
         results.append({"source": src.name, "source_id": src.id,
-                        "count": len(cleaned), "items": result_items[:10]})
+                        "count": len(result_items), "items": result_items[:10]})
 
     return {"keyword": body.keyword, "results": results}
 
@@ -256,6 +284,7 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
             resp = await request_public_url(
                 client, "GET", d.url, headers={"User-Agent": "Mozilla/5.0"}
             )
+            resp.raise_for_status()
             full_text = resp.text
     except Exception as e:
         raise HTTPException(500, f"抓取失败: {e}")
@@ -268,6 +297,16 @@ async def deep_collect(data_id: int, db: SessionLocal = Depends(get_db),
 
     d.content = body_text
     d.deep_collected = True
+    _filtered, blocked, matches = sensitive_filter.inspect(body_text, db)
+    if matches:
+        log_action(
+            "deep_collected_data_sensitive",
+            f"深度采集数据 [{d.title or d.id}] 命中敏感规则: "
+            + "、".join(sorted({rule["word"] for rule in matches})),
+            user.username,
+            db,
+            risk_level="high" if blocked else "medium",
+        )
 
     # AI 摘要 + 实体提取
     chat_model = get_default_model(db)
@@ -344,6 +383,7 @@ async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
 
         completed = 0
         failed = 0
+        sensitive_count = 0
         async with httpx.AsyncClient(timeout=30) as client:
             for item_id in item_ids:
                 item = db.query(CollectedData).filter(CollectedData.id == item_id).first()
@@ -364,12 +404,20 @@ async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
                         item.url,
                         headers={"User-Agent": "Mozilla/5.0"},
                     )
+                    resp.raise_for_status()
                     soup = BeautifulSoup(resp.text, "html.parser")
                     for tag in soup(["script", "style", "nav", "footer", "header"]):
                         tag.decompose()
                     body_text = soup.get_text(separator="\n", strip=True)[:8000]
                     item.content = body_text
                     item.deep_collected = True
+                    _filtered, blocked, matches = sensitive_filter.inspect(body_text, db)
+                    if matches:
+                        sensitive_count += 1
+                        task.log += (
+                            f"[RISK] {label}... 命中敏感规则，"
+                            f"等级={'high' if blocked else 'medium'}\n"
+                        )
                     completed += 1
                     task.completed_count = completed
                     task.log += f"[OK] {label}... 深度采集完成\n"
@@ -388,6 +436,14 @@ async def _run_batch_deep_collect(task_id: int, item_ids: list[int]) -> None:
             task.status = "failed"
             task.log += f"批量深度采集结束: 成功 {completed}/{task.total_count}, 失败 {failed}\n"
         db.commit()
+        if sensitive_count:
+            log_action(
+                "batch_deep_collected_sensitive",
+                f"批量深度采集任务 {task.id} 有 {sensitive_count} 条数据命中敏感规则",
+                "collection_service",
+                db,
+                risk_level="high",
+            )
     finally:
         db.close()
 
