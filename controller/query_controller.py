@@ -103,6 +103,12 @@ _QUERYABLE_COLUMNS: dict[str, frozenset[str]] = {
 }
 
 _BLOCKED_SQL_FUNCTIONS = frozenset({"load_extension", "readfile", "writefile"})
+_QUERYABLE_PRAGMA_COLUMNS: dict[str, frozenset[str]] = {
+    # SQLite exposes table metadata through pragma_table_info(...). Some LLMs
+    # generate read-only schema inspection before answering; allow only the
+    # documented metadata columns and keep all other PRAGMAs blocked.
+    "pragma_table_info": frozenset({"cid", "name", "type", "notnull", "dflt_value", "pk"}),
+}
 _QUERY_ROW_LIMIT = 100
 _QUERY_TIMEOUT_SECONDS = 2.0
 
@@ -124,10 +130,18 @@ def _execute_readonly_select(db, sql: str) -> tuple[list[str], list[dict]]:
             allowed_columns = _QUERYABLE_COLUMNS.get(arg1 or "")
             if allowed_columns is not None and (arg2 == "" or arg2 in allowed_columns):
                 return sqlite3.SQLITE_OK
+            allowed_pragma_columns = _QUERYABLE_PRAGMA_COLUMNS.get(arg1 or "")
+            if allowed_pragma_columns is not None and arg2 in allowed_pragma_columns:
+                return sqlite3.SQLITE_OK
             return sqlite3.SQLITE_DENY
         if action == sqlite3.SQLITE_FUNCTION:
             function_name = (arg2 or arg1 or "").lower()
             if function_name not in _BLOCKED_SQL_FUNCTIONS:
+                return sqlite3.SQLITE_OK
+        if action == sqlite3.SQLITE_PRAGMA:
+            pragma_name = (arg1 or "").lower()
+            table_name = arg2 or ""
+            if pragma_name in {"table_info", "table_xinfo"} and table_name in _QUERYABLE_COLUMNS:
                 return sqlite3.SQLITE_OK
         return sqlite3.SQLITE_DENY
 

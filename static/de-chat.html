@@ -86,7 +86,7 @@ body { font-family: 'Inter', sans-serif; background-color: #071425; color: #d7e3
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 </style>
-<link rel="stylesheet" href="/static/css/tech-light.css?v=20260717-2" data-tech-light-theme>
+<link rel="stylesheet" href="/static/css/tech-light.css?v=20260717-3" data-tech-light-theme>
 </head>
 <body class="bg-background text-on-background h-screen overflow-hidden">
 
@@ -654,6 +654,16 @@ async function startGestureMode() {
   document.getElementById('gestureCameraHint').classList.remove('hidden');
   document.getElementById('gestureCameraHint').textContent = '正在申请摄像头权限…';
   document.getElementById('gestureStatus').textContent = '正在初始化 MediaPipe Hands…';
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    const message = window.isSecureContext
+      ? '当前浏览器不支持摄像头 API，无法启用手势模式。'
+      : '手势模式需要 HTTPS 或 localhost 安全上下文；远程 HTTP 演示页无法调用摄像头。';
+    gestureRunning = false;
+    document.getElementById('gestureCameraHint').textContent = '摄像头不可用';
+    document.getElementById('gestureStatus').textContent = message;
+    showToast(message, 'error');
+    return;
+  }
   if (!window.Hands || !window.Camera) {
     document.getElementById('gestureStatus').textContent = 'MediaPipe 组件加载失败，请检查网络';
     return;
@@ -826,7 +836,7 @@ async function exportChatPdf() {
     container.style.height = 'auto';
     container.style.maxHeight = 'none';
     container.style.overflow = 'visible';
-    const canvas = await html2canvas(container, { backgroundColor: '#071425', scale: 1.5, useCORS: true, logging: false });
+    const canvas = await html2canvas(container, { backgroundColor: '#f4f8ff', scale: 1.5, useCORS: true, logging: false });
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();

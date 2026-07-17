@@ -31,7 +31,7 @@ function ensureTechLightTheme() {
   if (document.querySelector('link[data-tech-light-theme]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/static/css/tech-light.css?v=20260717-2';
+  link.href = '/static/css/tech-light.css?v=20260717-3';
   link.setAttribute('data-tech-light-theme', '');
   document.head.appendChild(link);
 }
@@ -923,10 +923,17 @@ function logout() {
 /* ========== 通知 Toast ========== */
 function showToast(msg, type = 'info') {
   const colors = { info: 'bg-primary-container', success: 'bg-secondary-container', error: 'bg-error-container' };
+  let container = document.getElementById('app-toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'app-toast-container';
+    container.className = 'app-toast-container';
+    document.body.appendChild(container);
+  }
   const toast = document.createElement('div');
-  toast.className = `fixed top-4 right-4 z-[9999] ${colors[type]} text-on-surface px-lg py-md rounded-xl shadow-2xl transition-all duration-300 opacity-0 translate-y-[-10px]`;
+  toast.className = `app-toast ${colors[type]} text-on-surface px-lg py-md rounded-xl shadow-2xl transition-all duration-300 opacity-0 translate-y-[-10px]`;
   toast.textContent = msg;
-  document.body.appendChild(toast);
+  container.appendChild(toast);
   requestAnimationFrame(() => {
     toast.classList.remove('opacity-0', 'translate-y-[-10px]');
   });
