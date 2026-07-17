@@ -31,7 +31,7 @@ function ensureTechLightTheme() {
   if (document.querySelector('link[data-tech-light-theme]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/static/css/tech-light.css?v=20260717-1';
+  link.href = '/static/css/tech-light.css?v=20260717-2';
   link.setAttribute('data-tech-light-theme', '');
   document.head.appendChild(link);
 }
@@ -687,6 +687,7 @@ function openFirstMatchedMenu() {
 async function replaceSidebar() {
   const path = window.location.pathname;
   if (path === '/' || path === '/login' || path === '/admin-login') {
+    document.body?.classList.add('app-shell-ready');
     return false;
   }
   const activeMap = {
@@ -760,6 +761,7 @@ async function replaceSidebar() {
   enhancePageLayout(active);
   observeDynamicLayout(active);
 
+  document.body?.classList.add('app-shell-ready');
   return true;
 }
 
@@ -948,6 +950,7 @@ async function initSidebar() {
     loadSidebarUser();
     loadSystemName();
   }
+  document.body?.classList.add('app-shell-ready');
 }
 
 if (document.readyState === 'loading') {
@@ -1137,19 +1140,3 @@ if (document.readyState === 'loading') {
 
 // 页面卸载时停止 WebSocket 重连
 window.addEventListener('beforeunload', () => { IM.stop(); });
-
-/* ========== 自动侧边栏注入（统一所有页面） ========== */
-async function autoInitSidebar() {
-  if (!Token.exists() || window.location.pathname.startsWith('/login')) return;
-  // 登录页不需要侧边栏
-  if (window.location.pathname === '/login' || window.location.pathname === '/') return;
-  await replaceSidebar();
-  loadSidebarUser();
-  loadSystemName();
-}
-// DOM 就绪后自动注入
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', autoInitSidebar);
-} else {
-  autoInitSidebar();
-}

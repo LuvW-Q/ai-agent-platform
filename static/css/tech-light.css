@@ -23,6 +23,10 @@
   --tl-shadow-sm: 0 10px 30px rgba(15, 23, 42, 0.07);
 }
 
+html {
+  background: var(--tl-bg) !important;
+}
+
 html.dark {
   background: var(--tl-bg) !important;
 }
@@ -58,6 +62,20 @@ body::after {
   background:
     linear-gradient(110deg, transparent 0 24%, rgba(37, 99, 235, 0.055) 24.1% 24.35%, transparent 24.45% 100%),
     linear-gradient(70deg, transparent 0 64%, rgba(8, 145, 178, 0.05) 64.1% 64.35%, transparent 64.45% 100%);
+}
+
+/* Prevent the per-page legacy dark navigation from flashing before app.js
+   replaces it with the unified shell. Keep the page content visible. */
+body:not(.app-shell-ready):not(:has(#loginForm)) > aside,
+body:not(.app-shell-ready):not(:has(#loginForm)) > header,
+body:not(.app-shell-ready):not(:has(#loginForm)) > nav.fixed.top-0 {
+  opacity: 0 !important;
+}
+
+body.app-shell-ready > aside,
+body.app-shell-ready > header,
+body.app-shell-ready > nav.fixed.top-0 {
+  opacity: 1;
 }
 
 * {
@@ -1034,6 +1052,40 @@ main[data-page="messages"] [id*="message"] {
   background:
     radial-gradient(circle at 20% 10%, rgba(37, 99, 235, 0.08), transparent 34%),
     rgba(248, 251, 255, 0.60) !important;
+}
+
+/* Digital employee chat bubbles. The original page defines dark bubbles in
+   de-chat.html; override them here so the user-facing conversation stays light. */
+.message-bubble {
+  border: 1px solid var(--tl-border) !important;
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.08) !important;
+}
+
+.message-agent {
+  color: var(--tl-text) !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.92)) !important;
+}
+
+.message-user {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, var(--tl-primary), var(--tl-secondary)) !important;
+  border-color: rgba(37, 99, 235, 0.24) !important;
+}
+
+.message-agent [data-message-content],
+.message-agent .message-action,
+.message-agent .text-on-surface-variant {
+  color: var(--tl-text) !important;
+}
+
+.message-user [data-message-content],
+.message-user .text-on-surface-variant {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.typing-dot {
+  background: var(--tl-primary) !important;
 }
 
 @media (max-width: 1200px) {
