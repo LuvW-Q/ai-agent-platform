@@ -68,6 +68,30 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8001
 
 访问 `http://127.0.0.1:8001/login`。系统没有源码内置的默认密码；首次启动时管理员账号由 `.env` 的 `INITIAL_ADMIN_USERNAME` 和 `INITIAL_ADMIN_PASSWORD` 创建。
 
+## 数字员工接入真实 LLM
+
+数字员工默认使用占位模型；没有真实 Key 时会进入本地 mock 回复。需要真实大模型时，在 `.env` 中手工填写 OpenAI 协议兼容的对话模型配置，然后重启服务：
+
+```bash
+CHAT_MODEL_API_KEY=sk-your-real-key
+CHAT_MODEL_ENDPOINT=https://api.openai.com/v1
+CHAT_MODEL_NAME=gpt-4o-mini
+CHAT_MODEL_PROVIDER=OpenAI-Compatible
+CHAT_MODEL_DISPLAY_NAME=演示对话模型
+```
+
+DeepSeek 示例：
+
+```bash
+CHAT_MODEL_API_KEY=sk-your-deepseek-key
+CHAT_MODEL_ENDPOINT=https://api.deepseek.com/v1
+CHAT_MODEL_NAME=deepseek-chat
+CHAT_MODEL_PROVIDER=DeepSeek
+CHAT_MODEL_DISPLAY_NAME=DeepSeek 演示模型
+```
+
+启动种子会创建或更新该对话模型，并把模型型数字员工绑定到它。`CHAT_MODEL_API_KEY` 为空或仍是占位值时，系统保持 mock 模式，便于无 Key 演示。
+
 生产部署必须保持 `ENABLE_DEMO_SEED=0`，使用不同的随机 `SECRET_KEY` 与 Fernet `APP_SECRET_KEY`，并将 `CORS_ORIGINS` 限制为实际前端域名。工作流代码节点默认关闭，仅在隔离环境评估后才可设置 `WORKFLOW_CODE_EXECUTION_ENABLED=1`。
 
 ## 演示脚本

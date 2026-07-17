@@ -244,6 +244,7 @@ const PAGE_META = {
   'agent-management': { title: '员工管理', desc: '创建、绑定模型/技能并发布数字员工', icon: 'precision_manufacturing' },
   agents: { title: '员工编排', desc: '面向任务流程编排数字员工能力与协作关系', icon: 'smart_toy' },
   de: { title: '数字员工', desc: '与已发布数字员工对话，查看技能调用链路', icon: 'forum', fluid: true },
+  employees: { title: '数字员工', desc: '与已发布数字员工对话，查看技能调用链路', icon: 'precision_manufacturing', fluid: true },
   workflows: { title: '工作流', desc: '可视化编排节点、运行校验并保存自动化流程', icon: 'account_tree', fluid: true },
   rag: { title: 'RAG 管理', desc: '知识库、文档切片、嵌入模型和检索配置', icon: 'book_4' },
   permissions: { title: '权限管理', desc: '角色、权限树、用户授权和权限审计', icon: 'admin_panel_settings' },
@@ -693,6 +694,7 @@ async function replaceSidebar() {
     '/agent-management': 'agent-management',
     '/agents': 'agents',
     '/de': 'de',
+    '/employees': 'employees',
     '/workflows': 'workflows',
     '/rag': 'rag',
     '/permissions': 'permissions',
@@ -838,7 +840,7 @@ function fixSidebarNav(aside) {
   const cnMap = {
     '数据治理': '/data-governance', '数字大屏': '/screen', '模型管理': '/models',
     '技能管理': '/skills', '员工管理': '/agent-management', '员工编排': '/agents',
-    '数字员工': '/de', '权限管理': '/permissions', '审计管理': '/audit',
+    '数字员工': '/employees', '权限管理': '/permissions', '审计管理': '/audit',
     '消息中心': '/messages', 'IM控制台': '/im', '智能问数': '/query',
     '个人设置': '/settings',
   };

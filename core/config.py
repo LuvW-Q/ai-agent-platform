@@ -31,6 +31,17 @@ class AppConfig(BaseSettings):
     INITIAL_ADMIN_PASSWORD: str | None = None
     INITIAL_ADMIN_EMAIL: str = "admin@dataoutlook.cn"
 
+    # 可选：从 .env 注入一个 OpenAI 协议兼容的默认对话模型。
+    # 填写 CHAT_MODEL_API_KEY 后，种子数据会把模型型数字员工绑定到该模型。
+    CHAT_MODEL_API_KEY: str = ""
+    CHAT_MODEL_ENDPOINT: str = "https://api.openai.com/v1"
+    CHAT_MODEL_NAME: str = "gpt-4o-mini"
+    CHAT_MODEL_PROVIDER: str = "OpenAI-Compatible"
+    CHAT_MODEL_DISPLAY_NAME: str = "演示对话模型"
+    CHAT_MODEL_CONTEXT_LENGTH: int = 128000
+    CHAT_MODEL_TEMPERATURE: str = "0.7"
+    CHAT_MODEL_MAX_TOKENS: int = 4096
+
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, value: str) -> str:

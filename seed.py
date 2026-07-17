@@ -15,6 +15,7 @@ from models.ai_model import AIModel
 from models.skill import Skill
 from models.audit_log import AuditLog
 from models.sensitive_word import SensitiveWord
+from models.data_source import DataSource
 from models.data_collection import DataSourceConfig, CleanRule, CollectedData
 from models.menu import Menu
 from models.setting import Setting
@@ -36,6 +37,7 @@ def run_seed():
         _seed_agents(db)
         _seed_audit_logs(db)
         _seed_sensitive_words(db)
+        _seed_data_sources(db)
         _seed_sources_and_rules(db)
         _seed_collected_data(db)
         _seed_menus(db)
@@ -147,36 +149,80 @@ def _seed_users(db: SessionLocal):
 
 
 def _seed_ai_models(db: SessionLocal):
-    existing = {m.model_name for m in db.query(AIModel).all()}
+    existing = {m.model_name: m for m in db.query(AIModel).all()}
     added = 0
-    for m in [
-        AIModel(name="GPT-4o", provider="OpenAI", api_key="sk-placeholder", model_name="gpt-4o",
-                endpoint="https://api.openai.com/v1", context_length=128000, model_type="chat",
-                is_default=True, is_active=True, temperature=0.7, max_tokens=4096),
-        AIModel(name="DeepSeek-V3", provider="DeepSeek", api_key="sk-placeholder", model_name="deepseek-chat",
-                endpoint="https://api.deepseek.com/v1", context_length=64000, model_type="chat",
-                is_default=False, is_active=True, temperature=0.7, max_tokens=4096),
-        AIModel(name="text-embedding-3-small", provider="OpenAI", api_key="sk-placeholder",
-                model_name="text-embedding-3-small", endpoint="https://api.openai.com/v1",
-                context_length=8191, model_type="embedding", is_default=False, is_active=True),
-        AIModel(name="Claude-3.5-Sonnet", provider="Anthropic", api_key="sk-placeholder",
-                model_name="claude-3-5-sonnet-20241022", endpoint="https://api.anthropic.com/v1",
-                context_length=200000, model_type="chat", is_default=False, is_active=True,
-                temperature=0.7, max_tokens=4096),
-        AIModel(name="DALL-E 3", provider="OpenAI", api_key="sk-placeholder",
-                model_name="dall-e-3", endpoint="https://api.openai.com/v1",
-                context_length=4096, model_type="image", is_default=False, is_active=True),
-        AIModel(name="Stable Diffusion", provider="StabilityAI", api_key="sk-placeholder",
-                model_name="stable-diffusion-xl", endpoint="https://api.stability.ai/v1",
-                context_length=4096, model_type="image", is_default=False, is_active=True),
-    ]:
-        if m.model_name not in existing:
-            db.add(m)
+    defaults = [
+        {"name": "GPT-4o", "provider": "OpenAI", "api_key": "sk-placeholder", "model_name": "gpt-4o",
+         "endpoint": "https://api.openai.com/v1", "context_length": 128000, "model_type": "chat",
+         "is_default": True, "is_active": True, "temperature": "0.7", "max_tokens": 4096},
+        {"name": "DeepSeek-V3", "provider": "DeepSeek", "api_key": "sk-placeholder", "model_name": "deepseek-chat",
+         "endpoint": "https://api.deepseek.com/v1", "context_length": 64000, "model_type": "chat",
+         "is_default": False, "is_active": True, "temperature": "0.7", "max_tokens": 4096},
+        {"name": "text-embedding-3-small", "provider": "OpenAI", "api_key": "sk-placeholder",
+         "model_name": "text-embedding-3-small", "endpoint": "https://api.openai.com/v1",
+         "context_length": 8191, "model_type": "embedding", "is_default": False, "is_active": True},
+        {"name": "Claude-3.5-Sonnet", "provider": "Anthropic", "api_key": "sk-placeholder",
+         "model_name": "claude-3-5-sonnet-20241022", "endpoint": "https://api.anthropic.com/v1",
+         "context_length": 200000, "model_type": "chat", "is_default": False, "is_active": True,
+         "temperature": "0.7", "max_tokens": 4096},
+        {"name": "DALL-E 3", "provider": "OpenAI", "api_key": "sk-placeholder",
+         "model_name": "dall-e-3", "endpoint": "https://api.openai.com/v1",
+         "context_length": 4096, "model_type": "image", "is_default": False, "is_active": True},
+        {"name": "Stable Diffusion", "provider": "StabilityAI", "api_key": "sk-placeholder",
+         "model_name": "stable-diffusion-xl", "endpoint": "https://api.stability.ai/v1",
+         "context_length": 4096, "model_type": "image", "is_default": False, "is_active": True},
+    ]
+    for spec in defaults:
+        if spec["model_name"] not in existing:
+            db.add(AIModel(**spec))
             added += 1
+    db.flush()
+
+    if _chat_model_env_configured():
+        model_name = config.CHAT_MODEL_NAME.strip()
+        model = db.query(AIModel).filter(AIModel.model_name == model_name).first()
+        if model is None:
+            model = AIModel(model_name=model_name)
+            db.add(model)
+            added += 1
+        model.name = config.CHAT_MODEL_DISPLAY_NAME.strip() or model_name
+        model.provider = config.CHAT_MODEL_PROVIDER.strip() or "OpenAI-Compatible"
+        model.api_key = config.CHAT_MODEL_API_KEY.strip()
+        model.endpoint = config.CHAT_MODEL_ENDPOINT.strip().rstrip("/") or "https://api.openai.com/v1"
+        model.context_length = config.CHAT_MODEL_CONTEXT_LENGTH
+        model.model_type = "chat"
+        model.is_active = True
+        model.temperature = config.CHAT_MODEL_TEMPERATURE
+        model.max_tokens = config.CHAT_MODEL_MAX_TOKENS
+        db.query(AIModel).filter(AIModel.model_type == "chat").update(
+            {AIModel.is_default: False},
+            synchronize_session=False,
+        )
+        model.is_default = True
+        db.flush()
+        print(f"[seed] .env 对话模型已启用：{model.name} ({model.model_name})")
     if added:
         print(f"[seed] AI 模型写入完成（新增 {added} 条）")
     else:
         print("[seed] AI 模型无变更")
+
+
+def _chat_model_env_configured() -> bool:
+    key = (config.CHAT_MODEL_API_KEY or "").strip()
+    if len(key) <= 20:
+        return False
+    lowered = key.lower()
+    return "placeholder" not in lowered and "replace-with" not in lowered
+
+
+def _configured_chat_model(db: SessionLocal) -> AIModel | None:
+    if not _chat_model_env_configured():
+        return None
+    return db.query(AIModel).filter(
+        AIModel.model_name == config.CHAT_MODEL_NAME.strip(),
+        AIModel.model_type == "chat",
+        AIModel.is_active == True,
+    ).first()
 
 
 def _seed_skills(db: SessionLocal):
@@ -257,50 +303,62 @@ def _seed_skills(db: SessionLocal):
 
 
 def _seed_agents(db: SessionLocal):
-    existing = {a.name for a in db.query(Agent).all()}
+    existing = {a.name: a for a in db.query(Agent).all()}
     skills = {s.name: s.id for s in db.query(Skill).all()}
-    gpt_model = db.query(AIModel).filter(AIModel.model_name == "gpt-4o").first()
-    gpt_model_id = gpt_model.id if gpt_model else None
+    configured_model = _configured_chat_model(db)
+    model_ids = {m.model_name: m.id for m in db.query(AIModel).all()}
+
+    def chat_model_id(model_name: str) -> int | None:
+        return configured_model.id if configured_model else model_ids.get(model_name)
+
+    def base_model_name(model_name: str) -> str:
+        return configured_model.model_name if configured_model else model_name
+
     added = 0
-    for ag in [
-        Agent(name="金融数据分析师", base_model="gpt-4o", model_id=1,
+    agents = [
+        Agent(name="金融数据分析师", base_model=base_model_name("gpt-4o"), model_id=chat_model_id("gpt-4o"),
               persona_prompt="你是专业的金融数据分析师，擅长解读市场趋势和财务报表。",
               skill_bindings="SQL_Executor,Financial_Analyzer", skill_ids="1,2,3",
               status="published", description="自动分析金融数据并生成日报"),
-        Agent(name="舆情监控员", base_model="deepseek-v3", model_id=2,
+        Agent(name="舆情监控员", base_model=base_model_name("deepseek-chat"), model_id=chat_model_id("deepseek-chat"),
               persona_prompt="你是舆情监控专员，负责实时监测社交媒体情感倾向。",
               skill_bindings="Social_Monitor,Sentiment_Analyzer", skill_ids="1,2,3",
               status="published", description="7x24小时监控全网舆情动态"),
-        Agent(name="审计报告生成器", base_model="claude-3.5-sonnet", model_id=4,
+        Agent(name="审计报告生成器", base_model=base_model_name("claude-3-5-sonnet-20241022"), model_id=chat_model_id("claude-3-5-sonnet-20241022"),
               persona_prompt="你是审计报告专家，根据审计日志自动生成合规报告。",
               skill_bindings="Audit_Reader,Report_Generator", skill_ids="3,4",
               status="draft", description="自动汇总审计日志生成周报"),
-        Agent(name="运维巡检机器人", base_model="gpt-4o", model_id=1,
+        Agent(name="运维巡检机器人", base_model=base_model_name("gpt-4o"), model_id=chat_model_id("gpt-4o"),
               persona_prompt="你是运维巡检专家，负责检查系统健康状态和数据管道。",
               skill_bindings="System_Checker,Alert_Sender", skill_ids="1,2,3",
               status="published", description="定时巡检并推送告警"),
-        Agent(name="天气助手", base_model="gpt-4o", model_id=1,
+        Agent(name="天气助手", base_model=base_model_name("gpt-4o"), model_id=chat_model_id("gpt-4o"),
               persona_prompt="你是天气助手，可以查询全球任意城市的实时天气情况。",
               skill_bindings="Weather_Query", skill_ids="3",
               status="published", description="查询实时天气信息"),
-        Agent(name="代码助手", base_model="gpt-4o", model_id=1,
+        Agent(name="代码助手", base_model=base_model_name("gpt-4o"), model_id=chat_model_id("gpt-4o"),
               persona_prompt="你是一位资深程序员，擅长用 Python/JavaScript/Java 等语言编写高质量的代码。回答简洁，附有代码示例。",
               skill_bindings="Code_Helper", skill_ids="1,2",
               status="published", description="编写和调试代码"),
-        Agent(name="随机音乐", base_model="gpt-4o", model_id=gpt_model_id,
+        Agent(name="随机音乐", base_model=base_model_name("gpt-4o"), model_id=chat_model_id("gpt-4o"),
               persona_prompt="你是音乐推荐助手，负责根据用户请求随机推荐歌曲。",
               skill_bindings="Random_Music", skill_ids=str(skills["随机音乐推荐"]),
               status="published", description="随机推荐一首歌曲",
               fallback_message="暂时无法连接外部曲库，已为你从本地曲库推荐歌曲。"),
-        Agent(name="新闻", base_model="gpt-4o", model_id=gpt_model_id,
+        Agent(name="新闻", base_model=base_model_name("gpt-4o"), model_id=chat_model_id("gpt-4o"),
               persona_prompt="你是新闻助手，负责从本地采集数据仓库检索和整理最新新闻。",
               skill_bindings="News_Search", skill_ids=str(skills["新闻检索"]),
               status="published", description="检索本地采集库中的最新新闻",
               fallback_message="新闻数据暂时不可用，请稍后再试。"),
-    ]:
-        if ag.name not in existing:
+    ]
+    for ag in agents:
+        current = existing.get(ag.name)
+        if current is None:
             db.add(ag)
             added += 1
+        elif configured_model and current.agent_type != "api":
+            current.model_id = configured_model.id
+            current.base_model = configured_model.model_name
     print(f"[seed] 数字员工写入完成（新增 {added} 条）")
 
 
@@ -333,6 +391,62 @@ def _seed_sensitive_words(db: SessionLocal):
     ]:
         db.add(w)
     print("[seed] 敏感词写入完成")
+
+
+def _seed_data_sources(db: SessionLocal):
+    """初始化数据治理页与智能问数使用的数据源资产。"""
+    source_specs = [
+        {
+            "resource_id": "FinNews_Crawler_01",
+            "name": "金融新闻采集链路",
+            "frequency": "5min/request",
+            "endpoint": "news.baidu.com + 36kr.com/feed",
+            "protocol": "https",
+            "status": "active",
+        },
+        {
+            "resource_id": "PublicOpinion_Stream_02",
+            "name": "舆情监测数据流",
+            "frequency": "实时/模拟",
+            "endpoint": "collected_data.saved warehouse",
+            "protocol": "sqlite",
+            "status": "active",
+        },
+        {
+            "resource_id": "Audit_Log_Warehouse_03",
+            "name": "安全审计日志仓库",
+            "frequency": "1min/sync",
+            "endpoint": "audit_logs",
+            "protocol": "sqlite",
+            "status": "syncing",
+        },
+        {
+            "resource_id": "External_API_Registry_04",
+            "name": "外部接口注册表",
+            "frequency": "manual",
+            "endpoint": "api_registries",
+            "protocol": "http",
+            "status": "idle",
+        },
+    ]
+    existing_by_resource = {
+        source.resource_id: source
+        for source in db.query(DataSource).filter(
+            DataSource.resource_id.in_([spec["resource_id"] for spec in source_specs])
+        ).all()
+    }
+    changed = 0
+    for spec in source_specs:
+        source = existing_by_resource.get(spec["resource_id"])
+        if source is None:
+            db.add(DataSource(**spec))
+            changed += 1
+        else:
+            for key, value in spec.items():
+                setattr(source, key, value)
+            changed += 1
+    if changed:
+        print(f"[seed] 数据治理源写入或校准完成（{changed} 条）")
 
 
 def _seed_sources_and_rules(db: SessionLocal):
